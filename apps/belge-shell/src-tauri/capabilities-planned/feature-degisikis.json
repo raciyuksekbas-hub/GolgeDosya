@@ -1,0 +1,6 @@
+{
+  "identifier": "feature-degisikis",
+  "description": "Değişikİş: karşılaştırma raporunu kaydet ve aç. Diff motoru webview içinde çalışır ve dosyayı webview üzerinden alır; bu yüzden Rust tarafında dosya okuma izni istemez. Güncelleme denetimi ayrı bir yüzeydir ve belge verisine dokunmaz.",
+  "windows": ["main"],
+  "permissions": ["dialog:allow-save", "opener:allow-reveal-item-in-dir"]
+}
