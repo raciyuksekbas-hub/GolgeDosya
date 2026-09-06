@@ -208,3 +208,52 @@ kopyası emekliye ayrılınca ulaşılır.
 
 DüzenEk'in göreli yolu (`../Yuksekbas-Belge/crates/document-core`) **geçicidir**
 ve kardeş dizin varsayar; Phase 7'de DüzenEk birleşik workspace'e taşınınca kalkar.
+
+---
+
+## Phase 2/3 — kabuk UX'i ve Tavzih migration'ı (2026-09-07)
+
+### Kabuk UX'i
+Kabuk bir geliştirici paneli gibi görünüyordu. Kaldırılanlar: "0/4 bölüm
+kullanılabilir", localStorage yolu, bundle kimliği, taşınan ayarların dökümü,
+"henüz taşınmadı" metinleri, feature durumu. Hepsi `console.debug`'a taşındı.
+
+Yeni yüzey belge merkezli: kenar çubuğu (Düzenle/Dönüştür/Karşılaştır/Denetle),
+büyük "Dosya Aç" daveti, native sürükle-bırak, son kullanılan belgeler.
+Taşınmamış bölüm macOS'ta olduğu gibi soluk ve tıklanamaz; gövdede açıklama yok.
+
+`qa/tests/shell-ux.test.mjs` (8 test) bunu kilitler: gerçek bileşenler SSR ile
+render edilip **görünür metin** ve kullanıcıya okunan öznitelikler denetlenir.
+`data-feature` gibi öznitelikler kasıtlıdır ve ayrıca doğrulanır.
+
+### Tavzih migration'ı
+Dönüştür bölümü `feature_tavzih` arkasında kabuğa taşındı. Motor
+`document-core`'un `convert` modülüdür; tek satırı değişmedi. Komut imzaları,
+hata kodları, Türkçe mesajlar, tek-dönüştürme nöbetçisi ve kullanım koşulları
+metni birebir korundu.
+
+Tek adaptasyon: Tavzih'in `prefs.rs`'i yerine kabuğun ortak ayar deposu. Alanlar
+ve `TERMS_VERSION` aynı; taşınan kabul geçerliliğini korur.
+
+### Feature/capability tutarlılığı zorunlu
+`check-architecture.sh` artık şunu denetliyor: etkin olmayan bir modülün
+capability dosyası `capabilities/` içinde duramaz. İzin kodla birlikte gelir,
+kodla birlikte gider. Kapalı modülün komutu binary'de hiç bulunmaz.
+
+### Duplikasyon bitti
+`crates/document-core` artık çekirdeğin **tek** kopyası:
+
+| | önce | sonra |
+|---|---|---|
+| Yuksekbas-Belge | var | **var (tek otorite)** |
+| Tavzih standalone | var | yok |
+| DüzenEk | var | yok |
+
+Tavzih standalone kendi kopyasını emekliye ayırdı ve ortak çekirdeği tüketiyor.
+Kendi release gate'i taşımadan sonra da eksiksiz geçiyor: 66 geçen, 0 başarısız.
+Kendi kendine yeten son hâli `tavzih-premerge-2026-09-07` ile donduruldu.
+
+### Bilinen kısıt (taşımadan önce de vardı)
+Tavzih'in prefs ve terms testleri tek bir gerçek yapılandırma dosyasını paylaşır
+ve seri koşulmalıdır. `release-gate.sh` bunu `--test-threads=1` ile çağırıyor;
+paralel `cargo test --workspace` bu iki testte hata verir. Regresyon değildir.

@@ -7,15 +7,15 @@ Dört bağımsız masaüstü uygulamasının — **Tavzih**, **DüzenEk**, **De�
 > Ürün markası kararı verilmedi. Kod, `AppInfo.nameIsProvisional = true` ile
 > bunu açıkça bildirir.
 
-## Durum — Phase 1 + 2 tamamlandı
+## Durum — Phase 1, 2, 3 tamamlandı
 
 | Faz | İş | Durum |
 |---|---|---|
 | 0 | Snapshot + temiz taban | ✅ |
 | 1 | Tavzih ↔ DüzenEk `document-core` tekilleştirmesi | ✅ |
 | 2 | Birleşik workspace + minimal kabuk | ✅ |
-| 3 | Tavzih migration'ı | ⏭ **sıradaki** |
-| 4 | İkinciGöz migration'ı (mevcut parser korunarak) | ⏸ |
+| 3 | Tavzih migration'ı | ✅ |
+| 4 | İkinciGöz migration'ı (mevcut parser korunarak) | ⏭ **sıradaki** |
 | 5 | Değişikİş migration'ı (TS diff motoru korunarak) | ⏸ |
 | 6 | DüzenEk migration'ı (dondurulmuş temele karşı) | ⏸ |
 | 7 | Provenance üzerinden parser konsolidasyonu araştırması | ⏸ |
