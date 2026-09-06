@@ -257,3 +257,64 @@ Kendi kendine yeten son hâli `tavzih-premerge-2026-09-07` ile donduruldu.
 Tavzih'in prefs ve terms testleri tek bir gerçek yapılandırma dosyasını paylaşır
 ve seri koşulmalıdır. `release-gate.sh` bunu `--test-threads=1` ile çağırıyor;
 paralel `cargo test --workspace` bu iki testte hata verir. Regresyon değildir.
+
+---
+
+## Phase 4 — İkinciGöz migration'ı (2026-09-07)
+
+### Baseline
+`ikincigoz-premerge-2026-09-07` @ `d9ca082`. 325 passed / 0 failed / 0 ignored
+(core 262 · app 15 · golden 5 · precision 22 · robustness 13 · samples 8),
+clippy PASS, fmt PASS, npm build PASS.
+
+Ayrı housekeeping commit'i: kazara commit'lenmiş `render-icons.cpython-314.pyc`
+takipten çıkarıldı, `.gitignore`'a `__pycache__/` ve `*.pyc` eklendi. Kaynak
+kod değişikliğiyle karıştırılmadı.
+
+### Parser durumu — bilinçli bounded duplication
+İkinciGöz **kendi DOCX/UDF parser'ını** kullanmaya devam ediyor.
+`document-core → AnalysisDocument` projeksiyonuna geçilmedi.
+
+Bu bir eksiklik değil, writeback güvenliğinin bedelidir: `writeback.rs`
+`container_path` provenance'ına dayanır ve `document-core`'un sadakat modelinde
+o alan yoktur. Parser consolidation ayrı bir fazdır.
+
+Çekirdek **kopyalanmadı**: kaynak standalone deposunda kalıyor ve birleşik
+workspace onu göreli yolla tüketiyor. Standalone depo hem referans
+implementasyon hem de parity kaynağıdır; parser consolidation tamamlanmadan
+silinmeyecek.
+
+### Parity — ölçüldü, varsayılmadı
+Yedi test: bulgu sayısı, kural kimliği, severity, kaynak konumu (blok +
+codepoint offset), önerilen düzeltme, writeback çıktısı, diskteki tam zincir.
+
+| Fixture | Referans | Birleşik |
+|---|---|---|
+| ornek-dilekce-hatali.docx | 11 hata / 2 uyarı / 3 inceleme, 16 kural | aynı |
+| ornek-dilekce.udf | 4 bulgu, 2 düzeltme, net −2 karakter | aynı |
+| ornek-dilekce-temiz.docx | 0 bulgu | aynı |
+
+**Yaşanan tuzak:** `examples/lint.rs` insan için `block_index + 1` yazdırır;
+`block_id` ise `p{block_index}`tir. Referans sayıları lint ekran çıktısından
+kopyalamak, olmayan bir migration regresyonu uydurur. Bu tur bizzat buna
+takıldı ve sözleşme teste gömüldü.
+
+### Bulunan gerçek sorun — ayar kaybı
+İkinciGöz hareket tercihini iki alanla ifade eder ve `reduceMotion` "system"
+ise karar eski `respectReducedMotion` anahtarına düşer. Birleşik depoda yalnız
+`reduceMotion` vardı; `"system" + false` bileşimi ("sistem azaltma dese bile
+animasyonları göster") temsil edilemiyordu. Bu ayarı yapmış bir kullanıcı
+sessizce tersine bir davranışa geçerdi. Alan eklendi, çözüm kuralı birebir
+uygulandı, iki testle kilitlendi.
+
+### Capability
+Genişletilmedi: yalnız `dialog:allow-open`, `allow-save`, `allow-message`.
+Ağ izni yok, opener yok, harici process yok, telemetri yok.
+`check-architecture.sh` feature/capability tutarlılığını zorluyor.
+
+### Kalan duplikasyon
+| Katman | Durum |
+|---|---|
+| `document-core` (DOCX/UDF sadakat) | tek kopya |
+| `ikincigoz-core` (analiz + writeback) | tek kaynak, iki tüketici (standalone + birleşik) |
+| DOCX/UDF **parser** mantığı | **iki bağımsız implementasyon — bilinçli** |
