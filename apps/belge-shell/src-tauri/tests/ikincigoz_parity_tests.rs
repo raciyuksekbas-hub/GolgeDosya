@@ -245,3 +245,79 @@ fn a_stale_fix_is_refused_rather_than_applied_at_the_wrong_offset() {
         "bayat düzeltme reddedilmeliydi"
     );
 }
+
+#[test]
+fn the_full_chain_writes_a_real_corrected_copy_that_reopens() {
+    // §11 zinciri, diskte: girdi -> denetle -> beklenen bulgu -> düzeltme uygula
+    // -> yeniden aç. Bellek içi writeback parity'sinden ayrıdır: burada gerçek
+    // dosya yazılır ve gerçek dosyadan geri okunur.
+    for name in ["ornek-dilekce.udf", "ornek-dilekce-hatali.docx"] {
+        let source = samples().join(name);
+        let original = std::fs::read(&source).expect("örnek okunmalı");
+        let file_name = parser::base_name(&source.to_string_lossy());
+
+        let fixes: Vec<_> = baseline_findings(name)
+            .into_iter()
+            .filter_map(|f| f.fix)
+            .collect();
+        assert!(
+            !fixes.is_empty(),
+            "{name}: düzeltilebilir bulgu bekleniyordu"
+        );
+
+        let result = writeback::apply(&file_name, &original, &fixes)
+            .unwrap_or_else(|e| panic!("{name}: writeback reddedildi: {e:?}"));
+
+        // Kopya geçici bir dizine yazılır; kaynak klasöre hiç dokunulmaz.
+        let out = std::env::temp_dir().join(format!(
+            "belge-ig-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&out).unwrap();
+        let target = out.join(&result.file_name);
+        assert_ne!(target, source, "kopya kaynağın üzerine yazamaz");
+        std::fs::write(&target, &result.bytes).unwrap();
+
+        // Gerçekten diskte, boş değil, yeniden açılabiliyor.
+        let written = std::fs::read(&target).expect("kopya diskte olmalı");
+        assert!(!written.is_empty());
+        let reopened = parser::parse(&result.file_name, &written)
+            .unwrap_or_else(|e| panic!("{name}: kopya yeniden açılamadı: {e:?}"));
+        let before = parser::parse(&file_name, &original).unwrap();
+
+        // Yalnız beklenen değişiklik: blok sayısı ve blok kimlikleri korunur.
+        assert_eq!(
+            reopened.metadata.block_count, before.metadata.block_count,
+            "{name}: writeback blok yapısını değiştirdi"
+        );
+        let ids_before: Vec<_> = before.blocks.iter().map(|b| b.id.clone()).collect();
+        let ids_after: Vec<_> = reopened.blocks.iter().map(|b| b.id.clone()).collect();
+        assert_eq!(ids_before, ids_after, "{name}: blok kimlikleri değişti");
+
+        // Dokunulmayan bloklar birebir aynı kalmalı: başka içerik kaybı yok.
+        let touched: std::collections::HashSet<_> =
+            fixes.iter().map(|f| f.block_id.as_str()).collect();
+        for (a, b) in before.blocks.iter().zip(reopened.blocks.iter()) {
+            if !touched.contains(a.id.as_str()) {
+                assert_eq!(
+                    a.text, b.text,
+                    "{name}: {} bloğu beklenmedik şekilde değişti",
+                    a.id
+                );
+            }
+        }
+
+        // Kaynak dosya diskte de değişmedi.
+        assert_eq!(
+            original,
+            std::fs::read(&source).unwrap(),
+            "{name}: kaynak dosya değişti"
+        );
+
+        std::fs::remove_dir_all(&out).ok();
+    }
+}

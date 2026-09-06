@@ -61,8 +61,17 @@ pub struct Settings {
     #[serde(default = "system")]
     pub high_contrast: String,
     /// `system` | `on` | `off`
+    ///
+    /// `system` iken karar `respect_reduced_motion`a düşer; `on`/`off` onu ezer.
     #[serde(default = "system")]
     pub reduce_motion: String,
+    /// Eski anahtar: işletim sisteminin hareket azaltma tercihine uyulsun mu?
+    ///
+    /// `reduce_motion` "system" ise anlamlıdır. `false` + "system" bileşimi
+    /// "sistem azaltma dese bile animasyonları göster" demektir; bu bileşim
+    /// başka hiçbir alanla ifade edilemez, o yüzden ayrı tutuluyor.
+    #[serde(default = "yes")]
+    pub respect_reduced_motion: bool,
 
     // --- Tavzih ---
     /// Kullanıcının kabul ettiği kullanım koşulları sürümü.
@@ -104,6 +113,7 @@ impl Default for Settings {
             text_scale: default_text_scale(),
             high_contrast: system(),
             reduce_motion: system(),
+            respect_reduced_motion: true,
             accepted_terms: None,
             output_dir: None,
             renderer_path: None,
@@ -221,6 +231,21 @@ mod tests {
             std::fs::read_to_string(settings_path(&d)).unwrap(),
             "bu JSON değil {{{"
         );
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn the_older_motion_switch_survives_because_no_other_field_can_express_it() {
+        let d = tmp();
+        let s = Settings {
+            reduce_motion: "system".into(),
+            respect_reduced_motion: false,
+            ..Default::default()
+        };
+        save_to(&d, &s).unwrap();
+        let back = load_from(&d);
+        assert_eq!(back.reduce_motion, "system");
+        assert!(!back.respect_reduced_motion);
         std::fs::remove_dir_all(&d).ok();
     }
 

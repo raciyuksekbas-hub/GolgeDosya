@@ -29,7 +29,17 @@ export function applyPreferences(s: Settings): () => void {
     const dark = s.theme === "dark" || (s.theme === "system" && darkQuery.matches);
     root.dataset.theme = dark ? "dark" : "light";
     root.dataset.contrast = resolveTri(s.highContrast, "(prefers-contrast: more)") ? "more" : "normal";
-    root.dataset.motion = resolveTri(s.reduceMotion, "(prefers-reduced-motion: reduce)") ? "reduced" : "full";
+    // İkinciGöz'ün çözüm kuralı birebir korundu: `reduceMotion` "system"
+    // dışındaysa o kazanır; "system" ise karar eski `respectReducedMotion`
+    // anahtarına düşer. `false` + "system", "sistem azaltma dese bile
+    // animasyonları göster" demektir ve başka hiçbir alanla ifade edilemez.
+    const motion =
+      s.reduceMotion !== "system"
+        ? s.reduceMotion === "on"
+        : s.respectReducedMotion
+          ? motionQuery.matches
+          : false;
+    root.dataset.motion = motion ? "reduced" : "full";
     // 100–200 arası; dışındaki değer kullanıcıyı arayüzden kilitleyebilir.
     const scale = Math.min(200, Math.max(100, s.textScale || 100));
     root.style.setProperty("--text-scale", String(scale / 100));

@@ -28,6 +28,8 @@ export interface Settings {
   textScale: number;
   highContrast: "system" | "on" | "off";
   reduceMotion: "system" | "on" | "off";
+  /** Eski anahtar; reduceMotion "system" iken karar buna düşer. */
+  respectReducedMotion: boolean;
   acceptedTerms: number | null;
   outputDir: string | null;
   rendererPath: string | null;

@@ -126,6 +126,8 @@ struct IkinciGozSettings {
     #[serde(default)]
     reduce_motion: Option<String>,
     #[serde(default)]
+    respect_reduced_motion: Option<bool>,
+    #[serde(default)]
     linear_results: Option<bool>,
 }
 
@@ -187,6 +189,14 @@ fn migrate_ikincigoz(dir: &Path, target_dir: &Path, s: &mut Settings) -> SourceS
                 if v != defaults.reduce_motion {
                     s.reduce_motion = v;
                     fields.push("reduceMotion".to_string());
+                }
+            }
+        }
+        if s.respect_reduced_motion == defaults.respect_reduced_motion {
+            if let Some(v) = old.respect_reduced_motion {
+                if v != defaults.respect_reduced_motion {
+                    s.respect_reduced_motion = v;
+                    fields.push("respectReducedMotion".to_string());
                 }
             }
         }
@@ -465,6 +475,26 @@ mod tests {
             }
             other => panic!("beklenmeyen: {other:?}"),
         }
+        std::fs::remove_dir_all(&d).ok();
+        std::fs::remove_dir_all(&t).ok();
+    }
+
+    #[test]
+    fn the_older_motion_switch_is_migrated_too() {
+        // reduceMotion "system" iken respectReducedMotion=false, "sistem azaltma
+        // dese bile animasyonları göster" demektir. Taşınmazsa kullanıcı sessizce
+        // tersine bir davranışa geçerdi.
+        let d = tmp("hareket");
+        let t = tmp("hareket-hedef");
+        std::fs::write(
+            d.join("settings.json"),
+            r#"{"reduceMotion":"system","respectReducedMotion":false}"#,
+        )
+        .unwrap();
+        let mut s = Settings::default();
+        migrate_ikincigoz(&d, &t, &mut s);
+        assert!(!s.respect_reduced_motion);
+        assert_eq!(s.reduce_motion, "system");
         std::fs::remove_dir_all(&d).ok();
         std::fs::remove_dir_all(&t).ok();
     }
