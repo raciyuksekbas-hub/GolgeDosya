@@ -291,3 +291,96 @@
   border-color: var(--danger);
   color: var(--danger);
 }
+
+/* ---------------------------------------------------------------- bulgular */
+
+.findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.finding {
+  border-bottom: 1px solid var(--line);
+  /* Ciddiyet YALNIZ renkle verilmez: her satır metin etiketi ve şekil taşır.
+     Sol şerit bir üçüncü, yardımcı ipucudur. */
+  border-left: 3px solid transparent;
+}
+.finding[data-severity="error"]   { border-left-color: var(--danger); }
+.finding[data-severity="warning"] { border-left-color: #b7791f; }
+.finding[data-severity="review"]  { border-left-color: var(--text-tertiary); }
+.finding[data-active="true"]      { background: var(--bg-sunken); }
+
+.finding-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.finding-head:hover { background: var(--bg-hover); }
+
+.finding-mark { flex: 0 0 auto; font-size: 0.8em; }
+.finding[data-severity="error"]   .finding-mark { color: var(--danger); }
+.finding[data-severity="warning"] .finding-mark { color: #b7791f; }
+.finding[data-severity="review"]  .finding-mark { color: var(--text-tertiary); }
+
+.finding-sev {
+  flex: 0 0 auto;
+  min-width: 8ch;
+  font-size: 0.84em;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.finding-title { flex: 1; min-width: 0; }
+.finding-loc {
+  flex: 0 0 auto;
+  font-size: 0.84em;
+  color: var(--text-tertiary);
+}
+
+.finding-body { padding: 0 10px 12px 10px; }
+.finding-message { margin: 0 0 8px; }
+.finding-excerpt {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  background: var(--bg-content);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.finding-excerpt mark {
+  background: rgba(183, 121, 31, 0.28);
+  color: inherit;
+  /* İşaretli aralık yalnız arka planla değil, alt çizgiyle de belli olur. */
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+.finding-why { margin: 0 0 8px; color: var(--text-secondary); }
+.finding-fix {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-content);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.finding-fix code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--bg-sunken);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.finding-fixnote { color: var(--text-tertiary); }
+.finding-nofix { margin: 0; color: var(--text-tertiary); }

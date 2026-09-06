@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test:ux": "node --test qa/tests/shell-ux.test.mjs"
+    "test:ux": "node --test qa/tests/*.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

@@ -7,6 +7,7 @@ import * as api from "./shell/api";
 import { applyPreferences } from "./shared-ui/theme";
 import { DocumentSurface } from "./features/DocumentSurface";
 import { ConvertWorkspace } from "./modules/tavzih/ConvertWorkspace";
+import { ReviewWorkspace } from "./modules/ikincigoz/ReviewWorkspace";
 
 /** Bölüm başlıkları. Kullanıcı eylem adını görür, ürün adını değil. */
 const HEADINGS: Record<FeatureState["key"], { title: string; subtitle: string }> = {
@@ -119,6 +120,8 @@ export function App() {
         {active && settings ? (
           documents.length > 0 && active.key === "tavzih" ? (
             <ConvertWorkspace paths={documents} />
+          ) : documents.length > 0 && active.key === "ikincigoz" ? (
+            <ReviewWorkspace path={documents[0]} />
           ) : (
             <DocumentSurface
               feature={active}
