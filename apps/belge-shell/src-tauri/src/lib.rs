@@ -5,6 +5,12 @@
 //! belge motoru henüz taşınmadı. Yeni özellik yazılmaz.
 
 pub mod features;
+
+/// Modül motorları. Her biri yalnız kendi cargo feature'ı açıkken derlenir.
+pub mod modules {
+    #[cfg(feature = "feature_tavzih")]
+    pub mod tavzih;
+}
 pub mod legacy;
 pub mod paths;
 pub mod settings;
@@ -98,17 +104,47 @@ fn migrate_legacy_settings() -> Result<legacy::MigrationReport, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![
-            app_info,
-            enabled_features,
-            get_settings,
-            save_settings,
-            remember_documents,
-            forget_documents,
-            migrate_legacy_settings
-        ])
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+
+    #[cfg(feature = "feature_tavzih")]
+    let builder = builder
+        .plugin(tauri_plugin_opener::init())
+        .manage(modules::tavzih::Busy::default());
+
+    // Komut listesi feature'a göre derleme zamanında seçilir. Kapalı bir modülün
+    // komutu binary'de hiç bulunmaz; arayüz onu çağıramaz.
+    #[cfg(not(feature = "feature_tavzih"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        app_info,
+        enabled_features,
+        get_settings,
+        save_settings,
+        remember_documents,
+        forget_documents,
+        migrate_legacy_settings
+    ]);
+
+    #[cfg(feature = "feature_tavzih")]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        app_info,
+        enabled_features,
+        get_settings,
+        save_settings,
+        remember_documents,
+        forget_documents,
+        migrate_legacy_settings,
+        modules::tavzih::tavzih_inspect_file,
+        modules::tavzih::tavzih_inspect_files,
+        modules::tavzih::tavzih_convert_file,
+        modules::tavzih::tavzih_convert_batch,
+        modules::tavzih::tavzih_terms_accepted,
+        modules::tavzih::tavzih_accept_terms,
+        modules::tavzih::tavzih_output_folder,
+        modules::tavzih::tavzih_set_output_folder,
+        modules::tavzih::tavzih_reveal_output_folder
+    ]);
+
+    builder
         .run(tauri::generate_context!())
         .expect("Yüksekbaş Belge başlatılamadı");
 }
@@ -128,12 +164,24 @@ mod tests {
     }
 
     #[test]
-    fn the_shell_ships_no_engine_yet() {
-        // Phase 2 sözleşmesi: kabuk boş. Bu test, bir modül yanlışlıkla
-        // default feature'a eklendiğinde kırılır.
-        assert!(
-            features::states().iter().all(|f| !f.compiled),
-            "Phase 2'de hiçbir modül derlenmiş olmamalı"
-        );
+    fn a_module_is_reachable_only_when_its_engine_is_compiled_in() {
+        // Feature-level rollback sözleşmesi: bir modül linklenmemişse arayüzde
+        // etkin görünemez. Bir modül default'a eklenip motoru bağlanmazsa kırılır.
+        for f in features::states() {
+            if !f.compiled {
+                assert!(!f.enabled, "{} linklenmemişken etkin görünüyor", f.key);
+            }
+        }
+    }
+
+    #[cfg(feature = "feature_tavzih")]
+    #[test]
+    fn the_convert_module_is_live_in_this_build() {
+        let tavzih = features::states()
+            .into_iter()
+            .find(|f| f.key == "tavzih")
+            .expect("Dönüştür bölümü tanımlı olmalı");
+        assert!(tavzih.compiled);
+        assert_eq!(tavzih.label, "Dönüştür");
     }
 }

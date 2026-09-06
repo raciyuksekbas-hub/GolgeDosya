@@ -12,6 +12,11 @@ use std::path::{Path, PathBuf};
 
 pub const SETTINGS_FILE: &str = "settings.json";
 
+/// Kullanım koşullarının sürümü. Metin esaslı biçimde değişirse artırılır ve
+/// kullanıcıya yeniden sorulur. Bağımsız Tavzih'teki değerle aynıdır: taşınan
+/// kabul geçerliliğini korur, kullanıcıya ikinci kez sorulmaz.
+pub const TERMS_VERSION: u32 = 1;
+
 fn yes() -> bool {
     true
 }

@@ -20,8 +20,13 @@ tauri-plugin-dialog = "2"
 serde.workspace = true
 serde_json.workspace = true
 
+# Modül motorları. Yalnız kendi feature'ı açıkken linklenir; kapalıyken binary'ye
+# hiç girmez. `document-core` birleşik workspace içindeki tek belge çekirdeğidir.
+tavzih-core = { path = "../../../crates/document-core", optional = true }
+tauri-plugin-opener = { version = "2", optional = true }
+
 [features]
-default = ["custom-protocol"]
+default = ["custom-protocol", "feature_tavzih"]
 custom-protocol = ["tauri/custom-protocol"]
 
 # Feature-level rollback (bkz. talep §17).
@@ -30,12 +35,16 @@ custom-protocol = ["tauri/custom-protocol"]
 # tüm uygulamayı geri almak yerine yalnız o feature kapatılır; motoru binary'ye
 # hiç linklenmez ve route arayüzde görünmez.
 #
-# HİÇBİRİ default DEĞİL: Phase 2'de hiçbir feature henüz taşınmadı.
-#   Phase 3 -> feature_tavzih
+# Bir modül default'a eklendiğinde capability dosyası da
+# `capabilities-planned/` içinden `capabilities/` içine taşınmalıdır; izin, kodla
+# birlikte gelir ve kodla birlikte gider. scripts/check-architecture.sh bu ikisinin
+# tutarlılığını denetler.
+#
+#   Phase 3 -> feature_tavzih      TAŞINDI
 #   Phase 4 -> feature_ikincigoz
 #   Phase 5 -> feature_degisikis
 #   Phase 6 -> feature_duzenek
-feature_tavzih = []
+feature_tavzih = ["dep:tavzih-core", "dep:tauri-plugin-opener"]
 feature_ikincigoz = []
 feature_degisikis = []
 feature_duzenek = []

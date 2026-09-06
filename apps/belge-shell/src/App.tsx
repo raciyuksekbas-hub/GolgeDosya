@@ -6,6 +6,7 @@ import type { FeatureState, Settings } from "./shell/types";
 import * as api from "./shell/api";
 import { applyPreferences } from "./shared-ui/theme";
 import { DocumentSurface } from "./features/DocumentSurface";
+import { ConvertWorkspace } from "./modules/tavzih/ConvertWorkspace";
 
 /** Bölüm başlıkları. Kullanıcı eylem adını görür, ürün adını değil. */
 const HEADINGS: Record<FeatureState["key"], { title: string; subtitle: string }> = {
@@ -20,6 +21,8 @@ export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [route, setRoute] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  /** Etkin bölümde açılmış belgeler. Bölüm değişince temizlenir. */
+  const [documents, setDocuments] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,7 +60,12 @@ export function App() {
   }, [settings]);
 
   const navigate = useCallback(
-    (next: string) => setRoute((current) => resolveRoute(next, features) || current),
+    (next: string) =>
+      setRoute((current) => {
+        const resolved = resolveRoute(next, features) || current;
+        if (resolved !== current) setDocuments([]);
+        return resolved;
+      }),
     [features],
   );
 
@@ -67,10 +75,8 @@ export function App() {
   }, []);
 
   const openDocuments = useCallback(async (paths: string[]) => {
-    // Phase 2: kabuk belgeyi henüz bir motora vermiyor; yalnız hatırlıyor.
-    // Motor bağlantısı ilgili modül taşınırken eklenir.
-    const next = await api.rememberDocuments(paths);
-    setSettings(next);
+    setDocuments(paths);
+    setSettings(await api.rememberDocuments(paths));
     console.debug("[belge] documents opened", paths);
   }, []);
 
@@ -111,12 +117,16 @@ export function App() {
         subtitle={heading?.subtitle}
       >
         {active && settings ? (
-          <DocumentSurface
-            feature={active}
-            recents={settings.recentDocuments}
-            onDocuments={openDocuments}
-            onForget={forgetDocuments}
-          />
+          documents.length > 0 && active.key === "tavzih" ? (
+            <ConvertWorkspace paths={documents} />
+          ) : (
+            <DocumentSurface
+              feature={active}
+              recents={settings.recentDocuments}
+              onDocuments={openDocuments}
+              onForget={forgetDocuments}
+            />
+          )
         ) : null}
       </Layout>
       {showSettings && settings ? (

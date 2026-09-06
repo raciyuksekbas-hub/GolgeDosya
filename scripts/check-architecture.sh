@@ -74,14 +74,33 @@ else
   ok "kabuk: motor kütüphanesi doğrudan kullanılmıyor"
 fi
 
-# --- 5. Feature bayrakları default olmamalı ------------------------------
-# Bir modül "yanlışlıkla" açık kalırsa feature-level rollback anlamını yitirir.
-DEFAULTS=$(sed -n '/^default = /p' "$SHELL_SRC/../Cargo.toml")
-if printf '%s' "$DEFAULTS" | grep -qE 'feature_(tavzih|duzenek|degisikis|ikincigoz)'; then
-  bad "bir modül cargo default feature'ına eklenmiş: $DEFAULTS"
-else
-  ok "modüllerin hiçbiri default feature değil"
-fi
+# --- 5. Feature ile capability tutarlılığı -------------------------------
+# İzin, kodla birlikte gelir ve kodla birlikte gider. Etkin olmayan bir modülün
+# capability dosyası `capabilities/` içinde durursa, kapalı bir modül yüzünden
+# izin yüzeyi genişlemiş olur — default-deny'in tam olarak kaybedildiği yer budur.
+CARGO="$SHELL_SRC/../Cargo.toml"
+CAPS="$SHELL_SRC/../capabilities"
+CAPS_PLANNED="$SHELL_SRC/../capabilities-planned"
+DEFAULTS=$(sed -n '/^default = /p' "$CARGO")
+for m in tavzih duzenek degisikis ikincigoz; do
+  ENABLED=0
+  printf '%s' "$DEFAULTS" | grep -qE "feature_$m" && ENABLED=1
+  ACTIVE=0
+  [ -f "$CAPS/feature-$m.json" ] && ACTIVE=1
+  PLANNED=0
+  [ -f "$CAPS_PLANNED/feature-$m.json" ] && PLANNED=1
+  if [ "$ENABLED" = "1" ] && [ "$ACTIVE" = "1" ]; then
+    ok "$m: etkin ve capability'si yüklü"
+  elif [ "$ENABLED" = "0" ] && [ "$ACTIVE" = "0" ] && [ "$PLANNED" = "1" ]; then
+    ok "$m: kapalı, capability'si beklemede"
+  elif [ "$ENABLED" = "0" ] && [ "$ACTIVE" = "1" ]; then
+    bad "$m: modül kapalı ama capability'si YÜKLÜ — izin yüzeyi bedava genişlemiş"
+  elif [ "$ENABLED" = "1" ] && [ "$ACTIVE" = "0" ]; then
+    bad "$m: modül etkin ama capability'si yok — çalışma zamanında izin hatası verir"
+  else
+    bad "$m: capability dosyası hiçbir yerde bulunamadı"
+  fi
+done
 
 # --- 6. Kabuk ağ istemcisi barındırmamalı --------------------------------
 NET=$(grep -rnIE '\b(reqwest|hyper|ureq|TcpStream|UdpSocket)\b' "$SHELL_SRC" 2>/dev/null | wc -l | tr -d ' ')
