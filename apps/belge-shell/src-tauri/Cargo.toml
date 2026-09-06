@@ -24,9 +24,14 @@ serde_json.workspace = true
 # hiç girmez. `document-core` birleşik workspace içindeki tek belge çekirdeğidir.
 tavzih-core = { path = "../../../crates/document-core", optional = true }
 tauri-plugin-opener = { version = "2", optional = true }
+# GEÇİCİ YOL: ~/İkinciGöz ev dizininin kökünde, bu depo ise ~/Projects altında.
+# İkinciGöz'ün çekirdeği KOPYALANMADI. Kaynak standalone deposunda kalıyor:
+# hem referans implementasyon hem de parser/writeback karşılaştırma kaynağı odur.
+# Parser consolidation ayrı bir fazdır (bkz. docs/MIGRATION.md).
+ikincigoz-core = { path = "../../../../../İkinciGöz/crates/ikincigoz-core", optional = true }
 
 [features]
-default = ["custom-protocol", "feature_tavzih"]
+default = ["custom-protocol", "feature_tavzih", "feature_ikincigoz"]
 custom-protocol = ["tauri/custom-protocol"]
 
 # Feature-level rollback (bkz. talep §17).
@@ -41,10 +46,10 @@ custom-protocol = ["tauri/custom-protocol"]
 # tutarlılığını denetler.
 #
 #   Phase 3 -> feature_tavzih      TAŞINDI
-#   Phase 4 -> feature_ikincigoz
+#   Phase 4 -> feature_ikincigoz  TAŞINDI
 #   Phase 5 -> feature_degisikis
 #   Phase 6 -> feature_duzenek
 feature_tavzih = ["dep:tavzih-core", "dep:tauri-plugin-opener"]
-feature_ikincigoz = []
+feature_ikincigoz = ["dep:ikincigoz-core"]
 feature_degisikis = []
 feature_duzenek = []

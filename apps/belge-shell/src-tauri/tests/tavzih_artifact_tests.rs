@@ -30,17 +30,20 @@ fn workdir(tag: &str) -> PathBuf {
 
 /// Türkçe metin ve basit biçimlendirme taşıyan bir belge.
 fn sample() -> Document {
-    let mut d = Document::default();
-    let mut s = Section::default();
-    s.blocks = vec![
-        Block::Paragraph(Paragraph::plain("İSTANBUL NÖBETÇİ ASLİYE HUKUK MAHKEMESİ")),
-        Block::Paragraph(Paragraph::plain(
-            "Müvekkilim adına, şğüçöıİ karakterlerinin korunduğunu doğrulayan bir paragraf.",
-        )),
-        Block::Paragraph(Paragraph::plain("Saygılarımla arz ederim.")),
-    ];
-    d.sections = vec![s];
-    d
+    let s = Section {
+        blocks: vec![
+            Block::Paragraph(Paragraph::plain("İSTANBUL NÖBETÇİ ASLİYE HUKUK MAHKEMESİ")),
+            Block::Paragraph(Paragraph::plain(
+                "Müvekkilim adına, şğüçöıİ karakterlerinin korunduğunu doğrulayan bir paragraf.",
+            )),
+            Block::Paragraph(Paragraph::plain("Saygılarımla arz ederim.")),
+        ],
+        ..Default::default()
+    };
+    Document {
+        sections: vec![s],
+        ..Default::default()
+    }
 }
 
 fn write_docx_file(dir: &Path, name: &str) -> PathBuf {

@@ -8,6 +8,8 @@ pub mod features;
 
 /// Modül motorları. Her biri yalnız kendi cargo feature'ı açıkken derlenir.
 pub mod modules {
+    #[cfg(feature = "feature_ikincigoz")]
+    pub mod ikincigoz;
     #[cfg(feature = "feature_tavzih")]
     pub mod tavzih;
 }
@@ -111,28 +113,31 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(modules::tavzih::Busy::default());
 
-    // Komut listesi feature'a göre derleme zamanında seçilir. Kapalı bir modülün
-    // komutu binary'de hiç bulunmaz; arayüz onu çağıramaz.
-    #[cfg(not(feature = "feature_tavzih"))]
-    let builder = builder.invoke_handler(tauri::generate_handler![
-        app_info,
-        enabled_features,
-        get_settings,
-        save_settings,
-        remember_documents,
-        forget_documents,
-        migrate_legacy_settings
-    ]);
+    // Komut listesi derleme zamanında feature'a göre seçilir: kapalı bir modülün
+    // komutu binary'de hiç bulunmaz ve arayüz onu çağıramaz.
+    //
+    // `generate_handler!` listesinin içinde `#[cfg]` kullanılamadığı için her
+    // kombinasyon ayrı bir koldur. Kol sayısı modül sayısıyla üstel büyür; bu
+    // yüzden derleme zamanı bayrağı SÜRÜM ŞEKLİNİ belirlemek içindir, günlük
+    // geri alma için değil. Bir modülü yeniden derlemeden kapatmak gerekirse
+    // çalışma zamanı bayrağı kullanılır: BELGE_DISABLE_<AD>=1 (bkz. features.rs).
+    macro_rules! shell_commands {
+        ($($extra:path),* $(,)?) => {
+            tauri::generate_handler![
+                app_info,
+                enabled_features,
+                get_settings,
+                save_settings,
+                remember_documents,
+                forget_documents,
+                migrate_legacy_settings
+                $(, $extra)*
+            ]
+        };
+    }
 
-    #[cfg(feature = "feature_tavzih")]
-    let builder = builder.invoke_handler(tauri::generate_handler![
-        app_info,
-        enabled_features,
-        get_settings,
-        save_settings,
-        remember_documents,
-        forget_documents,
-        migrate_legacy_settings,
+    #[cfg(all(feature = "feature_tavzih", feature = "feature_ikincigoz"))]
+    let builder = builder.invoke_handler(shell_commands![
         modules::tavzih::tavzih_inspect_file,
         modules::tavzih::tavzih_inspect_files,
         modules::tavzih::tavzih_convert_file,
@@ -141,8 +146,46 @@ pub fn run() {
         modules::tavzih::tavzih_accept_terms,
         modules::tavzih::tavzih_output_folder,
         modules::tavzih::tavzih_set_output_folder,
-        modules::tavzih::tavzih_reveal_output_folder
+        modules::tavzih::tavzih_reveal_output_folder,
+        modules::ikincigoz::ikincigoz_analyze_document,
+        modules::ikincigoz::ikincigoz_apply_fixes,
+        modules::ikincigoz::ikincigoz_preview_fixes,
+        modules::ikincigoz::ikincigoz_list_rules,
+        modules::ikincigoz::ikincigoz_get_dictionary,
+        modules::ikincigoz::ikincigoz_accept_word,
+        modules::ikincigoz::ikincigoz_remove_accepted_word,
+        modules::ikincigoz::ikincigoz_add_correction,
+        modules::ikincigoz::ikincigoz_remove_correction,
     ]);
+
+    #[cfg(all(feature = "feature_tavzih", not(feature = "feature_ikincigoz")))]
+    let builder = builder.invoke_handler(shell_commands![
+        modules::tavzih::tavzih_inspect_file,
+        modules::tavzih::tavzih_inspect_files,
+        modules::tavzih::tavzih_convert_file,
+        modules::tavzih::tavzih_convert_batch,
+        modules::tavzih::tavzih_terms_accepted,
+        modules::tavzih::tavzih_accept_terms,
+        modules::tavzih::tavzih_output_folder,
+        modules::tavzih::tavzih_set_output_folder,
+        modules::tavzih::tavzih_reveal_output_folder,
+    ]);
+
+    #[cfg(all(not(feature = "feature_tavzih"), feature = "feature_ikincigoz"))]
+    let builder = builder.invoke_handler(shell_commands![
+        modules::ikincigoz::ikincigoz_analyze_document,
+        modules::ikincigoz::ikincigoz_apply_fixes,
+        modules::ikincigoz::ikincigoz_preview_fixes,
+        modules::ikincigoz::ikincigoz_list_rules,
+        modules::ikincigoz::ikincigoz_get_dictionary,
+        modules::ikincigoz::ikincigoz_accept_word,
+        modules::ikincigoz::ikincigoz_remove_accepted_word,
+        modules::ikincigoz::ikincigoz_add_correction,
+        modules::ikincigoz::ikincigoz_remove_correction,
+    ]);
+
+    #[cfg(all(not(feature = "feature_tavzih"), not(feature = "feature_ikincigoz")))]
+    let builder = builder.invoke_handler(shell_commands![]);
 
     builder
         .run(tauri::generate_context!())
@@ -172,6 +215,17 @@ mod tests {
                 assert!(!f.enabled, "{} linklenmemişken etkin görünüyor", f.key);
             }
         }
+    }
+
+    #[cfg(feature = "feature_ikincigoz")]
+    #[test]
+    fn the_review_module_is_live_in_this_build() {
+        let ig = features::states()
+            .into_iter()
+            .find(|f| f.key == "ikincigoz")
+            .expect("Denetle bölümü tanımlı olmalı");
+        assert!(ig.compiled);
+        assert_eq!(ig.label, "Denetle");
     }
 
     #[cfg(feature = "feature_tavzih")]

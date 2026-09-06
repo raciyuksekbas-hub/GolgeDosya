@@ -244,6 +244,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 name = "belge-shell"
 version = "0.0.1"
 dependencies = [
+ "ikincigoz-core",
  "serde",
  "serde_json",
  "tauri",
@@ -1755,6 +1756,18 @@ checksum = "cb68373c0d6620ef8105e855e7745e18b0d00d3bdb07fb532e434244cdb9a714"
 dependencies = [
  "icu_normalizer",
  "icu_properties",
+]
+
+[[package]]
+name = "ikincigoz-core"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "quick-xml 0.36.2",
+ "regex",
+ "serde",
+ "serde_json",
+ "zip",
 ]
 
 [[package]]
