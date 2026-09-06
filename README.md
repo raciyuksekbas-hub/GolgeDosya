@@ -7,14 +7,14 @@ Dört bağımsız masaüstü uygulamasının — **Tavzih**, **DüzenEk**, **De�
 > Ürün markası kararı verilmedi. Kod, `AppInfo.nameIsProvisional = true` ile
 > bunu açıkça bildirir.
 
-## Durum — Phase 2 tamamlandı
+## Durum — Phase 1 + 2 tamamlandı
 
 | Faz | İş | Durum |
 |---|---|---|
 | 0 | Snapshot + temiz taban | ✅ |
-| 1 | Tavzih ↔ DüzenEk `document-core` tekilleştirmesi | ⛔ **BLOKE** — DüzenEk çalışma ağacı kirli |
+| 1 | Tavzih ↔ DüzenEk `document-core` tekilleştirmesi | ✅ |
 | 2 | Birleşik workspace + minimal kabuk | ✅ |
-| 3 | Tavzih migration'ı | ⏸ Phase 1'i bekliyor |
+| 3 | Tavzih migration'ı | ⏭ **sıradaki** |
 | 4 | İkinciGöz migration'ı (mevcut parser korunarak) | ⏸ |
 | 5 | Değişikİş migration'ı (TS diff motoru korunarak) | ⏸ |
 | 6 | DüzenEk migration'ı (dondurulmuş temele karşı) | ⏸ |
@@ -37,7 +37,8 @@ apps/belge-shell/                   Tauri 2 uygulaması
   src-tauri/src/                    kabuk, ayarlar, eski ayar migration'ı, feature flag
   src-tauri/capabilities/           ETKİN izinler (yalnız kabuk)
   src-tauri/capabilities-planned/   modül izinleri — taşınırken etkinleşir
-crates/                             document-core, pdf-core, office-bridge (Phase 3+)
+crates/document-core/               Tavzih çekirdeği — TEK kopya (Phase 1)
+crates/                             pdf-core, office-bridge (Phase 6)
 scripts/check-architecture.sh       mimari değişmez denetimi
 scripts/release-gate.sh             sürüm kapısı
 scripts/bundle-macos.sh             imzalama + notarization + karantina provası

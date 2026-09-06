@@ -168,3 +168,43 @@ notarization, Apple kimlik bilgisi gerektirdiği için çalıştırılmadı.
 | Phase 2'nin tamamı | `~/Projects/Yuksekbas-Belge` silinir. Dört uygulama etkilenmez. |
 | Tek bir modül (Phase 3+) | `BELGE_DISABLE_<AD>=1` veya cargo feature kapatılır |
 | Birleşik uygulamanın ayarları | `~/Library/Application Support/tr.yuksekbas.belge/` silinir; eski dizinler zaten dokunulmamış |
+
+---
+
+## Phase 1 — document-core tekilleştirmesi (2026-09-07)
+
+### Önkoşul: DüzenEk devri
+Astra projeden ayrıldı. DüzenEk'in 22 dosyalık commit edilmemiş işi devralındı,
+sınıflandırıldı, dört mantıksal commit'e ayrıldı ve
+`duzenek-premerge-2026-09-07` olarak tag'lendi.
+
+Canonical DüzenEk artık `~/Projects/DuzenEk` (iCloud dışı). Dondurulmuş kurtarma
+snapshot'ı `~/Projects/DuzenEk-Recovery-20260907-0022` (salt-okunur).
+`~/Desktop/DuzenEk` olduğu gibi bırakıldı ve `BU-KOPYA-BAYAT.md` ile işaretlendi.
+
+### Yapılan
+`crates/document-core` = Tavzih `crates/tavzih-core` @ `7df3f5dd`, 17 dosya
+byte-identical. Paket adı `tavzih-core` olarak **korundu**: hiçbir tüketicide
+tek bir `use tavzih_core::` satırı değişmedi. Dizin adı hedef mimariyi yansıtır.
+
+DüzenEk'in vendored kopyası silindi; göreli yolla ortak çekirdeği tüketiyor.
+
+### Doğrulama
+| | önce | sonra |
+|---|---|---|
+| DüzenEk testleri | 145 / 0 fail | **77 / 0 fail** |
+| document-core | — | **80 birim + 57 korpus / 0 fail** |
+| Tavzih standalone | 80 + 57 | 80 + 57 (dokunulmadı) |
+| Cargo.lock sürüm değişikliği | — | **yok** |
+
+145 → 77 farkı tam 68'dir: vendored kopyanın modül içi birim testleri her iki
+depoda da koşuyordu. Kayıp yok, çift sayım bitti.
+
+### Kalan duplikasyon — dürüst durum
+Bugün çekirdek **iki** yerde: `Yuksekbas-Belge/crates/document-core` (otorite) ve
+`Documents/Tavzih/crates/tavzih-core` (Tavzih standalone hâlâ kendi kopyasını
+kullanıyor). Tek kopyaya Phase 3'te, Tavzih birleşik kabuğa taşınıp standalone
+kopyası emekliye ayrılınca ulaşılır.
+
+DüzenEk'in göreli yolu (`../Yuksekbas-Belge/crates/document-core`) **geçicidir**
+ve kardeş dizin varsayar; Phase 7'de DüzenEk birleşik workspace'e taşınınca kalkar.
