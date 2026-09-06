@@ -1,32 +1,45 @@
 import type { ReactNode } from "react";
-import type { AppInfo, FeatureState } from "./types";
-import { Nav } from "./Nav";
+import type { FeatureState } from "./types";
+import { Sidebar } from "./Sidebar";
 import { Announcer } from "../shared-ui/Announcer";
 
 interface Props {
-  info: AppInfo | null;
   features: FeatureState[];
   current: string;
   onNavigate: (route: string) => void;
+  onOpenSettings: () => void;
+  title: string;
+  subtitle?: string;
   children: ReactNode;
 }
 
-export function Layout({ info, features, current, onNavigate, children }: Props) {
-  const ready = features.filter((f) => f.enabled).length;
+export function Layout({
+  features,
+  current,
+  onNavigate,
+  onOpenSettings,
+  title,
+  subtitle,
+  children,
+}: Props) {
   return (
     <div className="shell">
       <a className="skip-link" href="#icerik">İçeriğe geç</a>
-      <Nav features={features} current={current} onNavigate={onNavigate} />
-      <main id="icerik" className="shell-main" tabIndex={-1}>
-        {children}
-      </main>
-      <footer className="shell-footer">
-        <span>
-          {info ? `${info.name} ${info.version}` : "Yükleniyor…"}
-          {info?.nameIsProvisional ? " · geçici ad" : ""}
-        </span>
-        <span>{ready} / {features.length} bölüm kullanılabilir</span>
-      </footer>
+      <Sidebar
+        features={features}
+        current={current}
+        onNavigate={onNavigate}
+        onOpenSettings={onOpenSettings}
+      />
+      <section className="content">
+        <header className="content-header">
+          <h1>{title}</h1>
+          {subtitle ? <p>{subtitle}</p> : null}
+        </header>
+        <main id="icerik" className="content-body" tabIndex={-1}>
+          {children}
+        </main>
+      </section>
       <Announcer />
     </div>
   );

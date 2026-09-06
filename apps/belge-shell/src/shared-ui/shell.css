@@ -1,0 +1,293 @@
+/* Kabuk yerleşimi: kenar çubuğu + içerik. */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  height: 100%;
+}
+
+/* ---------------------------------------------------------------- sidebar */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--line);
+  /* Trafik ışıkları için üst boşluk: pencere başlığı görünür durumda ama
+     kenar çubuğu onun altına uzanıyor. */
+  padding-top: 8px;
+}
+
+.sidebar-title {
+  padding: 6px 14px 12px;
+  font-size: 0.92em;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  color: var(--text-secondary);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 8px;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  transition: background var(--duration);
+}
+.sidebar-item:hover:not(:disabled) { background: var(--bg-hover); }
+.sidebar-item[aria-current="page"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.sidebar-item[aria-current="page"] .sidebar-icon { opacity: 1; }
+.sidebar-item:disabled { color: var(--text-tertiary); }
+.sidebar-item:disabled .sidebar-icon { opacity: 0.35; }
+
+.sidebar-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  opacity: 0.72;
+}
+
+.sidebar-spacer { flex: 1; }
+
+.sidebar-footer {
+  padding: 8px;
+  border-top: 1px solid var(--line);
+}
+
+/* ---------------------------------------------------------------- content */
+
+.content {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-content);
+  overflow: hidden;
+}
+
+.content-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 22px 12px;
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+}
+.content-header h1 {
+  margin: 0;
+  font-size: 1.08em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.content-header p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.92em;
+}
+
+.content-body {
+  flex: 1;
+  overflow: auto;
+  padding: 22px;
+}
+
+/* ------------------------------------------------------------ belge yüzeyi */
+
+.doc-surface {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 208px;
+  padding: 32px 24px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sunken);
+  color: var(--text-secondary);
+  text-align: center;
+  transition: border-color var(--duration), background var(--duration);
+}
+.dropzone[data-over="true"] {
+  border-color: var(--accent);
+  border-style: solid;
+  background: var(--accent-quiet);
+}
+.dropzone-icon { color: var(--text-tertiary); }
+.dropzone[data-over="true"] .dropzone-icon { color: var(--accent); }
+.dropzone-primary {
+  color: var(--text);
+  font-size: 1.02em;
+}
+.dropzone-hint { font-size: 0.92em; }
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  padding: 4px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-content);
+  color: var(--text);
+  font: inherit;
+  cursor: default;
+  transition: background var(--duration);
+}
+.btn:hover:not(:disabled) { background: var(--bg-hover); }
+.btn:disabled { color: var(--text-tertiary); }
+
+.btn-primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 500;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+.btn-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+}
+.btn-quiet:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+
+/* ------------------------------------------------------------ son belgeler */
+
+.recents h2 {
+  margin: 0 0 6px;
+  font-size: 0.86em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.recents-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.recents-list li { border-bottom: 1px solid var(--line); }
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 6px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.recent-item:hover { background: var(--bg-hover); }
+.recent-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-kind {
+  flex: 0 0 auto;
+  font-size: 0.8em;
+  font-variant: all-small-caps;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+}
+
+.recents-empty {
+  padding: 10px 6px;
+  border-top: 1px solid var(--line);
+  color: var(--text-tertiary);
+  font-size: 0.92em;
+}
+
+/* ---------------------------------------------------------------- ayarlar */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 64px;
+}
+.sheet {
+  width: min(480px, calc(100vw - 48px));
+  max-height: calc(100vh - 128px);
+  overflow: auto;
+  background: var(--bg-content);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
+  padding: 20px;
+}
+.sheet h2 { margin: 0 0 14px; font-size: 1.02em; }
+.sheet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 0;
+}
+.sheet-row + .sheet-row { border-top: 1px solid var(--line); }
+.sheet-row label { color: var(--text); }
+.sheet select {
+  font: inherit;
+  padding: 3px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-content);
+  color: var(--text);
+}
+.sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+/* ------------------------------------------------------------------ durum */
+
+.notice {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text-secondary);
+  font-size: 0.94em;
+}
+.notice[data-tone="error"] {
+  border-color: var(--danger);
+  color: var(--danger);
+}

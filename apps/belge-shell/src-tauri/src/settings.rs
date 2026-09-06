@@ -25,6 +25,21 @@ fn default_text_scale() -> u16 {
     100
 }
 
+/// Kullanıcının açtığı bir belge.
+///
+/// Yalnız yol ve zaman tutulur; belge içeriğinden hiçbir şey saklanmaz.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentDocument {
+    pub path: String,
+    /// Unix saniye.
+    pub opened_at: u64,
+}
+
+/// Son kullanılanlar listesinin üst sınırı. macOS'un kendi "Recent Items"
+/// varsayılanıyla aynı; daha uzun bir liste kullanıcıya yardımcı olmaz.
+pub const MAX_RECENTS: usize = 10;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -67,6 +82,10 @@ pub struct Settings {
     #[serde(default = "no")]
     pub linear_results: bool,
 
+    /// Son açılan belgeler, en yeni önce.
+    #[serde(default)]
+    pub recent_documents: Vec<RecentDocument>,
+
     /// Ayarların hangi eski uygulamalardan okunduğu. Yalnız kayıt amaçlı;
     /// migration'ın bir kez çalıştığını buradan anlarız.
     #[serde(default)]
@@ -87,8 +106,25 @@ impl Default for Settings {
             include_review: true,
             source_read_only: true,
             linear_results: false,
+            recent_documents: Vec::new(),
             migrated_from: Vec::new(),
         }
+    }
+}
+
+impl Settings {
+    /// Bir belgeyi listenin başına al. Aynı yol iki kez görünmez ve liste
+    /// `MAX_RECENTS` ile sınırlıdır.
+    pub fn remember(&mut self, path: &str, now: u64) {
+        self.recent_documents.retain(|r| r.path != path);
+        self.recent_documents.insert(
+            0,
+            RecentDocument {
+                path: path.to_string(),
+                opened_at: now,
+            },
+        );
+        self.recent_documents.truncate(MAX_RECENTS);
     }
 }
 
@@ -180,6 +216,42 @@ mod tests {
             std::fs::read_to_string(settings_path(&d)).unwrap(),
             "bu JSON değil {{{"
         );
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn remembering_a_document_puts_it_first_without_duplicating_it() {
+        let mut s = Settings::default();
+        s.remember("/belge/a.docx", 100);
+        s.remember("/belge/b.udf", 200);
+        s.remember("/belge/a.docx", 300);
+        assert_eq!(s.recent_documents.len(), 2);
+        assert_eq!(s.recent_documents[0].path, "/belge/a.docx");
+        assert_eq!(s.recent_documents[0].opened_at, 300);
+        assert_eq!(s.recent_documents[1].path, "/belge/b.udf");
+    }
+
+    #[test]
+    fn the_recent_list_is_capped() {
+        let mut s = Settings::default();
+        for i in 0..(MAX_RECENTS + 5) {
+            s.remember(&format!("/belge/{i}.docx"), i as u64);
+        }
+        assert_eq!(s.recent_documents.len(), MAX_RECENTS);
+        // En yeni başta, en eskiler düşmüş olmalı.
+        assert_eq!(
+            s.recent_documents[0].path,
+            format!("/belge/{}.docx", MAX_RECENTS + 4)
+        );
+    }
+
+    #[test]
+    fn recents_survive_a_round_trip() {
+        let d = tmp();
+        let mut s = Settings::default();
+        s.remember("/Belgeler/Dönüştürülen/İŞ SÖZLEŞMESİ.docx", 42);
+        save_to(&d, &s).unwrap();
+        assert_eq!(load_from(&d).recent_documents, s.recent_documents);
         std::fs::remove_dir_all(&d).ok();
     }
 

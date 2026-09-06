@@ -18,6 +18,11 @@ export interface AppInfo {
   configDir: string;
 }
 
+export interface RecentDocument {
+  path: string;
+  openedAt: number;
+}
+
 export interface Settings {
   theme: "system" | "light" | "dark";
   textScale: number;
@@ -30,6 +35,7 @@ export interface Settings {
   includeReview: boolean;
   sourceReadOnly: boolean;
   linearResults: boolean;
+  recentDocuments: RecentDocument[];
   migratedFrom: string[];
 }
 

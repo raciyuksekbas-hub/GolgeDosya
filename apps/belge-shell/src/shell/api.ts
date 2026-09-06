@@ -5,4 +5,7 @@ export const appInfo = () => invoke<AppInfo>("app_info");
 export const enabledFeatures = () => invoke<FeatureState[]>("enabled_features");
 export const getSettings = () => invoke<Settings>("get_settings");
 export const saveSettings = (next: Settings) => invoke<Settings>("save_settings", { next });
+export const rememberDocuments = (paths: string[]) =>
+  invoke<Settings>("remember_documents", { paths });
+export const forgetDocuments = () => invoke<Settings>("forget_documents");
 export const migrateLegacySettings = () => invoke<MigrationReport>("migrate_legacy_settings");

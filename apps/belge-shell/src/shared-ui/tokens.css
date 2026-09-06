@@ -1,66 +1,111 @@
 /*
- * Temel token'lar ve kabuk yerleşimi.
+ * Yüksekbaş Belge — kabuk görsel dili.
  *
- * Bu bir "design system" DEĞİLDİR. Dört uygulamanın styles.css dosyaları
- * (465 + 713 + 2131 + 694 satır) mekanik olarak buraya çevrilmedi ve
- * çevrilmemeli. Kabuk yalnız kendi çerçevesini boyar; her modül taşınırken
- * kendi görsel dilini yanında getirir ve ortaklaştırma ancak gerçek tekrar
- * görüldüğünde yapılır.
+ * Hedef: native macOS hissi veren, sakin, ciddi bir hukuk yazılımı. Kart yığını,
+ * gradient, gölge katmanı ve renkli rozet YOK; bunlar SaaS dashboard dilidir ve
+ * belge işinin ciddiyetini zayıflatır. Yüzeyler düz, ayrımlar ince çizgiyle.
+ *
+ * Bu bir "design system" değildir. Kabuk yalnız kendi çerçevesini boyar; her
+ * modül taşınırken kendi görsel dilini yanında getirir ve ortaklaştırma ancak
+ * gerçek tekrar görüldüğünde yapılır.
  */
 
 :root {
   --text-scale: 1;
 
-  --bg: #f5f4f0;
-  --bg-raised: #ffffff;
-  --border: #d9d5cc;
-  --text: #1c1a17;
-  --text-muted: #5f5a52;
-  --accent: #2f5d50;
-  --accent-text: #ffffff;
-  --focus: #0b5cad;
+  /* macOS sistem yüzeyleri */
+  --bg-window: #ececec;
+  --bg-sidebar: #e8e8e6;
+  --bg-content: #fdfdfc;
+  --bg-hover: rgba(0, 0, 0, 0.045);
+  --bg-sunken: #f4f4f2;
 
-  --radius: 8px;
-  --gap: 12px;
-  --duration: 160ms;
+  --line: rgba(0, 0, 0, 0.11);
+  --line-strong: rgba(0, 0, 0, 0.18);
+
+  --text: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #96969b;
+
+  /* Tek vurgu rengi. Koyu yeşil: kurumsal, sakin, mavi "teknoloji" klişesinden uzak. */
+  --accent: #2f5d50;
+  --accent-hover: #27503f;
+  --on-accent: #ffffff;
+  --accent-quiet: rgba(47, 93, 80, 0.1);
+
+  --focus: #0a84ff;
+  --danger: #c0392b;
+
+  --radius: 6px;
+  --radius-lg: 10px;
+  --duration: 140ms;
+
+  --sidebar-w: 208px;
 }
 
 :root[data-theme="dark"] {
-  --bg: #16191c;
-  --bg-raised: #1f2327;
-  --border: #333a40;
-  --text: #e8e6e3;
-  --text-muted: #a3a09b;
-  --accent: #7fb3a3;
-  --accent-text: #10201c;
-  --focus: #7cc0ff;
+  --bg-window: #1e1e1e;
+  --bg-sidebar: #232323;
+  --bg-content: #191919;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-sunken: #202020;
+
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.18);
+
+  --text: #f2f2f4;
+  --text-secondary: #a1a1a6;
+  --text-tertiary: #7a7a80;
+
+  --accent: #6fa392;
+  --accent-hover: #7fb3a3;
+  --on-accent: #10201c;
+  --accent-quiet: rgba(111, 163, 146, 0.14);
+
+  --focus: #4a9eff;
+  --danger: #ff6b5e;
 }
 
+/* Yüksek kontrast: sistem tercihi veya kullanıcı ayarı. */
 :root[data-contrast="more"] {
-  --border: currentColor;
-  --text-muted: var(--text);
+  --line: currentColor;
+  --line-strong: currentColor;
+  --text-secondary: var(--text);
+  --text-tertiary: var(--text);
 }
 
-:root[data-motion="reduced"] * {
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
   animation-duration: 1ms !important;
   transition-duration: 1ms !important;
 }
 
 * { box-sizing: border-box; }
-
 html, body, #root { height: 100%; margin: 0; }
 
 body {
-  background: var(--bg);
+  background: var(--bg-window);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  font-size: calc(14px * var(--text-scale));
-  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  /* 13px macOS'un gövde ölçüsüdür. Ölçek kullanıcı ayarından gelir. */
+  font-size: calc(13px * var(--text-scale));
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  cursor: default;
 }
 
+/* Kabuk metni seçilebilir olmamalı: native uygulama hissini bozar.
+   Belge içeriği gösteren yüzeyler bunu kendi içinde geri açar. */
+body { user-select: none; -webkit-user-select: none; }
+.selectable { user-select: text; -webkit-user-select: text; }
+
+:focus { outline: none; }
 :focus-visible {
   outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  outline-offset: 1px;
+  border-radius: 3px;
 }
 
 .sr-only {
@@ -73,7 +118,6 @@ body {
   border: 0;
 }
 
-/* Klavye kullanıcısı navigasyonu atlayıp içeriğe gidebilmeli. */
 .skip-link {
   position: absolute;
   left: -9999px;
@@ -81,76 +125,7 @@ body {
   z-index: 100;
   padding: 8px 14px;
   background: var(--accent);
-  color: var(--accent-text);
+  color: var(--on-accent);
   border-radius: 0 0 var(--radius) 0;
 }
 .skip-link:focus { left: 0; }
-
-.shell {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  height: 100%;
-}
-
-.shell-nav {
-  display: flex;
-  gap: 4px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-raised);
-}
-
-.shell-nav button {
-  appearance: none;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  padding: 7px 14px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: background var(--duration);
-}
-.shell-nav button:hover:not(:disabled) { background: var(--bg); }
-.shell-nav button[aria-current="page"] {
-  background: var(--accent);
-  color: var(--accent-text);
-}
-.shell-nav button:disabled {
-  color: var(--text-muted);
-  cursor: not-allowed;
-}
-
-.shell-main {
-  overflow: auto;
-  padding: 24px;
-}
-
-.shell-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--gap);
-  padding: 8px 12px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-raised);
-  color: var(--text-muted);
-  font-size: 0.85em;
-}
-
-.placeholder {
-  max-width: 62ch;
-  margin: 0 auto;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 24px;
-}
-.placeholder h1 { margin-top: 0; font-size: 1.35em; }
-.placeholder dt { font-weight: 600; margin-top: 12px; }
-.placeholder dd { margin: 2px 0 0; color: var(--text-muted); }
-.placeholder code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: var(--bg);
-  padding: 1px 5px;
-  border-radius: 4px;
-}
