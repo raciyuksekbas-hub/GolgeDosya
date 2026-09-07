@@ -1,0 +1,28 @@
+{
+  // Taşınan Karşılaştır motorunun kendi tip sözleşmesi.
+  //
+  // Bağımsız Değişikİş'in `tsconfig.app.json` ayarlarıyla birebir aynıdır.
+  // Kabuk daha sıkı derlenir (noUnusedLocals/noUnusedParameters); bu sıkılığı
+  // taşınan motora dayatmak, kanıtlanmış koda "temizlik" gerekçesiyle dokunmak
+  // anlamına gelirdi. Motor yazıldığı ve test edildiği sözleşmeyle derlenmeye
+  // devam ediyor; kabuk kendi sıkılığını koruyor.
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src/modules/degisikis", "src/vite-env.d.ts"]
+}

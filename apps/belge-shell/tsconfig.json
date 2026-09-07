@@ -17,5 +17,7 @@
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Taşınan Karşılaştır motoru kendi sözleşmesiyle derlenir.
+  "exclude": ["src/modules/degisikis"]
 }

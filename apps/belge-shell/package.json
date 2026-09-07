@@ -6,25 +6,33 @@
   "description": "Yüksekbaş Belge birleşik kabuğu (geçici teknik ad)",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.degisikis.json",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test:ux": "node --test qa/tests/*.test.mjs"
+    "test:ux": "node --test qa/tests/*.test.mjs",
+    "test:engine": "vitest run",
+    "test": "npm run test:ux && npm run test:engine"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
+    "fflate": "^0.8.3",
+    "mammoth": "^1.12.2",
+    "pdfjs-dist": "^5.4.149",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@types/node": "^24.13.3",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "@xmldom/xmldom": "^0.8.15",
     "typescript": "^5.6.3",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "vitest": "^3.2.7"
   },
   "allowScripts": {
     "esbuild@0.25.12": true
