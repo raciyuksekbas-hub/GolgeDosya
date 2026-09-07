@@ -50,7 +50,7 @@ if [ -d crates/pdf-core ] && [ -d crates/document-core ]; then
     ok "document-core, pdf-core'a bağımlı değil"
   fi
 else
-  printf '  \033[33m•\033[0m pdf-core henüz taşınmadı (Phase 6)\n'
+  printf '  \033[33m•\033[0m pdf-core henüz taşınmadı — bkz. docs/ARCHITECTURE_DECISIONS.md\n'
 fi
 
 # --- 3. office-bridge ayrı kalmalı ---------------------------------------

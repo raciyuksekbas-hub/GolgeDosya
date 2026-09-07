@@ -69,6 +69,9 @@ gate "tam geri alma derlemesi (dört modül kapalı)" \
 # Bu yüzden eşitlik kaynak düzeyinde kanıtlanır, davranış ise
 # tests/duzenek_parity.rs ile ölçülür.
 gate "duzenek komut gövdesi eşitliği" python3 scripts/check-command-parity.py
+# Dış depo bağımlılığı mandalı. Taze klon → derle → test hedefi, bu sayı
+# sıfırlanmadan tutulamaz; artması sessizce olmamalı.
+gate "depo dışı bağımlılık mandalı" python3 scripts/check-external-dependencies.py
 echo
 
 b "3. Testler"
