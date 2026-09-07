@@ -271,23 +271,113 @@ fn migrate_ikincigoz(dir: &Path, target_dir: &Path, s: &mut Settings) -> SourceS
 /// (env → /Applications → Homebrew → PATH) çalışmaya devam eder. Elle seçim
 /// yalnız keşfin yanlış kurulumu bulduğu durumda önemlidir. Phase 6'da ya değer
 /// okunur ya da kullanıcıdan bir kez yeniden seçmesi istenir.
-pub fn duzenek_localstorage_status() -> SourceStatus {
+pub fn migrate_duzenek_renderer(settings: &mut Settings) -> SourceStatus {
+    // Zaten bir değer varsa dokunma: migration boş alanı doldurur, seçimi ezmez.
+    if settings
+        .renderer_path
+        .as_deref()
+        .is_some_and(|p| !p.trim().is_empty())
+    {
+        return SourceStatus::NothingToDo;
+    }
     let dir = paths::legacy_webkit_dir(paths::LEGACY_DUZENEK);
     if !dir.exists() {
         return SourceStatus::NotFound;
     }
-    match find_localstorage(&dir) {
-        Some(p) => SourceStatus::NeedsManualStep {
-            detail: format!(
-                "Seçili LibreOffice yolu eski webview localStorage'ında ({}). \
-                 Bundle kimliği değiştiği için otomatik taşınmaz. Düzenle modülü \
-                 taşındığında (Phase 6) ya okunur ya da bir kez yeniden sorulur. \
-                 Bu dosya silinmez.",
-                p.display()
-            ),
-        },
-        None => SourceStatus::NothingToDo,
+    let Some(db) = find_localstorage(&dir) else {
+        return SourceStatus::NotFound;
+    };
+    match read_localstorage_value(&db, "duzenek-renderer") {
+        Err(detail) => SourceStatus::Unreadable { detail },
+        Ok(None) => SourceStatus::NothingToDo,
+        Ok(Some(path)) => {
+            if !is_usable_renderer(Path::new(&path)) {
+                // SESSİZCE BAŞKA BİR KURULUM SEÇME: kullanıcı hangi kurulumu
+                // seçtiğini biliyordu, biz bilmiyoruz. Anlamlı hata ve yeniden
+                // seçim akışı, sessiz bir sürprizden iyidir.
+                return SourceStatus::NeedsManualStep {
+                    detail: format!(
+                        "Önceden seçtiğiniz LibreOffice artık bu konumda değil: {path}. \
+                         Otomatik olarak başka bir kurulum seçilmedi; Düzenle bölümünde \
+                         yeniden seçmeniz gerekiyor."
+                    ),
+                };
+            }
+            settings.renderer_path = Some(path);
+            SourceStatus::Migrated {
+                fields: vec!["rendererPath".to_string()],
+            }
+        }
     }
+}
+
+fn is_usable_renderer(p: &Path) -> bool {
+    if !p.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        p.metadata()
+            .map(|m| m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+/// Eski WebKit localStorage'ından tek bir anahtarı oku.
+///
+/// Üç değişmez:
+/// * Dosya ASLA yerinde açılmaz; geçici bir kopya üzerinde çalışılır. Böylece
+///   eski veriye yazma ihtimali kalmaz.
+/// * Değerler UTF-16LE'dir; WebKit'in localStorage biçimi budur.
+/// * Okuma başarısızsa hata döndürülür, tahmin yürütülmez.
+///
+/// macOS'un kendi `sqlite3` aracı kullanılır. Alternatif, tek seferlik bir okuma
+/// için ~1,5 MB'lık gömülü SQLite bağımlılığını kalıcı olarak taşımaktı.
+fn read_localstorage_value(db: &Path, key: &str) -> Result<Option<String>, String> {
+    const SQLITE: &str = "/usr/bin/sqlite3";
+    if !Path::new(SQLITE).is_file() {
+        return Err("sqlite3 bulunamadı".into());
+    }
+    // Geçici kopya `NamedTempFile` ile tutulur: düşerken kendiliğinden silinir.
+    // Böylece migration kodunda açık bir dosya silme çağrısı bulunmaz — panik
+    // hâlinde bile artık dosya kalmaz ve sürüm kapısının "migration hiçbir şeyi
+    // silmez" değişmezi harfiyen doğru kalır.
+    let tmp = tempfile::Builder::new()
+        .prefix("belge-legacy-ls-")
+        .suffix(".sqlite3")
+        .tempfile()
+        .map_err(|e| e.to_string())?;
+    std::fs::copy(db, tmp.path()).map_err(|e| e.to_string())?;
+    let query = format!("SELECT hex(value) FROM ItemTable WHERE key='{key}';");
+    let out = std::process::Command::new(SQLITE)
+        .arg(tmp.path())
+        .arg(&query)
+        .output();
+    let out = out.map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    let hex = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if hex.is_empty() {
+        return Ok(None);
+    }
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16))
+        .collect::<Result<_, _>>()
+        .map_err(|_| "değer onaltılık olarak çözülemedi".to_string())?;
+    let units: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    String::from_utf16(&units)
+        .map(|s| if s.trim().is_empty() { None } else { Some(s) })
+        .map_err(|_| "değer UTF-16 olarak çözülemedi".to_string())
 }
 
 fn find_localstorage(root: &Path) -> Option<PathBuf> {
@@ -344,7 +434,7 @@ pub fn migrate_into(target_dir: &Path, settings: &mut Settings) -> MigrationRepo
         path: paths::legacy_webkit_dir(paths::LEGACY_DUZENEK)
             .display()
             .to_string(),
-        status: duzenek_localstorage_status(),
+        status: migrate_duzenek_renderer(settings),
     });
 
     // Değişikİş'in tek kalıcı tercihi kenar çubuğu durumu. İşlevsel değeri yok;
@@ -477,6 +567,68 @@ mod tests {
         }
         std::fs::remove_dir_all(&d).ok();
         std::fs::remove_dir_all(&t).ok();
+    }
+
+    #[test]
+    fn an_already_chosen_renderer_is_never_overwritten() {
+        let mut s = Settings {
+            renderer_path: Some("/kullanicinin/secimi/soffice".into()),
+            ..Default::default()
+        };
+        assert_eq!(migrate_duzenek_renderer(&mut s), SourceStatus::NothingToDo);
+        assert_eq!(
+            s.renderer_path.as_deref(),
+            Some("/kullanicinin/secimi/soffice")
+        );
+    }
+
+    #[test]
+    fn a_utf16_localstorage_value_is_decoded() {
+        // WebKit localStorage değerleri UTF-16LE'dir. Bayt sırası yanlış
+        // okunursa yol sessizce bozulur; bu test onu yakalar.
+        let d = tmp("ls");
+        let db = d.join("localstorage.sqlite3");
+        let path = "/Uygulamalar/LibreOffice.app/Contents/MacOS/soffice";
+        let hex: String = path
+            .encode_utf16()
+            .flat_map(|u| u.to_le_bytes())
+            .map(|b| format!("{b:02X}"))
+            .collect();
+        let sql = format!(
+            "CREATE TABLE ItemTable(key TEXT, value BLOB); \
+             INSERT INTO ItemTable VALUES('duzenek-renderer', x'{hex}');"
+        );
+        let ok = std::process::Command::new("/usr/bin/sqlite3")
+            .arg(&db)
+            .arg(&sql)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if ok {
+            assert_eq!(
+                read_localstorage_value(&db, "duzenek-renderer")
+                    .unwrap()
+                    .as_deref(),
+                Some(path)
+            );
+            assert_eq!(
+                read_localstorage_value(&db, "olmayan-anahtar").unwrap(),
+                None
+            );
+        }
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn a_renderer_that_no_longer_exists_asks_the_user_instead_of_guessing() {
+        assert!(!is_usable_renderer(Path::new("/olmayan/soffice")));
+        // Dizin de çalıştırılabilir bir ikili değildir.
+        assert!(!is_usable_renderer(&std::env::temp_dir()));
+        // Çalıştırma izni olmayan gerçek bir dosya da kabul edilmez.
+        let f = std::env::temp_dir().join(format!("belge-notexec-{}", std::process::id()));
+        std::fs::write(&f, b"x").unwrap();
+        assert!(!is_usable_renderer(&f));
+        std::fs::remove_file(&f).ok();
     }
 
     #[test]
