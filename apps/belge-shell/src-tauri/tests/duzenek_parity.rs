@@ -379,6 +379,113 @@ fn compression_reports_no_benefit_and_writes_nothing_when_it_cannot_help() {
     assert_eq!(sha256(src.path()), before, "sıkıştırma kaynağı değiştirdi");
 }
 
+/// Sıkıştırılabilir fikstür: tek sayfaya gömülü, gürültülü gri tonlamalı bir
+/// tarama. Bağımsız uygulamanın `compression_regression_tests.rs` dosyasındaki
+/// "A-scan-300dpi" ile aynı fikir, daha küçük ölçekte.
+fn make_scan_pdf() -> tempfile::NamedTempFile {
+    let (w, h) = (1200u32, 1600u32);
+    let mut state = 7u32;
+    let mut rgb = Vec::with_capacity((w * h * 3) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            let noise = (state % 80) as u8;
+            // Metin satırlarını taklit eden koyu şeritler: düz renk değil, gerçek
+            // bir taramaya benzer bir dağılım.
+            let v = if y % 56 < 4 && x > 60 && x < 920 {
+                25 + noise / 8
+            } else {
+                170u8.saturating_add(noise)
+            };
+            rgb.extend_from_slice(&[v, v, v]);
+        }
+    }
+    let mut image = Stream::new(
+        dictionary! {
+            "Type" => "XObject", "Subtype" => "Image",
+            "Width" => w as i64, "Height" => h as i64,
+            "ColorSpace" => "DeviceRGB", "BitsPerComponent" => 8,
+        },
+        rgb,
+    );
+    image.compress().unwrap();
+
+    let mut doc = Document::with_version("1.5");
+    let pages = doc.new_object_id();
+    let img = doc.add_object(image);
+    let contents = doc.add_object(Stream::new(
+        Dictionary::new(),
+        b"q 595 0 0 842 0 0 cm /Scan Do Q".to_vec(),
+    ));
+    let page = doc.add_object(dictionary! {
+        "Type" => "Page", "Parent" => pages,
+        "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+        "Resources" => dictionary! { "XObject" => dictionary! { "Scan" => img } },
+        "Contents" => contents,
+    });
+    doc.objects.insert(
+        pages,
+        dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 }.into(),
+    );
+    let root = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages });
+    doc.trailer.set("Root", root);
+    let tmp = tempfile::Builder::new().suffix(".pdf").tempfile().unwrap();
+    doc.save_to(&mut std::fs::File::create(tmp.path()).unwrap())
+        .unwrap();
+    tmp
+}
+
+/// Sözleşmenin üçüncü durumu: gerçekten kazanç varsa `Compressed`.
+///
+/// Metin fikstürü bunu asla tetikleyemez (`images_found: 0`), bu yüzden ayrı bir
+/// görsel fikstür gerekiyor. Üç durumun üçü de böylece birleşik komut yolunda
+/// GÖZLENMİŞ olur; hiçbiri varsayılmaz.
+#[test]
+fn compression_reports_compressed_and_actually_shrinks_the_copy() {
+    let src = make_scan_pdf();
+    let before = sha256(src.path());
+    let d = out_dir();
+    let out = d.path().join("kucultuldu.pdf");
+    let outcome = run(
+        &[src.path()],
+        ToolOperation::Compress {
+            level: ekler_core::OptimizationLevel::BalancedCompression,
+        },
+        &out,
+        false,
+    );
+    let ToolOutcome::Compressed {
+        source_bytes,
+        body_bytes,
+        output_bytes,
+        images_found,
+        images_recompressed,
+    } = outcome
+    else {
+        panic!("görsel taşıyan belgede `Compressed` bekleniyordu: {outcome:?}");
+    };
+    println!(
+        "sıkıştırma: kaynak {source_bytes} → gövde {body_bytes} → marka dahil \
+         {output_bytes} bayt · {images_recompressed}/{images_found} görsel"
+    );
+    assert!(images_found >= 1 && images_recompressed >= 1);
+    // Bildirilen küçülme gerçek olmalı: gövde kaynaktan küçük ve dosya diskte.
+    assert!(
+        body_bytes < source_bytes,
+        "başarı bildirildi ama küçülme yok"
+    );
+    assert!(out.is_file(), "`Compressed` dosya bırakmadı");
+    let m = measure(&out);
+    assert_eq!(
+        m.bytes, output_bytes,
+        "bildirilen boyut diskteki boyut değil"
+    );
+    assert_eq!(m.pages, 1, "sıkıştırma sayfa kaybetti");
+    assert_eq!(sha256(src.path()), before, "sıkıştırma kaynağı değiştirdi");
+}
+
 #[test]
 fn a_failing_compression_is_reported_as_failed_not_as_success() {
     let d = out_dir();
