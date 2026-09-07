@@ -64,6 +64,7 @@ function extension(path: string): string {
 export function DocumentSurface({ feature, recents, onDocuments, onForget }: Props) {
   const mode = MODES[feature.key];
   const [over, setOver] = useState(false);
+  const [needsSecond, setNeedsSecond] = useState(false);
   const accepted = useRef(mode.extensions);
   accepted.current = mode.extensions;
 
@@ -74,9 +75,16 @@ export function DocumentSurface({ feature, recents, onDocuments, onForget }: Pro
         announce("Bu bölüm seçilen dosya türünü kabul etmiyor.");
         return;
       }
+      // Karşılaştırma iki belge gerektirir; tek belgeyle başlatılmaz.
+      if (feature.key === "degisikis" && usable.length < 2) {
+        setNeedsSecond(true);
+        announce("Karşılaştırmak için iki belge gerekiyor.");
+        return;
+      }
+      setNeedsSecond(false);
       onDocuments(mode.multiple ? usable : usable.slice(0, 1));
     },
-    [mode.multiple, onDocuments],
+    [mode.multiple, onDocuments, feature.key],
   );
 
   // Native sürükle-bırak. Webview'in kendi olayı kullanılır; HTML5 drop olayı
@@ -131,6 +139,11 @@ export function DocumentSurface({ feature, recents, onDocuments, onForget }: Pro
         <button type="button" className="btn btn-primary" onClick={browse}>
           Dosya Aç…
         </button>
+        {needsSecond ? (
+          <p role="alert" style={{ margin: 0, color: "var(--danger)" }}>
+            Karşılaştırmak için iki belge seçin.
+          </p>
+        ) : null}
       </div>
 
       <section className="recents" aria-labelledby="son-baslik">

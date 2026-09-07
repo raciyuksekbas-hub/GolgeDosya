@@ -1562,8 +1562,11 @@ function compositePresentedChanges(
 
 function ordinaryPresentedChangesWithLongDeletion(
   hunks: WordDiffHunk[],
-  baseFragments: DiffFragment[],
-  revisedFragments: DiffFragment[],
+  // Kardeş fonksiyonlarla imza simetrisi için duruyorlar; gövdede kullanılmıyorlar.
+  // `_` öneki TypeScript'in "bilerek kullanılmıyor" konvansiyonudur; davranış
+  // değişmez. Kabuk noUnusedParameters ile derlendiği için gereklidir.
+  _baseFragments: DiffFragment[],
+  _revisedFragments: DiffFragment[],
 ): PresentedChange[] | undefined {
   const significant = hunks.filter((hunk) => {
     const removed = tokenize(hunk.removed).length;

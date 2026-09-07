@@ -183,6 +183,7 @@ pub fn run() {
         modules::ikincigoz::ikincigoz_remove_accepted_word,
         modules::ikincigoz::ikincigoz_add_correction,
         modules::ikincigoz::ikincigoz_remove_correction,
+        modules::degisikis::degisikis_read_document,
         modules::degisikis::degisikis_convert_legacy_doc,
         modules::degisikis::degisikis_save_report,
         modules::degisikis::degisikis_open_report,

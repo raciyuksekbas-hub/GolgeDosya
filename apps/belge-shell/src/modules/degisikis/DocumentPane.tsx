@@ -88,7 +88,9 @@ function FragmentText({ fragments }: { fragments: DiffFragment[] }) {
   );
 }
 
-export function DocumentPane({ side, doc, rows, changes, selectedRows, paneRef, rowRefs, onScroll }: {
+// `doc` sözleşmenin parçası ama bu gövdede okunmuyor; `_doc` takma adı
+// TypeScript'in "bilerek kullanılmıyor" konvansiyonu. Prop adı değişmedi.
+export function DocumentPane({ side, doc: _doc, rows, changes, selectedRows, paneRef, rowRefs, onScroll }: {
   side: Side;
   doc: LocalDocument;
   rows: ComparisonRow[];

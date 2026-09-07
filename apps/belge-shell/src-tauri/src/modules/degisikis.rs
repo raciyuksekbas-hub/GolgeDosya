@@ -35,6 +35,45 @@ pub async fn degisikis_convert_legacy_doc(contents: Vec<u8>) -> Result<Vec<u8>, 
         .map_err(str::to_string)
 }
 
+/// Karşılaştırılacak en büyük dosya. Bağımsız uygulama belgeyi webview'e
+/// olduğu gibi aldığı için örtük bir sınırı yoktu; burada açık bir sınır var.
+const MAX_DOCUMENT_BYTES: u64 = 128 * 1024 * 1024;
+
+/// Kullanıcının seçtiği belgeyi oku ve baytları arayüze ver.
+///
+/// Bağımsız Değişikİş belgeyi webview'in kendi dosya girdisinden `File` olarak
+/// alıyordu; birleşik kabuk native seçiciyi kullandığı için elde yol var.
+/// Motoru değiştirmemek adına baytlar burada okunup arayüzde yeniden `File`
+/// nesnesine sarılıyor: `extractDocument` imzası ve davranışı aynı kalıyor.
+///
+/// Bu komut Tauri'nin filesystem eklentisini AÇMAZ. Yol yalnız native seçiciden
+/// veya sürükle-bırak olayından gelir, uzantı süzgecinden geçer ve boyut
+/// sınırlanır; dizin veya desteklenmeyen tür okunmaz.
+#[tauri::command]
+pub async fn degisikis_read_document(path: String) -> Result<Vec<u8>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = PathBuf::from(&path);
+        let meta = std::fs::metadata(&p).map_err(|_| "DOCUMENT_UNREADABLE".to_string())?;
+        if !meta.is_file() {
+            return Err("DOCUMENT_NOT_A_FILE".to_string());
+        }
+        if meta.len() > MAX_DOCUMENT_BYTES {
+            return Err("DOCUMENT_TOO_LARGE".to_string());
+        }
+        let ext = p
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .unwrap_or_default();
+        if !matches!(ext.as_str(), "pdf" | "doc" | "docx" | "udf") {
+            return Err("DOCUMENT_UNSUPPORTED".to_string());
+        }
+        std::fs::read(&p).map_err(|_| "DOCUMENT_UNREADABLE".to_string())
+    })
+    .await
+    .map_err(|_| "DOCUMENT_UNREADABLE".to_string())?
+}
+
 fn report_directory(app: &tauri::AppHandle) -> PathBuf {
     let resolver = app.path();
     resolver
@@ -164,6 +203,23 @@ fn open_with_default_application(target: &std::ffi::OsStr) -> Result<(), &'stati
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_four_comparable_formats_are_readable() {
+        let dir = std::env::temp_dir();
+        // Dizin okunmaz.
+        let e = tauri::async_runtime::block_on(degisikis_read_document(dir.display().to_string()))
+            .unwrap_err();
+        assert_eq!(e, "DOCUMENT_NOT_A_FILE");
+
+        // Desteklenmeyen uzantı okunmaz — dosya var olsa bile.
+        let f = dir.join(format!("belge-dg-{}.txt", std::process::id()));
+        std::fs::write(&f, b"metin").unwrap();
+        let e = tauri::async_runtime::block_on(degisikis_read_document(f.display().to_string()))
+            .unwrap_err();
+        assert_eq!(e, "DOCUMENT_UNSUPPORTED");
+        std::fs::remove_file(&f).ok();
+    }
 
     #[test]
     fn a_report_name_must_carry_the_expected_prefix_and_extension() {

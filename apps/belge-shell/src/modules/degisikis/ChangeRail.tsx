@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, type MutableRefObject, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import type { FilledRef, NullableRef } from "./reactCompat";
 import type { ComparisonChange } from "./viewModels/comparisonViewModel";
 import { Icon } from "./Icon";
 import { ROW_SYNC_EVENT } from "./useRowHeightSync";
@@ -27,8 +28,8 @@ export function ChangeRail({ changes, selectedIndex, onSelect, onMove, onSwap, c
   onMove: (direction: -1 | 1) => void;
   onSwap: () => void;
   canSwap: boolean;
-  paneRef: RefObject<HTMLDivElement | null>;
-  rowRefs: MutableRefObject<Map<number, HTMLDivElement>>;
+  paneRef: NullableRef<HTMLDivElement>;
+  rowRefs: FilledRef<Map<number, HTMLDivElement>>;
   syncToken: string;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
