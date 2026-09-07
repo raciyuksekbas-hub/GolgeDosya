@@ -26,7 +26,13 @@ tempfile.workspace = true
 # Modül motorları. Yalnız kendi feature'ı açıkken linklenir; kapalıyken binary'ye
 # hiç girmez. `document-core` birleşik workspace içindeki tek belge çekirdeğidir.
 tavzih-core = { path = "../../../crates/document-core", optional = true }
-tauri-plugin-opener = { version = "2", optional = true }
+# Kasten optional DEĞİL. Capability dosyaları derleme sırasında ayrıştırılır ve
+# `opener:*` izinlerinin tanımlı olması bu crate'in bağımlılık grafiğinde
+# bulunmasına bağlıdır. Optional yapıldığında `--no-default-features` ile
+# yapılan tam geri alma derlemesi "Permission opener:allow-reveal-item-in-dir
+# not found" ile kırılıyordu. Plugin'in kaydı ve komutları feature'a bağlı
+# kalmaya devam ediyor; kapalıyken hiçbir IPC yüzeyi açılmaz.
+tauri-plugin-opener = "2"
 # GEÇİCİ YOL: ~/İkinciGöz ev dizininin kökünde, bu depo ise ~/Projects altında.
 # İkinciGöz'ün çekirdeği KOPYALANMADI. Kaynak standalone deposunda kalıyor:
 # hem referans implementasyon hem de parser/writeback karşılaştırma kaynağı odur.
@@ -57,7 +63,7 @@ custom-protocol = ["tauri/custom-protocol"]
 #   Phase 4 -> feature_ikincigoz  TAŞINDI
 #   Phase 5 -> feature_degisikis  TAŞINDI
 #   Phase 6 -> feature_duzenek   TAŞINDI
-feature_tavzih = ["dep:tavzih-core", "dep:tauri-plugin-opener"]
+feature_tavzih = ["dep:tavzih-core"]
 feature_ikincigoz = ["dep:ikincigoz-core"]
 feature_degisikis = []  # motoru TypeScript'te; Rust bağımlılığı yok
-feature_duzenek = ["dep:ekler-core", "dep:lopdf", "dep:tauri-plugin-opener"]
+feature_duzenek = ["dep:ekler-core", "dep:lopdf"]

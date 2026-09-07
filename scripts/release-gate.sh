@@ -60,6 +60,10 @@ echo
 
 b "2. Mimari değişmezler"
 gate "pdf-core → document-core yönü" bash scripts/check-architecture.sh
+# Geri alma yolu bir belge değil, derlenen bir yapılandırmadır. Dört modülün
+# tamamı kapalıyken derlenmiyorsa feature bazlı geri alma sözü tutulamaz.
+gate "tam geri alma derlemesi (dört modül kapalı)" \
+  cargo check -p belge-shell --no-default-features --features custom-protocol
 echo
 
 b "3. Testler"
