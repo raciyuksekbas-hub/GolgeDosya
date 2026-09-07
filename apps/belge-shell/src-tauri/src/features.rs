@@ -39,6 +39,10 @@ const MODULES: [(&str, &str, &str); 4] = [
     ("ikincigoz", "Denetle", "/denetle"),
 ];
 
+// Lint cfg'ye bağlıdır: bütün feature'lar açıkken kollar `matches!` biçimine
+// benzer, bazıları kapalıyken benzemez. Kolları koruyoruz çünkü her modülün
+// kendi satırı okunabilirliğin ve gelecekteki modüllerin eklenmesinin temelidir.
+#[allow(clippy::match_like_matches_macro)]
 fn compiled(key: &str) -> bool {
     match key {
         "duzenek" => cfg!(feature = "feature_duzenek"),

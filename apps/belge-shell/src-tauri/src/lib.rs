@@ -10,6 +10,8 @@ pub mod features;
 pub mod modules {
     #[cfg(feature = "feature_degisikis")]
     pub mod degisikis;
+    #[cfg(feature = "feature_duzenek")]
+    pub mod duzenek;
     #[cfg(feature = "feature_ikincigoz")]
     pub mod ikincigoz;
     #[cfg(feature = "feature_tavzih")]
@@ -130,14 +132,20 @@ pub fn run() {
     // üretmektense açıkça durmak doğrudur. Günlük geri alma zaten derleme
     // zamanı bayrağıyla değil, çalışma zamanı bayrağıyla yapılır:
     // BELGE_DISABLE_<AD>=1 (bkz. features.rs).
-    #[cfg(any(
-        all(feature = "feature_tavzih", not(feature = "feature_ikincigoz")),
-        all(feature = "feature_tavzih", not(feature = "feature_degisikis")),
-        all(feature = "feature_ikincigoz", not(feature = "feature_tavzih")),
-        all(feature = "feature_ikincigoz", not(feature = "feature_degisikis")),
-        all(feature = "feature_degisikis", not(feature = "feature_tavzih")),
-        all(feature = "feature_degisikis", not(feature = "feature_ikincigoz")),
-    ))]
+    #[cfg(not(any(
+        all(
+            feature = "feature_tavzih",
+            feature = "feature_ikincigoz",
+            feature = "feature_degisikis",
+            feature = "feature_duzenek"
+        ),
+        not(any(
+            feature = "feature_tavzih",
+            feature = "feature_ikincigoz",
+            feature = "feature_degisikis",
+            feature = "feature_duzenek"
+        ))
+    )))]
     compile_error!(
         "Modül feature'ları ya hep birlikte açık ya hep birlikte kapalı olmalı. \
          Tek bir modülü kapatmak için çalışma zamanı bayrağını kullanın: \
@@ -162,7 +170,8 @@ pub fn run() {
     #[cfg(all(
         feature = "feature_tavzih",
         feature = "feature_ikincigoz",
-        feature = "feature_degisikis"
+        feature = "feature_degisikis",
+        feature = "feature_duzenek"
     ))]
     let builder = builder.invoke_handler(shell_commands![
         modules::tavzih::tavzih_inspect_file,
@@ -187,12 +196,34 @@ pub fn run() {
         modules::degisikis::degisikis_convert_legacy_doc,
         modules::degisikis::degisikis_save_report,
         modules::degisikis::degisikis_open_report,
+        modules::duzenek::duzenek_preview_pdf_page,
+        modules::duzenek::duzenek_renderer_status,
+        modules::duzenek::duzenek_select_renderer,
+        modules::duzenek::duzenek_prepare_export_plan,
+        modules::duzenek::duzenek_execute_export_plan,
+        modules::duzenek::duzenek_split_into_new_exhibit,
+        modules::duzenek::duzenek_scan_source_files,
+        modules::duzenek::duzenek_prepare_uyap,
+        modules::duzenek::duzenek_convert_office_pdf,
+        modules::duzenek::duzenek_convert_udf_to_md,
+        modules::duzenek::duzenek_pdf_to_images,
+        modules::duzenek::duzenek_run_pdf_tool,
+        modules::duzenek::duzenek_merge_pdfs,
+        modules::duzenek::duzenek_split_pdf,
+        modules::duzenek::duzenek_delete_pdf_pages,
+        modules::duzenek::duzenek_rotate_pdf_pages_cmd,
+        modules::duzenek::duzenek_images_to_pdf,
+        modules::duzenek::duzenek_detect_blank_pages,
+        modules::duzenek::duzenek_save_project_to_file,
+        modules::duzenek::duzenek_load_project_from_file,
+        modules::duzenek::duzenek_relink_source,
     ]);
 
     #[cfg(not(any(
         feature = "feature_tavzih",
         feature = "feature_ikincigoz",
-        feature = "feature_degisikis"
+        feature = "feature_degisikis",
+        feature = "feature_duzenek"
     )))]
     let builder = builder.invoke_handler(shell_commands![]);
 
