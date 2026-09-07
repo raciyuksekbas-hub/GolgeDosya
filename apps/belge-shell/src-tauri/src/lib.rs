@@ -8,6 +8,8 @@ pub mod features;
 
 /// Modül motorları. Her biri yalnız kendi cargo feature'ı açıkken derlenir.
 pub mod modules {
+    #[cfg(feature = "feature_degisikis")]
+    pub mod degisikis;
     #[cfg(feature = "feature_ikincigoz")]
     pub mod ikincigoz;
     #[cfg(feature = "feature_tavzih")]
@@ -113,14 +115,35 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(modules::tavzih::Busy::default());
 
-    // Komut listesi derleme zamanında feature'a göre seçilir: kapalı bir modülün
-    // komutu binary'de hiç bulunmaz ve arayüz onu çağıramaz.
+    // Komut listesi derleme zamanında seçilir: kapalı bir modülün komutu
+    // binary'de hiç bulunmaz ve arayüz onu çağıramaz.
     //
-    // `generate_handler!` listesinin içinde `#[cfg]` kullanılamadığı için her
-    // kombinasyon ayrı bir koldur. Kol sayısı modül sayısıyla üstel büyür; bu
-    // yüzden derleme zamanı bayrağı SÜRÜM ŞEKLİNİ belirlemek içindir, günlük
-    // geri alma için değil. Bir modülü yeniden derlemeden kapatmak gerekirse
-    // çalışma zamanı bayrağı kullanılır: BELGE_DISABLE_<AD>=1 (bkz. features.rs).
+    // `generate_handler!` listesinin içinde `#[cfg]` kullanılamaz, dolayısıyla
+    // her feature kombinasyonu ayrı bir kol gerektirir. Kol sayısı modül
+    // sayısıyla ÜSTEL büyür (üç modül = sekiz kol), bu yüzden yalnız iki
+    // derleme şekli desteklenir:
+    //
+    //   * varsayılan  — taşınmış bütün modüller açık (yayın şekli)
+    //   * çıplak      — hiçbir modül yok (kabuğun kendi smoke'u)
+    //
+    // Aradaki kombinasyonlar derleme hatası verir; sessizce yarım bir binary
+    // üretmektense açıkça durmak doğrudur. Günlük geri alma zaten derleme
+    // zamanı bayrağıyla değil, çalışma zamanı bayrağıyla yapılır:
+    // BELGE_DISABLE_<AD>=1 (bkz. features.rs).
+    #[cfg(any(
+        all(feature = "feature_tavzih", not(feature = "feature_ikincigoz")),
+        all(feature = "feature_tavzih", not(feature = "feature_degisikis")),
+        all(feature = "feature_ikincigoz", not(feature = "feature_tavzih")),
+        all(feature = "feature_ikincigoz", not(feature = "feature_degisikis")),
+        all(feature = "feature_degisikis", not(feature = "feature_tavzih")),
+        all(feature = "feature_degisikis", not(feature = "feature_ikincigoz")),
+    ))]
+    compile_error!(
+        "Modül feature'ları ya hep birlikte açık ya hep birlikte kapalı olmalı. \
+         Tek bir modülü kapatmak için çalışma zamanı bayrağını kullanın: \
+         BELGE_DISABLE_<AD>=1"
+    );
+
     macro_rules! shell_commands {
         ($($extra:path),* $(,)?) => {
             tauri::generate_handler![
@@ -136,7 +159,11 @@ pub fn run() {
         };
     }
 
-    #[cfg(all(feature = "feature_tavzih", feature = "feature_ikincigoz"))]
+    #[cfg(all(
+        feature = "feature_tavzih",
+        feature = "feature_ikincigoz",
+        feature = "feature_degisikis"
+    ))]
     let builder = builder.invoke_handler(shell_commands![
         modules::tavzih::tavzih_inspect_file,
         modules::tavzih::tavzih_inspect_files,
@@ -156,35 +183,16 @@ pub fn run() {
         modules::ikincigoz::ikincigoz_remove_accepted_word,
         modules::ikincigoz::ikincigoz_add_correction,
         modules::ikincigoz::ikincigoz_remove_correction,
+        modules::degisikis::degisikis_convert_legacy_doc,
+        modules::degisikis::degisikis_save_report,
+        modules::degisikis::degisikis_open_report,
     ]);
 
-    #[cfg(all(feature = "feature_tavzih", not(feature = "feature_ikincigoz")))]
-    let builder = builder.invoke_handler(shell_commands![
-        modules::tavzih::tavzih_inspect_file,
-        modules::tavzih::tavzih_inspect_files,
-        modules::tavzih::tavzih_convert_file,
-        modules::tavzih::tavzih_convert_batch,
-        modules::tavzih::tavzih_terms_accepted,
-        modules::tavzih::tavzih_accept_terms,
-        modules::tavzih::tavzih_output_folder,
-        modules::tavzih::tavzih_set_output_folder,
-        modules::tavzih::tavzih_reveal_output_folder,
-    ]);
-
-    #[cfg(all(not(feature = "feature_tavzih"), feature = "feature_ikincigoz"))]
-    let builder = builder.invoke_handler(shell_commands![
-        modules::ikincigoz::ikincigoz_analyze_document,
-        modules::ikincigoz::ikincigoz_apply_fixes,
-        modules::ikincigoz::ikincigoz_preview_fixes,
-        modules::ikincigoz::ikincigoz_list_rules,
-        modules::ikincigoz::ikincigoz_get_dictionary,
-        modules::ikincigoz::ikincigoz_accept_word,
-        modules::ikincigoz::ikincigoz_remove_accepted_word,
-        modules::ikincigoz::ikincigoz_add_correction,
-        modules::ikincigoz::ikincigoz_remove_correction,
-    ]);
-
-    #[cfg(all(not(feature = "feature_tavzih"), not(feature = "feature_ikincigoz")))]
+    #[cfg(not(any(
+        feature = "feature_tavzih",
+        feature = "feature_ikincigoz",
+        feature = "feature_degisikis"
+    )))]
     let builder = builder.invoke_handler(shell_commands![]);
 
     builder
@@ -215,6 +223,17 @@ mod tests {
                 assert!(!f.enabled, "{} linklenmemişken etkin görünüyor", f.key);
             }
         }
+    }
+
+    #[cfg(feature = "feature_degisikis")]
+    #[test]
+    fn the_compare_module_is_live_in_this_build() {
+        let d = features::states()
+            .into_iter()
+            .find(|f| f.key == "degisikis")
+            .expect("Karşılaştır bölümü tanımlı olmalı");
+        assert!(d.compiled);
+        assert_eq!(d.label, "Karşılaştır");
     }
 
     #[cfg(feature = "feature_ikincigoz")]
