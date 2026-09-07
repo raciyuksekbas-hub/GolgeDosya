@@ -8,7 +8,7 @@
 #     document-core -> pdf-core      YASAK
 [workspace]
 resolver = "2"
-members = ["apps/belge-shell/src-tauri", "crates/document-core"]
+members = ["apps/belge-shell/src-tauri", "crates/document-core", "tools/preflight"]
 
 [workspace.package]
 version = "0.0.1"

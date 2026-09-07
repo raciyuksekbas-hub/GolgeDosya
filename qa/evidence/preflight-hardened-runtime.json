@@ -1,0 +1,54 @@
+{
+  "checks": [
+    {
+      "check": "renderer_discovery",
+      "detail": "kurulu değil (arama zinciri hatasız tamamlandı)",
+      "ok": true
+    },
+    {
+      "check": "renderer_validation",
+      "detail": "alakasız dosya reddedildi",
+      "ok": true
+    },
+    {
+      "check": "sandbox_exec",
+      "detail": "çalıştı; ağ reddi etkin",
+      "ok": true
+    },
+    {
+      "check": "sips",
+      "detail": "çalıştı, 773 bayt üretti",
+      "ok": true
+    },
+    {
+      "check": "coregraphics_portrait",
+      "detail": "1 dosya, 32654 bayt",
+      "ok": true
+    },
+    {
+      "check": "coregraphics_landscape",
+      "detail": "1 dosya, 31799 bayt",
+      "ok": true
+    },
+    {
+      "check": "coregraphics_small",
+      "detail": "1 dosya, 2471 bayt",
+      "ok": true
+    },
+    {
+      "check": "coregraphics_large",
+      "detail": "1 dosya, 259082 bayt",
+      "ok": true
+    },
+    {
+      "check": "safe_publication",
+      "detail": "atomik yazma çalıştı; ikinci yazma reddedildi, ilk içerik korundu",
+      "ok": true
+    }
+  ],
+  "context": "packaged-hardened-runtime-developerid",
+  "failed": [],
+  "skipped": [
+    "office_conversion (LibreOffice kurulu değil)"
+  ]
+}

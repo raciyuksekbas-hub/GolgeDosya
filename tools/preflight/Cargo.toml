@@ -1,0 +1,20 @@
+# Paketlenmiş ve hardened runtime etkin bir .app içinde harici süreç ve native
+# API zincirini ölçen önkontrol aracı.
+#
+# Ürünün parçası DEĞİLDİR ve birleşik uygulamaya linklenmez. Amacı, DüzenEk'in
+# feature kodu taşınmadan ÖNCE şu soruyu kanıta bağlamak: hardened runtime
+# altında soffice, sips, sandbox-exec ve CoreGraphics gerçekten çalışıyor mu?
+#
+# DüzenEk'in GERÇEK kodunu çağırır (ekler-core), taklit etmez.
+[package]
+name = "duzenek-preflight"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Geçici kardeş-dizin yolu; DüzenEk birleşik workspace'e taşınınca kalkar.
+ekler-core = { path = "../../../DuzenEk/crates/ekler-core" }
+tavzih-core = { path = "../../crates/document-core" }
+lopdf = "0.34"
+serde_json = "1"
