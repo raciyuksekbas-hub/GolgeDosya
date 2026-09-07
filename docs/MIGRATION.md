@@ -410,3 +410,86 @@ canonical) ve standalone depo (dondurulmuş referans). Standalone, DüzenEk
 migration'ı tamamlanana kadar referans/parity/rollback kaynağı olarak
 korunuyor; bu bilinçli ve süreli bir duplikasyondur, parity testleriyle
 korunmaktadır.
+
+---
+
+## Phase 6 — DüzenEk
+
+### Sıra: STOP kapısı önce
+
+Hardened runtime altında dış süreç zinciri, taşımadan **önce** ölçüldü.
+Developer ID ile imzalanmış, `--options runtime` uygulanmış (`CodeDirectory
+flags=0x10000(runtime)`), `.app` olarak paketlenmiş bir binary içinde
+`ekler-core`'un gerçek fonksiyonları çağrıldı: **10/10, atlanan yok.**
+
+| Kontrol | Sonuç |
+|---|---|
+| `renderer_discovery` / `renderer_validation` | ✓ |
+| `sandbox_exec` | ✓ çalıştı, ağ reddi etkin |
+| `sips` | ✓ |
+| `coregraphics` × 4 (portrait/landscape/small/large) | ✓ crash yok |
+| `safe_publication` | ✓ atomik, ikinci yazma reddedildi |
+| `office_conversion` | ✓ DOCX→PDF, 1 sayfa, 17.607 bayt, yeniden açıldı |
+
+İlk koşuda LibreOffice bulunamadı ve kontrol **atlandı** (geçmiş sayılmadı);
+eski ayardaki kayıtlı yol okununca kurulu olduğu görüldü ve kapı kapandı.
+
+### Taşınan
+21 komut, gövdeleri değiştirilmeden; adlar `duzenek_` önekli. Motor
+(`ekler-core`) **kopyalanmadı**.
+
+Arayüz tarafında `PdfToolsWorkspace.tsx` ve `pdfWorkspaceState.ts` taşındı.
+`pdfWorkspaceState.ts` ve `copyDestination.ts` bayt bayt aynıdır. Üç uyarlama:
+komut adlarına önek, kabuğun açtığı belgeleri alan `paths` özelliği,
+`.pdf-root` kapsayıcısı. **Tasarım yapılmadı**; GUI bilinçli olarak
+ertelenmiştir.
+
+### Parity nasıl kanıtlandı
+
+Bağımsız uygulamanın komutları `pub` değildir ve baseline dondurulmuştur:
+iki komut katmanı yan yana **çağrılamaz**. Bu sınır gizlenmedi, ikiye bölündü.
+
+1. **Kaynak** — `scripts/check-command-parity.py` 21 komut gövdesini iki
+   depodan çıkarıp karşılaştırır. 21/21 anlamca aynı. Beş imza yalnız rustfmt
+   sarması bakımından farklı (önek adları uzattı). Kontrolün boş olmadığı
+   kanıtlandı: `rotate_pdf_pages_cmd` içinde tek karakterlik bir işaret
+   değişimi yakalanıyor.
+2. **Davranış** — `tests/duzenek_parity.rs`, 15 durumu birleşik komutlar
+   üzerinden sentetik fikstürlerle çalıştırır ve her çıktıyı yeniden açarak
+   ölçer: sayfa sayısı, sayfa **sırası** (her sayfanın kendi metninden geri
+   okunur), dönüş, MediaBox, bayt boyutu, kaynak SHA-256.
+
+Aynı kaynak + tek kopya motor + ölçülen davranış = eşitlik.
+
+### İki yanlış beklentim, motor haklıydı
+
+**MediaBox.** Döndürülmüş ve döndürülmemiş sayfanın kutusunun aynı kalmasını
+bekledim. Marka payı, rozetin sayfa dönüşü ne olursa olsun görsel olarak altta
+kalmasını sağlayacak kenara ekleniyor (`stamp.rs:114-119`). Kutular bu yüzden
+**tasarım gereği** farklı. Test artık gerçek sözleşmeyi ölçüyor: tam bir kenar,
+tam 34 punto büyür; özgün sayfa alanı hiç kırpılmaz; pay dönüşü izler.
+
+**Büyüme tavanı.** Bağımsız uygulamanın mutlak tavanını (`kaynak + 4096 +
+n*100`) ödünç aldım. O test tek belgede `apply_branding`'i ölçüyor; buradaki
+ise nesne akışını yeniden yazan komut yolunun tamamını. Test artık
+paylaşımın gerçek imzasını ölçüyor: ek sayfa başına maliyet sabit kalıyor
+(1→10 için 157,4 bayt/sayfa; 10→100 için 163,7).
+
+### Bulunan gerçek kusurlar
+
+| Kusur | Nerede | Durum |
+|---|---|---|
+| Testler gerçek kullanıcı ayarını yazıyor | Tavzih `prefs.rs` + `lib.rs` | onarıldı |
+| Aynı testler birbiriyle yarışıyor | Tavzih (yalnız `--test-threads=1` ile geçiyordu) | onarıldı |
+| Test paketi gerçek WebKit localStorage'ını görebiliyor | birleşik `paths.rs` | onarıldı |
+| `--no-default-features` derlenmiyor | birleşik `Cargo.toml` | onarıldı |
+
+İlki gerçek veri kaybettirdi: kullanıcının `accepted_terms` kaydı silindi,
+geri yazıldı. Düzeltme yapısaldır — test derlemesinde kurulu dizin **erişilemez**
+— ve iki sürüm kapısı da koşunun tamamını, kurulu verinin salt-okunur parmak
+iziyle çevreliyor.
+
+### Kalan duplikasyon ve dış bağımlılık
+`ekler-core` ve `ikincigoz-core` hâlâ bağımsız depolarda; birleşik uygulama
+onlara yol bağımlılığıyla bağlı. `scripts/check-external-dependencies.py`
+sayıyı üçte mandallıyor. Hedef sıfır; bkz. `docs/ARCHITECTURE_DECISIONS.md`.
