@@ -318,3 +318,95 @@ Ağ izni yok, opener yok, harici process yok, telemetri yok.
 | `document-core` (DOCX/UDF sadakat) | tek kopya |
 | `ikincigoz-core` (analiz + writeback) | tek kaynak, iki tüketici (standalone + birleşik) |
 | DOCX/UDF **parser** mantığı | **iki bağımsız implementasyon — bilinçli** |
+
+---
+
+## Phase 5 — Değişikİş migration'ı (2026-09-07)
+
+### Canonical source
+`degisikis-premerge-2026-09-07` @ `d624b34`, dal `feature/v0.4.0-brand-refresh`.
+
+**Branch yapısına dokunulmadı.** Dal `main`'i tamamen içeriyor (merge-base = main
+= `8482094`, `HEAD..main` boş), yani fast-forward teknik olarak mümkündü.
+Yapılmadı: devam eden bir marka yenileme dalını `main`'e almak ürün kararıdır,
+migration gereği değil. Dal ayrıca kendi origin'inin 1 commit önünde.
+
+Baseline: vitest 219 passed / 23 dosya · cargo 8 passed · clippy PASS · build PASS.
+Taşımadan önce de var olan durum: `cargo fmt --check` iki kozmetik sapma
+bildiriyor (`src-tauri/src/lib.rs:111` ve `:125`). Çalışma ağacı temiz olduğu
+için bunlar commit'li koddadır ve migration'la ilgisi yoktur; düzeltilmedi.
+
+### Motor — TypeScript'te kaldı
+`compare.ts` (1831 satır), extraction yolları (mammoth / pdfjs / fflate),
+normalizasyon, view model ve diff arayüz bileşenleri **değiştirilmeden**
+kopyalandı. Rust'a taşınmadı, pdfjs lopdf ile değiştirilmedi, normalizasyon
+ortaklaştırılmadı.
+
+Motorda yapılan tek değişiklik üç Tauri komut adının modül önekli hâle
+getirilmesi ve üç kasıtlı-kullanılmayan parametrenin TypeScript'in `_`
+konvansiyonuyla işaretlenmesidir. İkisi de davranışı değiştirmez.
+
+### React 18 ↔ 19 — bütün shell yükseltmesi GEREKMEDİ
+Motorun iş mantığı React 18 uyumlu çıktı: React 19'a özgü tek API kullanılmıyor
+(`use`, `useOptimistic`, `useActionState`, form action yok); kullanılan
+hook'ların hepsi React 16.8+ hook'ları. Testler `renderToStaticMarkup`
+kullanıyor, React 19 semantiğine bağlı değil. Vite config'inde Vite 7'ye özgü
+bir şey yok.
+
+Tek fark tip katmanında: React 19 `RefObject<T>.current`'ı non-null yaptı. Üç UI
+dosyasında ref tipleri, iki sürümde de yapısal olarak eşleşen yerel takma adlara
+çevrildi (`reactCompat.ts`). Çalışma zamanı etkisi sıfır.
+
+### CSP ve pdfjs worker — ölçüldü
+Worker Vite tarafından **ayrı statik varlık** olarak yayımlanıyor
+(`?url` import) ve aynı origin'den servis ediliyor. blob:, data:, CDN veya
+`eval` ile worker kurulumu yok.
+
+Tek CSP değişikliği: `worker-src 'self'`. Bu bir gevşetme değildir — aynı
+origin worker'ı `default-src 'self'` geri düşüşüyle zaten izinliydi; açık
+bildirim gereksinimi belgeliyor ve ileride `default-src` daralırsa worker
+sessizce ana iş parçacığına düşmek yerine görünür biçimde bozuluyor.
+
+Üretim bundle'ı, uygulamanın gerçek CSP başlığıyla servis edilip tarayıcıda
+sınandı:
+
+| Ölçüm | Sonuç |
+|---|---|
+| Worker byte-identical (standalone ile) | ✓ aynı SHA-256 |
+| Worker URL | `/assets/pdf.worker.min-*.mjs` — aynı origin |
+| Worker gerçekten çalışıyor mu | ✓ pdfjs el sıkışması: `{"action":"ready"}` |
+| `new Function` / eval | **engellendi** — `unsafe-eval` verilmiyor |
+| blob: worker | **engellendi** (CSP ihlali konsola düştü) |
+| Dev server referansı | yok |
+| Source map / node_modules sızıntısı | yok |
+
+`new Function` bundle'da geçiyor ama bluebird'ün `canEvaluate` korumalı
+isteğe bağlı optimizasyonudur; CSP engellediğinde eval'sız yola düşer.
+pdfjs'in `_createCDNWrapper` blob yolu yalnız cross-origin worker'da
+kullanılır ve bizimki aynı origin.
+
+**Worker üretim binary'sine gömülü.** Tauri varlıkları binary'ye brotli ile
+gömdüğü için `.app` içinde dosya olarak görünmez. Ölçüldü: worker `dist`'ten
+çıkarılıp yeniden derlendiğinde binary 7.455.280 → 7.191.088 bayta düştü.
+264.192 baytlık fark, 1,09 MB'lık worker'ın sıkıştırılmış hâlidir.
+
+### Test muhasebesi — 219 → 190, kayıp açıklandı
+| | Test | Neden |
+|---|---:|---|
+| StartupSplash | 4 | açılış ekranı; standalone kabuk taşınmadı |
+| about | 2 | Hakkında paneli; standalone kabuk taşınmadı |
+| updateCheck | 16 | birleşik uygulamada updater yok |
+| workspaceUx (kalan) | 7 | standalone yerleşim ve kenar çubuğu |
+| **emekliye ayrılan** | **29** | konusu taşınmayan koda ait |
+| **taşınan** | **190** | hepsi geçiyor |
+
+`workspaceUx`'in kalan 4 testi (swap semantiği ve `ChangeInspector`
+erişilebilirliği) konusu taşınan koda ait olduğu için korundu.
+Ek olarak 10 yeni parity testi yazıldı → **200**.
+
+### Kalan duplikasyon
+Karşılaştırma motoru şu an **iki yerde**: birleşik workspace (bundan sonra
+canonical) ve standalone depo (dondurulmuş referans). Standalone, DüzenEk
+migration'ı tamamlanana kadar referans/parity/rollback kaynağı olarak
+korunuyor; bu bilinçli ve süreli bir duplikasyondur, parity testleriyle
+korunmaktadır.
