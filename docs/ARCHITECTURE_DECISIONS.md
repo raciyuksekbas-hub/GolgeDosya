@@ -120,3 +120,35 @@ artamaz, azalmalıdır. Hedef sıfırdır ve final consolidation'ın çıkış
 kapısıdır: taze klon → kur → derle → test, dört bağımsız depo olmadan.
 
 Bağımsız DüzenEk dondurulmuş baseline olarak kalır.
+
+---
+
+## 4. Bilinen ve süreli riskler
+
+### Sürüm hattı bu makinede uçtan uca koşamıyor
+
+`scripts/release-gate.sh` (tam hâli, `--fast` değil) **1 kapıda başarısız**:
+"macOS paketleme zinciri". Sebep koddan bağımsızdır:
+
+```
+Kullanılabilir notarytool anahtarlık profili yok.
+  xcrun notarytool store-credentials belge --apple-id <id> --team-id <team>
+```
+
+İki yarıyı ayırmak gerekir:
+
+| Yarı | Durum |
+|---|---|
+| İmzalama | **çalışıyor** — anahtarlıkta Developer ID Application sertifikası var, hardened runtime doğrulandı (`flags=0x10000(runtime)`) |
+| Noterleme | **koşamıyor** — saklı notarytool profili yok |
+
+Bu, migration'ın açtığı bir kusur değildir; ama `--fast` ile koşulduğunda
+paketleme atlandığı için **daha önce görünmüyordu**. Tam kapı bu makinede
+bugüne kadar uçtan uca geçmemiştir ve dağıtım öncesi kapatılması gerekir.
+Profil saklamak Apple kimlik bilgisi ister; betikler parolayı hiç görmez.
+
+Kapı bilerek "atlandı" durumuna çevrilmedi: fail-closed bir kapıda gerçek bir
+boşluğu atlamaya çevirmek, boşluğu gizlemek olur.
+
+### `sandbox-exec` kullanımdan kalkmış
+Bkz. §2. Bugün çalışıyor, ölçüldü; yerine geçecek mimari ayrı iştir.
