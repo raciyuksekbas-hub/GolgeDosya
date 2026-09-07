@@ -1,0 +1,214 @@
+/**
+ * Düzenle — PDF çalışma alanı.
+ *
+ * Bağımsız DüzenEk'in `src/components/PdfToolsWorkspace.tsx` dosyasından
+ * taşındı. Yerleşim, araç listesi, seçim/sıralama/döndürme davranışı, önizleme
+ * kuyruğu ve durum metinleri DEĞİŞTİRİLMEDİ. Bu bir migration'dır; arayüz
+ * tasarımı bilinçli olarak ertelenmiştir.
+ *
+ * Yapılan tek uyarlama, kabuğa bağlanmak için gerekli olan asgari şeydir:
+ *   1. Komut adları `duzenek_` önekli (birleşik binary'de dört modülün
+ *      komutları tek isim uzayını paylaşıyor).
+ *   2. `paths` özelliği: kabuk belgeyi kendi belge yüzeyinde açtırıyor, bu
+ *      bileşen açılışta o yolları tarıyor. Kendi "Belge seç" düğmesi duruyor.
+ *   3. İçe aktarma yolları ve kapsayıcı sınıf (`pdf-root`) — stiller kabuğun
+ *      geri kalanına sızmasın diye.
+ */
+import { rotatePages, previewGeometry, type PreviewMode } from './pdfWorkspaceState';
+import { copyDestination } from './copyDestination';
+import React, { useState, useEffect, useRef } from 'react';
+import { open } from '@tauri-apps/plugin-dialog';
+import { invoke } from '@tauri-apps/api/core';
+import { ScanBatchResult, SourceFile } from './types';
+import './pdf.css';
+const tools = {
+    merge: ['Birleştir', 'Birden fazla PDF’yi seçtiğiniz sırayla tek dosyada birleştirir.'],
+    select: ['Seçili sayfalar → yeni PDF', 'İşaretlediğiniz sayfalardan yeni bir PDF kopyası oluşturur.'],
+    reorder: ['Sayfa sırasını değiştir', 'Sayfaları görsel olarak yeniden sıralayıp yeni bir kopya oluşturur.'],
+    delete: ['Sayfa sil', 'İşaretlediğiniz sayfaları çıkararak yeni bir PDF oluşturur.'],
+    rotate: ['Döndür', 'İşaretlediğiniz sayfaları 90° adımlarla döndürür.'],
+    compress: ['Sıkıştır', 'Kalite kontrolünü geçen ve en az %3 küçülen PDF kopyasını kaydeder.'],
+    images: ['Görseller → PDF', 'Bir veya daha fazla görselden PDF oluşturur.'],
+    crop: ['Kırp', 'Sayfanın görünür alanını daraltarak yeni kopya üretir; içerik silinmez.'],
+    watermark: ['Filigran', 'Yeni kopyaya bir metin işareti ekler.'],
+    number: ['Sayfa numarası', 'Yeni kopyaya sıralı sayfa numarası ekler.'],
+    raster: ['PDF → PNG/JPG', 'PDF sayfalarını ayrı görsel dosyalara dönüştürür.'],
+};
+type Kind = keyof typeof tools;
+type Page = {
+    source: SourceFile;
+    page: number;
+    key: string;
+};
+// Bound native render requests; thumbnails render only when near the viewport.
+let queue: Promise<unknown> = Promise.resolve();
+function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
+    item: Page; large?: boolean; rotation?: number; mode?: PreviewMode;
+}) {
+    const [bitmap, setBitmap] = useState<{url: string; width: number; height: number} | null>(null);
+    const [error, setError] = useState('');
+    const deferredUrls = useRef(new Set<string>()).current;
+    const [viewport, setViewport] = useState({width: 100, height: 130});
+    const ref = useRef<HTMLDivElement>(null);
+    const geometry = bitmap ? previewGeometry(bitmap.width, bitmap.height, rotation, viewport.width, viewport.height, large ? mode : 'fit-page') : null;
+    const dpi = large ? Math.min(300, Math.max(96, Math.ceil(96 * (geometry?.scale || 1) * (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1)))) : 40;
+    useEffect(() => {
+        const target = large ? ref.current?.parentElement : ref.current;
+        if (!target) return;
+        const observer = new ResizeObserver(() => setViewport({width: target.clientWidth, height: target.clientHeight}));
+        observer.observe(target);
+        setViewport({width: target.clientWidth, height: target.clientHeight});
+        return () => observer.disconnect();
+    }, [large]);
+    useEffect(() => {
+        let alive = true, started = false;
+        const urls: string[] = [];
+        const load = () => {
+            if (started) return;
+            started = true;
+            queue = queue.catch(() => {}).then(async () => {
+                if (!alive) return;
+                try {
+                    // Rotation is visual and immediate; both views share the same unrotated bitmap geometry.
+                    const bytes = await invoke<number[]>('duzenek_preview_pdf_page', {path: item.source.path, page: item.page, dpi, rotation: 0});
+                    if (!alive) return;
+                    const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], {type: 'image/png'}));
+                    urls.push(url);
+                    const img = new Image(); img.src = url; await img.decode();
+                    if (alive) { setBitmap(previous => ({url, width: previous?.width || img.naturalWidth * 96 / dpi, height: previous?.height || img.naturalHeight * 96 / dpi})); setError(''); }
+                } catch (e) { if (alive) setError(String(e)); }
+            });
+        };
+        const observer = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) load(); }, {rootMargin: '100px'});
+        if (ref.current) observer.observe(ref.current);
+        return () => { alive = false; observer.disconnect(); /* URL remains visible while a sharper bitmap loads. */ urls.forEach(url => deferredUrls.add(url)); };
+    }, [item.key, dpi]);
+    useEffect(() => () => { deferredUrls.forEach(url => URL.revokeObjectURL(url)); deferredUrls.clear(); }, []);
+    return <div ref={ref} className={large ? 'pdf-preview-stage' : 'pdf-thumbnail-stage'} style={large && geometry ? {width: Math.max(viewport.width, geometry.width + 16), minHeight: Math.max(viewport.height, geometry.height + 16)} : undefined}>
+        {bitmap && geometry ? <div className="pdf-page-surface" style={{width: geometry.width, height: geometry.height}}><img src={bitmap.url} alt={`${item.source.file_name}, sayfa ${item.page}`} style={{width: geometry.imageWidth, height: geometry.imageHeight, transform: `translate(-50%, -50%) rotate(${rotation}deg)`}}/></div> : <p role="status">{error || 'Önizleme…'}</p>}
+        {bitmap && error && <p role="status">{error}</p>}
+    </div>;
+}
+export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPaths }) => {
+    const [kind, setKind] = useState<Kind>('merge'), [sources, setSources] = useState<SourceFile[]>([]), [order, setOrder] = useState<Page[]>([]), [selected, setSelected] = useState<string[]>([]), [current, setCurrent] = useState(''), [zoom, setZoom] = useState<PreviewMode>('fit-page');
+    const [rotations, setRotations] = useState<Record<string, number>>({});
+    const [margin, setMargin] = useState(10), [text, setText] = useState('KOPYA'), [start, setStart] = useState(1), [level, setLevel] = useState('balanced_compression'), [approved, setApproved] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
+    const build = (list: SourceFile[]) => { setRotations({}); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
+    // Tarama gövdesi, kendi seçicisi ile kabuğun açtığı belgeler arasında ortak.
+    const load = async (paths: string[]) => { try {
+        if (!paths.length)
+            return;
+        setBusy(true);
+        setStatus('Belgeler inceleniyor…');
+        const result = await invoke<ScanBatchResult>('duzenek_scan_source_files', { paths });
+        if (result.errors.length)
+            throw new Error(result.errors.map(e => e.reason).join('\n'));
+        setSources(result.sources);
+        build(result.sources);
+        setApproved(false);
+        setStatus('Belgeler açıldı.');
+    }
+    catch (e) {
+        setStatus('Belge açılamadı: ' + String(e));
+    }
+    finally {
+        setBusy(false);
+    } };
+    const choose = async () => {
+        const paths = await open({ multiple: kind === 'merge' || kind === 'images', filters: [{ name: kind === 'images' ? 'Görseller' : 'PDF', extensions: kind === 'images' ? ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'heic'] : ['pdf'] }] }).catch(() => null);
+        if (!paths)
+            return;
+        await load(Array.isArray(paths) ? paths : [paths]);
+    };
+    // Kabuk belgeyi belge yüzeyinde açtırdı; aynı yolları burada tara.
+    const opened = initialPaths?.join('\u0000') ?? '';
+    useEffect(() => { if (opened) void load(opened.split('\u0000')); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [opened]);
+    const shiftPage = (index: number, delta: number) => { const next = [...order]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; setOrder(next); };
+    const moveSource = (index: number) => { const next = [...sources]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; setSources(next); build(next); };
+    const toggle = (key: string) => setSelected(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
+    const selectedPages = order.filter(p => selected.includes(p.key)).map(p => p.page);
+    const active = order.find(p => p.key === current) || order[0];
+    const outputCount = kind === 'select' ? selected.length : kind === 'delete' ? order.length - selected.length : order.length;
+    const run = async (folderOnly = false) => {
+        try {
+            const operation: Record<string, unknown> = { kind };
+            if (['select', 'delete'].includes(kind))
+                operation.pages = selectedPages;
+            if (kind === 'reorder')
+                operation.pages = order.map(p => p.page);
+            if (kind === 'rotate') {
+                operation.kind = 'rotate_pages';
+                operation.rotations = order.filter(p => rotations[p.key]).map(p => ({ page: p.page, degrees: rotations[p.key] }));
+            }
+            if (kind === 'crop')
+                operation.margin_pt = margin * 72 / 25.4;
+            if (kind === 'compress')
+                operation.level = level;
+            if (kind === 'watermark')
+                operation.text = text;
+            if (kind === 'number')
+                operation.start = start;
+            if (kind === 'raster') {
+                const outputDir = await open({ directory: true });
+                if (typeof outputDir !== 'string')
+                    return;
+                setBusy(true);
+                setStatus('Görseller hazırlanıyor…');
+                const result = await invoke<string>('duzenek_pdf_to_images', { path: sources[0].path, outputDir, format: text === 'jpg' ? 'jpg' : 'png', dpi: 150, approved });
+                setStatus('Görsel paketi kaydedildi: ' + result);
+                return;
+            }
+            const outputPath = await copyDestination(`DuzenEk-${kind}`, folderOnly);
+            if (!outputPath)
+                return;
+            setBusy(true);
+            setStatus('PDF hazırlanıyor…');
+            const outcome = await invoke<{ status: 'published' | 'compressed' | 'no_benefit' | 'failed'; reason?: string; source_bytes?: number; body_bytes?: number; output_bytes?: number; candidate_bytes?: number }>('duzenek_run_pdf_tool', { paths: sources.map(s => s.path), operation, outputPath, approved });
+            if (outcome.status === 'failed') throw new Error(outcome.reason);
+            const metrics = `Sıkıştırılmış belge: ${((outcome.body_bytes || 0) / 1024).toFixed(1)} KB · Marka dahil: ${((outcome.output_bytes || outcome.candidate_bytes || 0) / 1024).toFixed(1)} KB`;
+            if (outcome.status === 'no_benefit') {
+                setStatus(`${((outcome.source_bytes || 0) / 1024).toFixed(1)} KB\nBu belge zaten yeterince optimize. Anlamlı bir küçülme sağlanamadı. Çıktı kaydedilmedi.\n${metrics}\nEn az %3 küçülme gerekir.`);
+                return;
+            }
+            // A receipt is derived from the published file, not just a resolved command promise.
+            const receipt = await invoke<ScanBatchResult>('duzenek_scan_source_files', { paths: [outputPath] });
+            if (receipt.errors.length || receipt.sources.length !== 1 || receipt.sources[0].size_bytes === 0)
+                throw new Error('Kaydedilen PDF yeniden doğrulanamadı.');
+            const size = receipt.sources[0].size_bytes, before = sources.reduce((n, s) => n + s.size_bytes, 0);
+            setStatus(`PDF kaydedildi ve yeniden açılarak doğrulandı: ${outputPath}\n${receipt.sources[0].page_count} sayfa · ${(size / 1024).toFixed(1)} KB` + (kind === 'compress' ? `\n${(before / 1024).toFixed(1)} KB → ${(size / 1024).toFixed(1)} KB · %${((1 - size / before) * 100).toFixed(1)} küçültüldü.\n${metrics}` : ''));
+        }
+        catch (e) {
+            setStatus((kind === 'compress' ? 'Sıkıştırma tamamlanamadı.\n' : 'İşlem tamamlanamadı: ') + String(e));
+        }
+        finally {
+            setBusy(false);
+        }
+    };
+    const pageSelection = ['select', 'delete', 'rotate'].includes(kind);
+    const cannotSave = busy || !sources.length || (sources.some(s => s.is_signed) && !approved) ||
+        (['select', 'delete'].includes(kind) && !selected.length) || outputCount === 0 || (kind === 'rotate' && !Object.values(rotations).some(Boolean));
+    return <section className="pdf-root utility-workspace pdf-tools" aria-busy={busy}><h2>PDF Araçları</h2><p>Sayfaları görerek yeni bir kopya oluşturun. Kaynak belgeleriniz korunur.</p>
+ <div className="pdf-workspace-layout"><aside className="pdf-controls" aria-label="PDF işlem kontrolleri"><div className="tool-grid">{Object.entries(tools).map(([key, [label, description]]) => <button key={key} className={`btn ${kind === key ? 'btn-primary' : ''}`} title={description} aria-pressed={kind === key} disabled={busy} onClick={() => { setKind(key as Kind); const kept = key === 'images' || kind === 'images' ? [] : (key === 'merge' ? sources : sources.slice(0, 1)); setSources(kept); build(kept); setStatus(''); setApproved(false); }}>{label}</button>)}</div>
+ <div className="card"><h3>{tools[kind][0]}</h3><p>{tools[kind][1]}</p><button className="btn" onClick={choose} disabled={busy}>Belge seç</button>
+ {sources.length > 0 && <ol className="file-list">{sources.map((s, i) => <li key={s.path}>{i + 1}. {s.file_name} · {s.page_count} sayfa {sources.length > 1 && <button className="btn btn-sm" disabled={busy || i === 0} aria-label={`${i + 1}. belgeyi yukarı taşı`} onClick={() => moveSource(i)}>↑</button>}</li>)}</ol>}
+ {kind === 'rotate' && <div className="rotation-actions"><button className="btn" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, -90))}>↶ Sola 90°</button><button className="btn" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, 90))}>↷ Sağa 90°</button><p>İşaretli sayfalara uygulanır. Her tıklama mevcut dönüşe eklenir.</p></div>}
+ {kind === 'compress' && <label>Görsel kalitesi<select value={level} onChange={e => setLevel(e.target.value)}><option value="gentle_compression">Nazik — 2400 px / kalite 80</option><option value="balanced_compression">Dengeli — 2000 px / kalite 72</option><option value="aggressive_compression">Güçlü — 1600 px / kalite 65</option></select></label>}
+ {kind === 'crop' && <label>Her kenardan kırpılacak mesafe (mm)<input type="number" min={0} value={margin} onChange={e => setMargin(Number(e.target.value))}/></label>}
+ {kind === 'watermark' && <label>Filigran (temel Latin karakterleri, en fazla 60)<input maxLength={60} value={text} onChange={e => setText(e.target.value)}/></label>}
+ {kind === 'raster' && <label>Görsel biçimi (150 DPI)<select value={text === 'jpg' ? 'jpg' : 'png'} onChange={e => setText(e.target.value)}><option value="png">PNG</option><option value="jpg">JPG</option></select></label>}
+ {kind === 'number' && <label>İlk sayfa numarası<input type="number" min={1} value={start} onChange={e => setStart(Number(e.target.value))}/></label>}
+ {order.length > 0 && <div className="selection-controls"><p>{order.length} kaynak sayfası · {selected.length} işaretli · Çıktı: {outputCount} sayfa</p>{pageSelection && <><button className="btn btn-sm" disabled={busy} onClick={() => setSelected(order.map(p => p.key))}>Tümünü işaretle</button><button className="btn btn-sm" disabled={busy} onClick={() => setSelected([])}>Seçimi temizle</button></>}</div>}
+
+ {sources.some(s => s.is_signed) && <label className="approval"><input type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)}/>İmza işareti bulundu. Türetilmiş PDF kaynak elektronik imzanın doğrulanabilirliğini taşımaz; onaylıyorum.</label>}
+ <button className="btn btn-primary" disabled={cannotSave} onClick={() => run()}>{busy ? 'PDF hazırlanıyor…' : kind === 'raster' ? 'Görsel paketi kaydet' : 'Yeni PDF kaydet'}</button>
+ {kind !== 'raster' && <button className="btn" style={{ marginLeft: 8 }} disabled={cannotSave} onClick={() => run(true)}>Klasör seçerek kaydet</button>}
+ <p className="preview-note">Klasör seçerek kaydet, yeni kopyaya otomatik ve benzersiz bir dosya adı verir.</p>
+ </div><p role="status" aria-live="polite" className="operation-status">{status}</p></aside><aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">{order.length > 0 && kind !== 'images' ? <>
+ <div className="preview-toolbar"><label>Yakınlaştır<select value={zoom} onChange={e => setZoom(e.target.value.startsWith('fit-') ? e.target.value as PreviewMode : Number(e.target.value))}><option value="fit-page">Sayfaya sığdır</option><option value="fit-width">Genişliğe sığdır</option>{[75, 100, 125, 150, 200].map(z => <option key={z} value={z}>{z}%</option>)}</select></label></div>
+ <div className="pdf-workbench"><aside className="thumbnail-list" aria-label="Sayfa önizlemeleri">{order.map((item, index) => <div key={item.key} className={`thumbnail ${item.key === current ? 'current' : ''} ${selected.includes(item.key) ? 'selected' : ''} ${kind === 'delete' && selected.includes(item.key) ? 'removed' : ''}`}>
+ <button className="thumbnail-image-button" aria-label={`${item.source.file_name} sayfa ${item.page} görüntüle`} onClick={() => setCurrent(item.key)}><Preview item={item} rotation={rotations[item.key] || 0}/></button>
+ <span>{index + 1}. çıktı sırası · Kaynak s. {item.page}</span>{pageSelection && <label><input type="checkbox" checked={selected.includes(item.key)} onChange={() => toggle(item.key)}/>{kind === 'delete' ? 'Çıkar' : kind === 'rotate' ? 'Döndür' : 'Dahil et'}</label>}
+ {kind === 'reorder' && <div><button className="btn btn-sm" aria-label={`${item.page}. sayfayı yukarı taşı`} disabled={index === 0 || busy} onClick={() => shiftPage(index, -1)}>↑</button><button className="btn btn-sm" aria-label={`${item.page}. sayfayı aşağı taşı`} disabled={index === order.length - 1 || busy} onClick={() => shiftPage(index, 1)}>↓</button></div>}
+ </div>)}</aside><div className="pdf-canvas"><p>{active?.source.file_name} · Kaynak sayfa {active?.page} / {active?.source.page_count}{kind === 'delete' && selected.includes(active?.key) ? ' — Çıktıdan çıkarılacak' : ''}{kind === 'rotate' ? ` · Dönüş: ${rotations[active?.key] || 0}°` : ''}{selected.includes(active?.key) ? ' · İşaretli' : ''}</p><div className="pdf-page-viewport" tabIndex={0} role="region" aria-label="Kaydırılabilir PDF sayfası">{active && <Preview key={active.key} item={active} large mode={zoom} rotation={rotations[active.key] || 0}/>}</div></div></div>
+ <p className="preview-note">Kaynak sayfanın önizlemesi. Seçimler ve sıra yukarıdaki çıktı özetine uygulanır. Yeni PDF’nin her sayfasına içerik dışında sağ alt logo payı eklenir. Açıklama/form görünümleri bu önizlemede eksik olabilir; son kopyayı ayrıca inceleyin.</p></> : <div className="preview-empty"><h3>Belge önizlemesi</h3><p>PDF seçtiğinizde sayfaları burada göreceksiniz.</p></div>}</aside></div></section>;
+};

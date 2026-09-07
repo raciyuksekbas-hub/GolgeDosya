@@ -9,6 +9,7 @@ import { DocumentSurface } from "./features/DocumentSurface";
 import { ConvertWorkspace } from "./modules/tavzih/ConvertWorkspace";
 import { ReviewWorkspace } from "./modules/ikincigoz/ReviewWorkspace";
 import { CompareWorkspace } from "./modules/degisikis/CompareWorkspace";
+import { PdfWorkspace } from "./modules/duzenek/PdfWorkspace";
 
 /** Bölüm başlıkları. Kullanıcı eylem adını görür, ürün adını değil. */
 const HEADINGS: Record<FeatureState["key"], { title: string; subtitle: string }> = {
@@ -125,6 +126,8 @@ export function App() {
             <ReviewWorkspace path={documents[0]} />
           ) : documents.length >= 2 && active.key === "degisikis" ? (
             <CompareWorkspace paths={documents} />
+          ) : documents.length > 0 && active.key === "duzenek" ? (
+            <PdfWorkspace paths={documents} />
           ) : (
             <DocumentSurface
               feature={active}

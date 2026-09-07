@@ -1,0 +1,128 @@
+/*
+ * Düzenle — PDF çalışma alanının stilleri.
+ *
+ * Bağımsız DüzenEk'in `src/styles.css` dosyasından alındı. Ölçüler, ızgara
+ * yerleşimi, küçük resim şeridi, önizleme sahnesi ve döndürme yüzeyi
+ * DEĞİŞTİRİLMEDİ — bunlar çalıştığı kanıtlanmış görsel davranıştır ve
+ * migration sırasında yeniden tasarlanmaz.
+ *
+ * İki uyarlama yapıldı, ikisi de kabuğa bağlanmak için gerekli asgari şey:
+ *   1. Her seçici `.pdf-root` altına alındı; palet ve yerleşim kuralları
+ *      kabuğun geri kalanına sızmıyor.
+ *   2. DüzenEk'in değişken adları kabuğun token'larına bağlandı. Bağımsız
+ *      uygulama kendi paletini `:root` üzerinde tanımlıyordu; birleşik kabuk
+ *      kullanıcının açık/koyu ve yüksek kontrast tercihini izliyor, bu bölüm
+ *      de izlemeli.
+ *
+ * Not: `.page-image` kuralları birebir korundu. Bu bileşen o sınıfı çizmiyor
+ * (önizleme `.pdf-thumbnail-stage` / `.pdf-preview-stage` kullanıyor), yani
+ * kurallar bağımsız uygulamada da etkisizdi. Davranış farkı doğmasın diye
+ * silinmedi.
+ */
+
+.pdf-root {
+  /* -- DüzenEk değişken adları → kabuk token'ları ------------------------- */
+  --bg-card: var(--bg-content);
+  --bg-card-subtle: var(--bg-sunken);
+  --bg-app: var(--bg-window);
+  --text-primary: var(--text);
+  --border-color: var(--line-strong);
+  --border-light: var(--line);
+  --error: var(--danger);
+  /* Kabuk düz yüzeyler kullanıyor; gölge token'ı yok. */
+  --shadow-sm: none;
+}
+
+/* -- utility-workspace tabanı ------------------------------------------- */
+.pdf-root { max-width: 880px; margin: auto; }
+.pdf-root > p { color: var(--text-secondary); margin: 8px 0 24px; }
+.pdf-root h3 { margin-bottom: 20px; }
+.pdf-root .tool-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 20px 0; }
+.pdf-root .tool-grid .btn { white-space: normal; min-height: 44px; justify-content: center; text-align: center; }
+.pdf-root label { display: flex; gap: 12px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
+.pdf-root input:not([type=checkbox]),
+.pdf-root select { padding: 8px; min-height: 36px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 6px; }
+.pdf-root .file-list { padding-left: 24px; margin: 16px 0; }
+.pdf-root .file-list li { padding: 8px 0; }
+.pdf-root .approval { font-size: 12px; line-height: 1.5; }
+.pdf-root .approval input { flex-shrink: 0; }
+.pdf-root .operation-status { overflow-wrap: anywhere; user-select: text; }
+
+/* -- kart ve küçük düğme (kabukta karşılığı yok) ------------------------- */
+.pdf-root .card { background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 18px; margin-bottom: 16px; }
+.pdf-root .btn-sm { padding: 4px 8px; font-size: 11px; }
+
+/* -- PDF çalışma tezgâhı ------------------------------------------------- */
+.pdf-root.pdf-tools { max-width: 1300px; }
+.pdf-root .pdf-workbench { display: grid; grid-template-columns: 180px minmax(0, 1fr); height: 600px; min-height: 360px; border: 1px solid var(--border-color); margin: 16px 0; background: var(--bg-card-subtle); }
+.pdf-root .thumbnail-list { overflow: auto; padding: 10px; border-right: 1px solid var(--border-color); }
+.pdf-root .thumbnail { padding: 8px; margin-bottom: 12px; border: 2px solid transparent; border-radius: 8px; font-size: 11px; background: var(--bg-card); }
+.pdf-root .thumbnail.current { border-color: var(--accent); }
+.pdf-root .thumbnail.selected { box-shadow: inset 0 0 0 2px var(--accent); }
+.pdf-root .thumbnail.removed { opacity: .6; border-color: var(--error); }
+.pdf-root .thumbnail.removed .page-image { filter: grayscale(1); }
+.pdf-root .thumbnail-image-button { width: 100%; background: transparent; border: 0; cursor: pointer; }
+.pdf-root .page-image { min-height: 140px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #fff; color: #202C30; aspect-ratio: 0.72; }
+.pdf-root .page-image img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.pdf-root .main-page-image { min-height: 450px; }
+.pdf-root .pdf-canvas { overflow: auto; padding: 20px; background: var(--bg-app); }
+.pdf-root .pdf-canvas > p { margin-bottom: 15px; }
+.pdf-root .preview-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.pdf-root .preview-toolbar label { margin: 0; }
+.pdf-root .preview-note { color: var(--text-secondary); font-size: 12px; margin: 12px 0; }
+.pdf-root .operation-status { white-space: pre-wrap; padding: 12px; }
+.pdf-root .card > p { margin: 12px 0; }
+
+/* -- iki sütunlu yerleşim ------------------------------------------------ */
+.pdf-root.pdf-tools { max-width: none; width: 100%; min-width: 0; }
+.pdf-root .pdf-workspace-layout { display: grid; grid-template-columns: minmax(260px, 310px) minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 18px; }
+.pdf-root .pdf-controls,
+.pdf-root .pdf-preview-panel { min-width: 0; overflow-wrap: anywhere; }
+.pdf-root .pdf-controls .tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 14px; }
+.pdf-root .pdf-controls .tool-grid .btn { padding: 9px 8px; font-size: 12px; white-space: normal; min-width: 0; }
+.pdf-root .pdf-controls .card { padding: 16px; }
+.pdf-root .pdf-controls .file-list { padding-left: 18px; }
+.pdf-root .pdf-controls select { max-width: 100%; }
+.pdf-root .pdf-controls .btn { white-space: normal; }
+.pdf-root .pdf-controls .operation-status { padding: 10px 0; font-size: 13px; }
+.pdf-root .rotation-actions,
+.pdf-root .selection-controls { margin: 16px 0; }
+.pdf-root .rotation-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pdf-root .rotation-actions p { font-size: 12px; color: var(--text-secondary); }
+.pdf-root .selection-controls .btn { margin: 4px 4px 4px 0; }
+.pdf-root .pdf-preview-panel { position: sticky; top: 0; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px; }
+.pdf-root .pdf-preview-panel .preview-toolbar { margin-top: 0; justify-content: flex-end; }
+.pdf-root .pdf-preview-panel .pdf-workbench { grid-template-columns: 116px minmax(0, 1fr); height: max(380px, calc(100vh - 315px)); margin: 10px 0; }
+.pdf-root .pdf-preview-panel .thumbnail-list { padding: 6px; }
+.pdf-root .pdf-preview-panel .thumbnail { padding: 5px; }
+.pdf-root .pdf-preview-panel .page-image { min-height: 90px; }
+.pdf-root .pdf-preview-panel .main-page-image { min-height: 280px; aspect-ratio: auto; }
+.pdf-root .pdf-preview-panel .pdf-canvas { padding: 12px; }
+.pdf-root .preview-empty { min-height: 420px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--text-secondary); text-align: center; }
+.pdf-root .pdf-controls { overflow-wrap: anywhere; }
+
+/* -- kaydırılabilir sayfa yüzeyi ---------------------------------------- */
+.pdf-root .pdf-preview-panel .pdf-canvas { display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; }
+.pdf-root .pdf-canvas > p { flex: none; overflow-wrap: anywhere; }
+.pdf-root .pdf-page-viewport { flex: 1; min-height: 0; min-width: 0; overflow: auto; }
+.pdf-root .pdf-preview-stage { box-sizing: border-box; padding: 8px; display: flex; align-items: center; justify-content: center; }
+.pdf-root .pdf-thumbnail-stage { height: 130px; width: 100%; display: flex; align-items: center; justify-content: center; }
+.pdf-root .pdf-page-surface { position: relative; flex: none; background: white; }
+.pdf-root .pdf-page-surface img { position: absolute; left: 50%; top: 50%; max-width: none; max-height: none; display: block; }
+
+@media (max-width: 950px) {
+  .pdf-root .pdf-workbench { grid-template-columns: 145px minmax(0, 1fr); height: 520px; }
+  .pdf-root .pdf-canvas { padding: 12px; }
+  .pdf-root .tool-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 800px) {
+  .pdf-root .pdf-workspace-layout { grid-template-columns: minmax(0, 1fr); }
+  .pdf-root .pdf-preview-panel { position: static; }
+}
+@media (forced-colors: active) {
+  .pdf-root button,
+  .pdf-root input,
+  .pdf-root select,
+  .pdf-root .card { border: 1px solid CanvasText; }
+  .pdf-root .btn-primary { outline: 2px solid Highlight; }
+}
