@@ -4,3 +4,4 @@ dist/
 .DS_Store
 *.log
 apps/belge-shell/src-tauri/gen/
+__pycache__/

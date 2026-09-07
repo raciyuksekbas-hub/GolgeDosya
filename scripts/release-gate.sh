@@ -64,10 +64,17 @@ gate "pdf-core → document-core yönü" bash scripts/check-architecture.sh
 # tamamı kapalıyken derlenmiyorsa feature bazlı geri alma sözü tutulamaz.
 gate "tam geri alma derlemesi (dört modül kapalı)" \
   cargo check -p belge-shell --no-default-features --features custom-protocol
+# Taşınan komutların gövdeleri bağımsız uygulamadakiyle aynı mı? Bağımsız
+# komutlar `pub` değil, baseline dondurulmuş; iki katman yan yana çağrılamıyor.
+# Bu yüzden eşitlik kaynak düzeyinde kanıtlanır, davranış ise
+# tests/duzenek_parity.rs ile ölçülür.
+gate "duzenek komut gövdesi eşitliği" python3 scripts/check-command-parity.py
 echo
 
 b "3. Testler"
 gate "cargo test --workspace --locked" cargo test --workspace --locked
+gate "duzenek standalone↔birleşik davranış matrisi" \
+  cargo test -p belge-shell --test duzenek_parity
 echo
 
 b "4. Ağ bağımsızlığı"
