@@ -117,7 +117,11 @@ for pj in glob.glob('node_modules/**/package.json', recursive=True):
     l = d.get('license') or 'BİLİNMEYEN'
     if isinstance(l, dict): l = l.get('type', 'BİLİNMEYEN')
     u = str(l).upper()
-    if ('GPL' in u and 'LGPL' not in u) or u == 'BİLİNMEYEN': bad.append(f"{d['name']}:{l}")
+    # İkili lisans ("MIT OR GPL-3.0-or-later") kabul edilebilir: izin veren
+    # seçenek seçilebilir. Rust kapısı bu kuralı zaten uyguluyordu; npm kapısı
+    # uygulamıyordu ve mammoth -> jszip bunu ortaya çıkardı.
+    if ('GPL' in u and 'LGPL' not in u and ' OR ' not in u) or u == 'BİLİNMEYEN':
+        bad.append(f"{d['name']}:{l}")
 print(' '.join(sorted(set(bad))))
 PY
 )
