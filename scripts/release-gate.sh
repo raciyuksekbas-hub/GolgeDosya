@@ -35,6 +35,12 @@ gate() {
   fi
 }
 
+# Kurulu kullanıcı verisinin parmak izi, hiçbir kapı koşmadan önce. Aşağıdaki son
+# kapı bunu yeniden okur ve tek bayt değiştiyse başarısız olur. İki sözleşmeyi
+# birden korur: test paketi kurulu ayarlara dokunamaz, migration eski dizinlere
+# yazamaz. Tavzih'te birincisinin eksikliği gerçek veri kaybettirdi.
+USER_DATA_BEFORE="$(bash "$ROOT/scripts/user-data-fingerprint.sh")"
+
 echo
 b "YÜKSEKBAŞ BELGE SÜRÜM KAPISI"
 echo "  $(date '+%Y-%m-%d %H:%M:%S')  ·  $ROOT"
@@ -162,6 +168,19 @@ else
   fi
   echo
 fi
+
+b "Kullanıcı verisi"
+# Kasten en sonda: yalnız test kapılarını değil, koşunun tamamını gözlemeli.
+USER_DATA_AFTER="$(bash "$ROOT/scripts/user-data-fingerprint.sh")"
+if [ "$USER_DATA_BEFORE" = "$USER_DATA_AFTER" ]; then
+  ok "kurulu kullanıcı verisi değişmedi (birleşik + dört eski dizin)"
+else
+  bad "kurulu kullanıcı verisi bu koşu sırasında DEĞİŞTİ"
+  diff <(printf '%s\n' "$USER_DATA_BEFORE") <(printf '%s\n' "$USER_DATA_AFTER") \
+    | sed 's/^/      /' | head -20
+  echo "      (bir standalone uygulama açıksa bu meşru olabilir; farkı okuyun)"
+fi
+echo
 
 b "SONUÇ"
 printf "  geçen: %d   başarısız: %d   atlanan: %d\n\n" "$PASS" "$FAIL" "$SKIP"

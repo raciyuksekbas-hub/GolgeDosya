@@ -40,14 +40,71 @@ pub fn config_root() -> PathBuf {
         .unwrap_or_else(|| home().join(".config"))
 }
 
+/// Uygulamanın gerçekten okuyup yazdığı yapılandırma kökü.
+///
+/// Sürüm derlemesinde platformun kendi kökü. Test derlemesinde ise sürece özel,
+/// geçici bir kök: test paketi kullanıcının kurulu ayarlarına **yapı gereği**
+/// erişemez. Bu bir üslup tercihi değil; Tavzih'te tam bu eksiklik yüzünden
+/// testler gerçek `preferences.json` dosyasını bozdu ve kullanıcının kabul
+/// ettiği kullanım koşulları kaydı silindi. Aynı kusur birleşik uygulamaya
+/// taşınmıyor.
+///
+/// `legacy_config_dir` ve `legacy_webkit_dir` de bu köke dayandığı için test
+/// paketi eski uygulamaların gerçek veri dizinlerini de göremez.
+#[cfg(not(test))]
+fn effective_config_root() -> PathBuf {
+    config_root()
+}
+
+#[cfg(test)]
+fn effective_config_root() -> PathBuf {
+    test_config_root()
+}
+
+/// Test süreci başına bir, test iş parçacığı başına bir geçici kök.
+///
+/// İş parçacığı başına: ayar deposu oku-değiştir-yaz döngüsüdür, tek dosyayı
+/// paylaşan testler birbiriyle yarışır. Tavzih'teki kusuru gizleyen de buydu.
+#[cfg(test)]
+fn test_config_root() -> PathBuf {
+    use std::cell::OnceCell;
+    use std::sync::OnceLock;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static BASE: OnceLock<PathBuf> = OnceLock::new();
+    let base = BASE.get_or_init(|| {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("belge-test-config-{}-{stamp}", std::process::id()))
+    });
+
+    thread_local! {
+        static DIR: OnceCell<PathBuf> = const { OnceCell::new() };
+    }
+    DIR.with(|cell| {
+        cell.get_or_init(|| {
+            let thread: String = format!("{:?}", std::thread::current().id())
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric())
+                .collect();
+            let dir = base.join(thread);
+            std::fs::create_dir_all(&dir).expect("test yapılandırma kökü oluşturulamadı");
+            dir
+        })
+        .clone()
+    })
+}
+
 /// Birleşik uygulamanın kendi yapılandırma dizini.
 pub fn app_config_dir() -> PathBuf {
-    config_root().join(APP_ID)
+    effective_config_root().join(APP_ID)
 }
 
 /// Eski bir uygulamanın yapılandırma dizini. Bu dizinler **hiçbir zaman silinmez**.
 pub fn legacy_config_dir(identifier: &str) -> PathBuf {
-    config_root().join(identifier)
+    effective_config_root().join(identifier)
 }
 
 /// Bir Tauri/WKWebView uygulamasının localStorage kökü (yalnız macOS).
@@ -58,12 +115,24 @@ pub fn legacy_config_dir(identifier: &str) -> PathBuf {
 /// (bkz. `legacy::duzenek_localstorage_status`).
 #[cfg(target_os = "macos")]
 pub fn legacy_webkit_dir(identifier: &str) -> PathBuf {
-    home().join("Library").join("WebKit").join(identifier)
+    webkit_root().join(identifier)
+}
+
+/// WebKit localStorage kökü. `Application Support` altında **değildir**, bu yüzden
+/// ayrı bir yönlendirme gerekir — testler burayı da görmemeli.
+#[cfg(all(target_os = "macos", not(test)))]
+fn webkit_root() -> PathBuf {
+    home().join("Library").join("WebKit")
+}
+
+#[cfg(all(target_os = "macos", test))]
+fn webkit_root() -> PathBuf {
+    test_config_root().join("WebKit")
 }
 
 #[cfg(not(target_os = "macos"))]
 pub fn legacy_webkit_dir(identifier: &str) -> PathBuf {
-    config_root().join(identifier).join("EBWebView")
+    effective_config_root().join(identifier).join("EBWebView")
 }
 
 #[cfg(test)]
@@ -72,8 +141,49 @@ mod tests {
 
     #[test]
     fn app_dir_sits_under_the_platform_config_root() {
-        assert!(app_config_dir().starts_with(config_root()));
-        assert!(app_config_dir().ends_with(APP_ID));
+        // Kurulu uygulamanın yeri: test derlemesinin yazdığı yer değil.
+        let installed = config_root().join(APP_ID);
+        assert!(installed.starts_with(config_root()));
+        assert!(installed.ends_with(APP_ID));
+        if cfg!(target_os = "macos") {
+            assert!(installed.to_string_lossy().contains("Application Support"));
+        }
+    }
+
+    /// Yalıtımın kendisi: varsayılmıyor, doğrulanıyor.
+    ///
+    /// Tavzih'te tam bu güvence yoktu; testler kullanıcının gerçek ayar dosyasını
+    /// yazdı ve kabul kaydını sildi. Bu test, aynı kusur birleşik uygulamaya
+    /// sızdığı anda başarısız olur.
+    #[test]
+    fn the_suite_cannot_reach_the_installed_data() {
+        let installed = config_root();
+        for dir in [
+            app_config_dir(),
+            legacy_config_dir(LEGACY_TAVZIH),
+            legacy_config_dir(LEGACY_IKINCIGOZ),
+            legacy_config_dir(LEGACY_DUZENEK),
+            legacy_config_dir(LEGACY_DEGISIKIS),
+            legacy_webkit_dir(LEGACY_DUZENEK),
+        ] {
+            assert!(
+                !dir.starts_with(&installed),
+                "{} kurulu veri kökünün altında",
+                dir.display()
+            );
+            assert!(
+                dir.starts_with(std::env::temp_dir()),
+                "{} geçici bir dizin değil",
+                dir.display()
+            );
+        }
+    }
+
+    /// Eski dizinler *okunur*, asla yazılmaz — ama test paketi onları hiç görmemeli.
+    #[test]
+    fn the_suite_cannot_read_the_real_legacy_directories() {
+        let real_tavzih = config_root().join(LEGACY_TAVZIH);
+        assert_ne!(legacy_config_dir(LEGACY_TAVZIH), real_tavzih);
     }
 
     #[test]
