@@ -3,6 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import * as api from "./api";
 import type { AnalysisResult, Finding, Fix, Severity } from "./types";
 import { announce } from "../../shared-ui/Announcer";
+import { Button, Section, Status } from "../../shared-ui/primitives";
 
 /**
  * Severity'nin metin karşılığı.
@@ -117,16 +118,16 @@ export function ReviewWorkspace({ path }: { path: string }) {
 
   if (busy) {
     return (
-      <div className="doc-surface">
-        <p className="notice" role="status">Belge inceleniyor…</p>
+      <div className="surface">
+        <Status tone="busy">Belge inceleniyor…</Status>
       </div>
     );
   }
 
   if (failure) {
     return (
-      <div className="doc-surface">
-        <p className="notice" data-tone="error" role="alert">{failure}</p>
+      <div className="surface">
+        <Status tone="error">{failure}</Status>
       </div>
     );
   }
@@ -134,27 +135,18 @@ export function ReviewWorkspace({ path }: { path: string }) {
   if (!result) return null;
 
   return (
-    <div className="doc-surface">
-      <p className="notice" role="status">
-        <strong style={{ fontWeight: 600 }}>{result.document.fileName}</strong>
-        {" · "}
-        {result.document.format} · {result.document.blockCount} paragraf ·{" "}
-        {result.document.wordCount} kelime
-        <br />
+    <div className="surface">
+      <p className="doc-meta" role="status">
+        {result.document.blockCount} paragraf · {result.document.wordCount} kelime
+        {" — "}
         {summary(result)}
         {result.profileName ? ` · ${result.profileName} profiline göre` : ""}
       </p>
 
       {result.findings.length === 0 ? (
-        <p className="notice">Bu belgede bulgu yok.</p>
+        <Status tone="success">Bu belgede bulgu yok.</Status>
       ) : (
-        <section aria-labelledby="bulgu-baslik">
-          <h2
-            id="bulgu-baslik"
-            style={{ fontSize: "0.86em", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-tertiary)", margin: "0 0 6px" }}
-          >
-            Bulgular
-          </h2>
+        <Section title="Bulgular" id="bulgu">
           <ul className="findings" role="list">
             {result.findings.map((f) => {
               const k = key(f);
@@ -208,11 +200,11 @@ export function ReviewWorkspace({ path }: { path: string }) {
               );
             })}
           </ul>
-        </section>
+        </Section>
       )}
 
       {result.truncatedRules.length > 0 ? (
-        <p className="notice">
+        <p className="doc-meta">
           {result.truncatedRules
             .map((t) => `${t.ruleId}: ${t.total} bulgunun ${t.shown} tanesi gösteriliyor`)
             .join(" · ")}
@@ -220,44 +212,30 @@ export function ReviewWorkspace({ path }: { path: string }) {
       ) : null}
 
       {fixable.length > 0 ? (
-        <section className="notice">
-          <div>
-            {selected.size} / {fixable.length} düzeltme seçildi.
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="btn"
+        <Section title="Düzeltmeler" id="duzeltme">
+          <p className="doc-meta">{selected.size} / {fixable.length} düzeltme seçildi.</p>
+          <div className="row">
+            <Button
               onClick={() => setSelected(new Set(fixable.map(key)))}
               disabled={selected.size === fixable.length}
             >
               Tümünü seç
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => setSelected(new Set())}
-              disabled={selected.size === 0}
-            >
+            </Button>
+            <Button onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
               Seçimi kaldır
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={applyChosen}
-              disabled={selected.size === 0}
-            >
+            </Button>
+            <Button variant="primary" onClick={applyChosen} disabled={selected.size === 0}>
               Kopyaya uygula…
-            </button>
+            </Button>
           </div>
-          <p style={{ margin: "8px 0 0", color: "var(--text-tertiary)" }}>
+          <p className="doc-meta">
             Düzeltmeler yeni bir kopyaya yazılır. Kaynak belgeniz değiştirilmez.
           </p>
-        </section>
+        </Section>
       ) : null}
 
       {written ? (
-        <p className="notice" role="status">{written}</p>
+        <Status tone="success">{written}</Status>
       ) : null}
     </div>
   );

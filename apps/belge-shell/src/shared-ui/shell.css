@@ -654,3 +654,60 @@ input[type="number"] {
 }
 .finding-fixnote { color: var(--text-muted); }
 .finding-nofix { margin: 0; color: var(--text-muted); }
+
+/* ==========================================================================
+   Kip yüzeylerinde ortaklaşan küçük parçalar
+   ========================================================================== */
+
+.row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.row-end { display: flex; gap: var(--space-2); justify-content: flex-end; }
+
+/* Belge hakkında ikincil bilgi — sayaçlar, özet, not. */
+.doc-meta {
+  max-width: var(--measure);
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+}
+
+.file-kind[data-tone="error"] { color: var(--danger); }
+
+/* Bir işin sonucu. Büyük yeşil kutu değil; ince çizgili sade bir satır. */
+.result {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.result-line { color: var(--text-primary); }
+.result[data-tone="error"] .result-line { color: var(--danger); }
+
+.warn-list {
+  max-width: var(--measure);
+  padding-left: var(--space-4);
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+}
+.warn-list strong { font-weight: 600; }
+
+.folder-path {
+  margin: 0 0 var(--space-2);
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+}
+
+/* Ayarlar bölümleri */
+.settings-group + .settings-group { margin-top: var(--space-5); }
+.settings-group > h3 {
+  margin: 0 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.settings-about {
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+}

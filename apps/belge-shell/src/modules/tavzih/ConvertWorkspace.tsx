@@ -4,6 +4,7 @@ import * as api from "./api";
 import type { BatchResult, ConversionResult, InspectOutcome, OutputFolder } from "./types";
 import { ConversionWarning, FirstUseAcceptance } from "./Consent";
 import { announce } from "../../shared-ui/Announcer";
+import { Button, Section, Status } from "../../shared-ui/primitives";
 
 type Phase = "idle" | "confirm" | "running" | "done";
 
@@ -93,57 +94,47 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
   const items = results(outcome);
 
   return (
-    <div className="doc-surface">
-      {failure ? (
-        <p className="notice" data-tone="error" role="alert">
-          {failure}
-        </p>
-      ) : null}
+    <div className="surface">
+      {failure ? <Status tone="error">{failure}</Status> : null}
 
       {usable.length > 0 ? (
-        <section aria-labelledby="secili-baslik">
-          <h2 id="secili-baslik" style={{ fontSize: "0.86em", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-tertiary)", margin: "0 0 6px" }}>
-            Dönüştürülecek
-          </h2>
-          <ul className="recents-list">
+        <Section title="Dönüştürülecek" id="secili">
+          <ul className="file-list">
             {selected.map((s) => (
               <li key={s.path}>
-                <div className="recent-item" style={{ cursor: "default" }}>
-                  <span className="recent-name">{s.info?.name ?? s.path.split("/").pop()}</span>
+                <div className="file-row">
+                  <span className="file-name">{s.info?.name ?? s.path.split("/").pop()}</span>
                   {s.info ? (
-                    <span className="recent-kind">
-                      {s.info.source_format} → {s.info.target_format} · {s.info.size_label}
+                    <span className="file-kind">
+                      {s.info.source_format} → {s.info.target_format}
                     </span>
                   ) : (
-                    <span className="recent-kind" style={{ color: "var(--danger)" }}>
+                    <span className="file-kind" data-tone="error">
                       {s.error?.message ?? "okunamadı"}
                     </span>
                   )}
+                  {s.info ? <span className="file-time">{s.info.size_label}</span> : null}
                 </div>
               </li>
             ))}
           </ul>
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-            <button
-              type="button"
-              className="btn btn-primary"
+          <div className="row-end">
+            <Button
+              variant="primary"
               disabled={phase === "running"}
               onClick={() => setPhase("confirm")}
             >
               {phase === "running" ? "Dönüştürülüyor…" : "Dönüştür"}
-            </button>
+            </Button>
           </div>
-        </section>
+        </Section>
       ) : null}
 
       {items.length > 0 ? (
-        <section aria-labelledby="sonuc-baslik">
-          <h2 id="sonuc-baslik" style={{ fontSize: "0.86em", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-tertiary)", margin: "0 0 6px" }}>
-            Sonuç
-          </h2>
+        <Section title="Sonuç" id="sonuc">
           {items.map((r) => (
-            <div key={r.source} className="notice" style={{ marginBottom: 8 }} data-tone={r.status === "failure" ? "error" : undefined}>
-              <div style={{ color: "var(--text)" }}>
+            <div key={r.source} className="result" data-tone={r.status === "failure" ? "error" : undefined}>
+              <div className="result-line">
                 {r.source_name} → {r.output_name ?? "—"}
               </div>
               {r.error ? <div>{r.error.message}</div> : null}
@@ -151,10 +142,10 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
                   motor kaynağı asla değiştirmez ve bunu hash'le kanıtlar. */}
               {r.source_unchanged ? <div>Kaynak belge değiştirilmedi.</div> : null}
               {r.warnings.length > 0 ? (
-                <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                <ul className="warn-list">
                   {r.warnings.map((w, i) => (
                     <li key={`${w.code}-${i}`}>
-                      <strong style={{ fontWeight: 500 }}>{SEVERITY_LABEL[w.severity] ?? w.severity}:</strong>{" "}
+                      <strong>{SEVERITY_LABEL[w.severity] ?? w.severity}:</strong>{" "}
                       {w.title}
                       {w.location ? ` (${w.location})` : ""}
                     </li>
@@ -163,30 +154,22 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
               ) : null}
             </div>
           ))}
-        </section>
+        </Section>
       ) : null}
 
       {folder ? (
-        <section className="notice">
-          <div>Çıktı klasörü: <span className="selectable">{folder.path}</span></div>
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button type="button" className="btn" onClick={chooseFolder}>
-              Değiştir…
-            </button>
-            <button type="button" className="btn" onClick={() => api.revealOutputFolder()}>
-              Klasörde Göster
-            </button>
+        <Section title="Çıktı klasörü" id="klasor">
+          <p className="folder-path selectable">{folder.path}</p>
+          <div className="row">
+            <Button onClick={chooseFolder}>Değiştir…</Button>
+            <Button onClick={() => api.revealOutputFolder()}>Klasörde Göster</Button>
             {!folder.is_default ? (
-              <button
-                type="button"
-                className="btn btn-quiet"
-                onClick={async () => setFolder(await api.setOutputFolder(null))}
-              >
+              <Button variant="quiet" onClick={async () => setFolder(await api.setOutputFolder(null))}>
                 Varsayılana dön
-              </button>
+              </Button>
             ) : null}
           </div>
-        </section>
+        </Section>
       ) : null}
 
       {phase === "confirm" ? (

@@ -9,6 +9,7 @@ import { ChangeRail } from "./ChangeRail";
 import { ChangeInspector } from "./ChangeInspector";
 import { useRowHeightSync } from "./useRowHeightSync";
 import { announce } from "../../shared-ui/Announcer";
+import { Status } from "../../shared-ui/primitives";
 import "./compare.css";
 
 function baseName(path: string): string {
@@ -121,16 +122,16 @@ export function CompareWorkspace({ paths }: { paths: string[] }) {
 
   if (busy) {
     return (
-      <div className="doc-surface">
-        <p className="notice" role="status">Belgeler karşılaştırılıyor…</p>
+      <div className="surface">
+        <Status tone="busy">Belgeler karşılaştırılıyor…</Status>
       </div>
     );
   }
 
   if (failure) {
     return (
-      <div className="doc-surface">
-        <p className="notice" data-tone="error" role="alert">{failure}</p>
+      <div className="surface">
+        <Status tone="error">{failure}</Status>
       </div>
     );
   }
