@@ -1,0 +1,7 @@
+{
+  "exact": true,
+  "findings": {
+    "SEC_SEQ_GAP": 1,
+    "SEC_SEQ_BACKTRACK": 1
+  }
+}

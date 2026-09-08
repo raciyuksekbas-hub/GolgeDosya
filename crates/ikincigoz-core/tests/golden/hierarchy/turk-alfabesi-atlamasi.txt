@@ -1,0 +1,10 @@
+A. BİRİNCİ BAŞLIK
+Bu bölümde birinci başlığa ilişkin açıklamalar yer almaktadır.
+B. İKİNCİ BAŞLIK
+Bu bölümde ikinci başlığa ilişkin açıklamalar yer almaktadır.
+C. ÜÇÜNCÜ BAŞLIK
+Bu bölümde üçüncü başlığa ilişkin açıklamalar yer almaktadır.
+D. DÖRDÜNCÜ BAŞLIK
+Bu bölümde dördüncü başlığa ilişkin açıklamalar yer almaktadır.
+Ş. BEŞİNCİ BAŞLIK
+Bu bölümde beşinci başlığa ilişkin açıklamalar yer almaktadır.

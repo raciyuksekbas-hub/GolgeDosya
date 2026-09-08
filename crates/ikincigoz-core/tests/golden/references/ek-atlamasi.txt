@@ -1,0 +1,4 @@
+Ek-1 Vekaletname örneği
+Ek-2 Sözleşme örneği
+Ek-4 Fatura örneği
+Dosyaya Ek-1, Ek-2 ve Ek-4 sunulmuş bulunmaktadır.

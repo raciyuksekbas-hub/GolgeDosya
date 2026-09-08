@@ -1,0 +1,169 @@
+use crate::error::{EklerError, Result};
+use lopdf::Document as LopdfDoc;
+
+#[derive(Debug, Clone)]
+pub struct TolerantLoadResult {
+    pub strategy: RepairStrategy,
+    pub document: LopdfDoc,
+    pub is_repaired: bool,
+    pub repair_note: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepairStrategy {
+    Strict,
+    XrefNormalization,
+}
+
+/// Çok katmanlı toleranslı PDF yükleyici:
+/// Tier 1: Standart katı parse (lopdf::Document::load_mem)
+/// Tier 2: Bellek içi normalizasyon ve yapısal onarım:
+///   - Xref satır sonu normalizasyonu (19-baytlık veya boşluksuz `f\n` / `n\n` girişleri 20-bayt standardına getirme)
+///   - Dosya sonu (%%EOF) sonrasındaki artık/çöp baytların temizlenmesi
+///   - startxref offset taraması ve düzeltilmesi
+///
+/// Unknown damage is rejected; object-scanning reconstruction is intentionally disabled.
+pub fn load_pdf_tolerant(bytes: &[u8], file_name: &str) -> Result<TolerantLoadResult> {
+    // Tier 1: Doğrudan ve müdahalesiz hızlı yükleme
+    if let Ok(doc) = LopdfDoc::load_mem(bytes) {
+        super::validate_document(&doc)?;
+        return Ok(TolerantLoadResult {
+            strategy: RepairStrategy::Strict,
+            document: doc,
+            is_repaired: false,
+            repair_note: None,
+        });
+    }
+
+    // Dosyada asgari PDF başlığı kontrolü
+    if !bytes.windows(5).any(|w| w == b"%PDF-") {
+        return Err(EklerError::InvalidPdf(format!(
+            "'{}' standart PDF yapısında okunamadı: Geçerli bir PDF başlığı (%PDF-) bulunamadı.",
+            file_name
+        )));
+    }
+
+    // Tier 2: Toleranslı normalizasyon ve onarım denemeleri
+    // Adım 2.1: Xref ve startxref normalizasyonu
+    if let Ok(normalized_bytes) = normalize_xref_and_startxref(bytes) {
+        if let Ok(doc) = LopdfDoc::load_mem(&normalized_bytes) {
+            super::validate_document(&doc)?;
+            return Ok(TolerantLoadResult {
+                strategy: RepairStrategy::XrefNormalization,
+                document: doc,
+                is_repaired: true,
+                repair_note: Some(
+                    "Standart dışı xref tablosu ve satır sonları normalize edildi.".to_string(),
+                ),
+            });
+        }
+    }
+
+    Err(EklerError::InvalidPdf(format!(
+        "'{}' standart PDF yapısında okunamadı. Dosya şifreli, eksik veya ağır hasarlı olabilir.",
+        file_name
+    )))
+}
+
+/// Xref tablosundaki satır sonlarını ve startxref konumunu standart 20-baytlık PDF biçimine normalize eder.
+fn normalize_xref_and_startxref(bytes: &[u8]) -> Result<Vec<u8>> {
+    // 1. Son %%EOF konumunu tespit et (trailing garbage kırpma)
+    let eof_pos = bytes
+        .windows(5)
+        .rposition(|w| w == b"%%EOF")
+        .ok_or_else(|| EklerError::InvalidPdf("%%EOF sonlandırıcısı bulunamadı".to_string()))?;
+    let content_to_eof = &bytes[..eof_pos + 5];
+
+    // 2. startxref anahtar kelimesini geriye doğru ara
+    let startxref_pos = content_to_eof
+        .windows(9)
+        .rposition(|w| w == b"startxref")
+        .ok_or_else(|| EklerError::InvalidPdf("startxref bulunamadı".to_string()))?;
+
+    // startxref sonrasındaki offset değerini oku
+    let startxref_str = String::from_utf8_lossy(&content_to_eof[startxref_pos + 9..eof_pos]);
+    let declared_offset: Option<usize> = startxref_str
+        .split_whitespace()
+        .next()
+        .and_then(|s| s.parse().ok());
+
+    // Gerçek 'xref' anahtar kelimesini bul (önce bildirilen offset civarına bak, yoksa geriye doğru ara)
+    let mut xref_pos: Option<usize> = None;
+    if let Some(decl) = declared_offset {
+        if decl < content_to_eof.len() && content_to_eof[decl..].starts_with(b"xref") {
+            xref_pos = Some(decl);
+        }
+    }
+    if xref_pos.is_none() {
+        xref_pos = content_to_eof[..startxref_pos]
+            .windows(5)
+            .rposition(|w| w == b"\nxref")
+            .map(|p| p + 1);
+    }
+
+    let xref_pos =
+        xref_pos.ok_or_else(|| EklerError::InvalidPdf("xref tablosu bulunamadı".to_string()))?;
+    if xref_pos >= startxref_pos {
+        return Err(EklerError::InvalidPdf("Geçersiz xref konumu".to_string()));
+    }
+
+    // xref öncesi veri (tüm nesneler ve stream'ler) dokunulmadan korunur
+    let mut result = content_to_eof[..xref_pos].to_vec();
+    let new_xref_offset = result.len();
+
+    // xref ile startxref arasındaki bölümü (xref tablosu + trailer) satır satır ayrıştır
+    let trailer_relative = content_to_eof[xref_pos..startxref_pos]
+        .windows(7)
+        .position(|w| w == b"trailer")
+        .ok_or_else(|| EklerError::InvalidPdf("Klasik trailer bulunamadı".into()))?;
+    let trailer_pos = xref_pos + trailer_relative;
+    let xref_section = &content_to_eof[xref_pos..trailer_pos];
+    let xref_text = String::from_utf8_lossy(xref_section);
+
+    let mut normalized_xref = String::with_capacity(xref_section.len() + 256);
+    let mut in_trailer = false;
+
+    for line in xref_text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("trailer") {
+            in_trailer = true;
+        }
+
+        if in_trailer {
+            normalized_xref.push_str(line);
+            normalized_xref.push('\n');
+        } else if trimmed == "xref" {
+            normalized_xref.push_str("xref\n");
+        } else if trimmed.split_whitespace().count() == 2
+            && trimmed
+                .chars()
+                .all(|c| c.is_ascii_digit() || c.is_whitespace())
+        {
+            // "0 10" gibi alt bölüm başlığı
+            normalized_xref.push_str(trimmed);
+            normalized_xref.push('\n');
+        } else {
+            // Xref girişi: "0000000000 65535 f" veya "0000000031 00000 n"
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if parts.len() == 3 && (parts[2] == "f" || parts[2] == "n") {
+                if let (Ok(offset), Ok(gen)) = (parts[0].parse::<u64>(), parts[1].parse::<u32>()) {
+                    // Standarda ve nom_parser'a tam uyumlu 20 bayt: "0000000031 00000 n \n"
+                    let entry = format!("{:010} {:05} {} \n", offset, gen, parts[2]);
+                    normalized_xref.push_str(&entry);
+                    continue;
+                }
+            }
+            normalized_xref.push_str(line);
+            normalized_xref.push('\n');
+        }
+    }
+
+    result.extend_from_slice(normalized_xref.as_bytes());
+    result.extend_from_slice(&content_to_eof[trailer_pos..startxref_pos]);
+
+    // Yeni startxref ve %%EOF ekle
+    let footer = format!("startxref\n{}\n%%EOF\n", new_xref_offset);
+    result.extend_from_slice(footer.as_bytes());
+
+    Ok(result)
+}

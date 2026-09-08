@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "CONSISTENCY_DATE_FORMAT": 1
+  }
+}

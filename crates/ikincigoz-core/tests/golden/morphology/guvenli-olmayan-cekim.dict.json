@@ -1,0 +1,9 @@
+{
+  "corrections": [
+    {
+      "from": "mecur",
+      "to": "sokak",
+      "inflect": true
+    }
+  ]
+}

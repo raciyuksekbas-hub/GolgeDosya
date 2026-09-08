@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "TYPO_MULTIPLE_SPACES": 1
+  }
+}

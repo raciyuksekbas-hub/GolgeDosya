@@ -1,0 +1,41 @@
+{
+  "synthetic": true,
+  "encrypted_password": "duzenek-qa-only",
+  "signed_pdf": "Detection marker only, not a valid digital signature",
+  "formats": [
+    "Türkçe görsel.png",
+    "corpus.doc",
+    "corpus.docx",
+    "corpus.udf",
+    "encrypted.pdf",
+    "gray16.tiff",
+    "gray8.tiff",
+    "irregular-xref.pdf",
+    "multipage.tiff",
+    "photo.heic",
+    "photo.jpg",
+    "rgb.tiff",
+    "scanned.pdf",
+    "signed-marker.pdf",
+    "signed.udf",
+    "vector.pdf"
+  ],
+  "sha256": {
+    "Türkçe görsel.png": "335cb8863e85fe8a548a64b7cdb0576db19ef73570311f846c293fde52e5496b",
+    "corpus.doc": "6796a09211a513d5c1c212031d8a04446ad8d8a5a654fdb055dad98e0bb31dc8",
+    "corpus.docx": "e853604b40cdcd5e35920b9e78bdc77c77d9b30aea43e2c414cf026c2b5bbc77",
+    "corpus.udf": "848b40526f8473606b7a40670425dfcaaf2ca77084152c7437c6a33af5cd6676",
+    "encrypted.pdf": "7eb97aa5313f5bf07b467c57f7c56d4e782b83284192bc2f0576fce32ad9da07",
+    "gray16.tiff": "f0809660a8a4ab7529a0c087490142aeecc2552df5916b89849378842582612b",
+    "gray8.tiff": "bc7ba73796b60c005422184dec146427427f6767a5a43db0b5d4c1af95495b91",
+    "irregular-xref.pdf": "e9fb3a28fe3236104e276720cba8cc99f28a1e755c418906952bee7fc8386120",
+    "multipage.tiff": "c2c838666e62202b61d5097699de450987b73279ee40e71a126a4832a0458659",
+    "photo.heic": "28720ea8d5ac6edf0450efb080c07263e918336a80e07d5c3ca440501c5f1cd6",
+    "photo.jpg": "e4fb87de77de2c3f5b9b25adf64931cf9ea2a8192b99a764dff8ee9991872796",
+    "rgb.tiff": "56307845368d745f3b534497354e13ddf2f6a3cfc46399745a7ea6de5d394749",
+    "scanned.pdf": "31cbaf3cb5148bff05e5ce7b46eb5f943cb37a42a726492d6ad06e2080300f58",
+    "signed-marker.pdf": "3538c1ce8a857d66e87ac498b13f2499981079364779c3d796191595730ea968",
+    "signed.udf": "2bc980897ca12e3b88ec931decddf0de67a0975486c3d227a744db394f3a57ba",
+    "vector.pdf": "341ea17df0f9211e940df08a34fc322692cd85c792694669887f637a35014b92"
+  }
+}

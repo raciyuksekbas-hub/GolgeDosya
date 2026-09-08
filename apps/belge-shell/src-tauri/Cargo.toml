@@ -25,7 +25,7 @@ tempfile.workspace = true
 
 # Modül motorları. Yalnız kendi feature'ı açıkken linklenir; kapalıyken binary'ye
 # hiç girmez. `document-core` birleşik workspace içindeki tek belge çekirdeğidir.
-tavzih-core = { path = "../../../crates/document-core", optional = true }
+tavzih-core = { workspace = true, optional = true }
 # Kasten optional DEĞİL. Capability dosyaları derleme sırasında ayrıştırılır ve
 # `opener:*` izinlerinin tanımlı olması bu crate'in bağımlılık grafiğinde
 # bulunmasına bağlıdır. Optional yapıldığında `--no-default-features` ile
@@ -33,15 +33,15 @@ tavzih-core = { path = "../../../crates/document-core", optional = true }
 # not found" ile kırılıyordu. Plugin'in kaydı ve komutları feature'a bağlı
 # kalmaya devam ediyor; kapalıyken hiçbir IPC yüzeyi açılmaz.
 tauri-plugin-opener = "2"
-# GEÇİCİ YOL: ~/İkinciGöz ev dizininin kökünde, bu depo ise ~/Projects altında.
-# İkinciGöz'ün çekirdeği KOPYALANMADI. Kaynak standalone deposunda kalıyor:
+# Canonical source artık bu depoda (crates/ikincigoz-core). Bağımsız İkinciGöz
+# deposu dondurulmuş baseline olarak duruyor ama build ona bağlı DEĞİL:
 # hem referans implementasyon hem de parser/writeback karşılaştırma kaynağı odur.
 # Parser consolidation ayrı bir fazdır (bkz. docs/MIGRATION.md).
-ikincigoz-core = { path = "../../../../../İkinciGöz/crates/ikincigoz-core", optional = true }
+ikincigoz-core = { workspace = true, optional = true }
 # DüzenEk'in çekirdeği de KOPYALANMADI; kaynak standalone deposunda kalıyor ve
 # dondurulmuş baseline (duzenek-premerge-2026-09-07) parity kaynağıdır.
 # GEÇİCİ kardeş-dizin yolu; DüzenEk emekliye ayrılınca kalkar.
-ekler-core = { path = "../../../../DuzenEk/crates/ekler-core", optional = true }
+ekler-core = { workspace = true, optional = true }
 lopdf = { version = "0.34", optional = true }
 
 [features]

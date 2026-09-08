@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "TYPO_INVISIBLE_CHAR": 1
+  }
+}

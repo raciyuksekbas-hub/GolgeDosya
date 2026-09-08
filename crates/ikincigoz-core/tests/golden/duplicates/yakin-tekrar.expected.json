@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "TEXT_NEAR_DUPLICATE": 1
+  }
+}

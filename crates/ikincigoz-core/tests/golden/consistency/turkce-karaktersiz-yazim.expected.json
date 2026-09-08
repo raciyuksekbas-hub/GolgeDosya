@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "CONSISTENCY_TERM_SPELLING": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "TYPO_MISSING_SPACE_AFTER_PUNCTUATION": 1
+  }
+}

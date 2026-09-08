@@ -1,0 +1,8 @@
+I. GİRİŞ
+Bu bölümde giriş açıklamaları yer almaktadır.
+II. İNCELEME
+Bu bölümde inceleme açıklamaları yer almaktadır.
+III. DEĞERLENDİRME
+Bu bölümde değerlendirme açıklamaları yer almaktadır.
+V. SONUÇ
+Bu bölümde sonuç açıklamaları yer almaktadır.

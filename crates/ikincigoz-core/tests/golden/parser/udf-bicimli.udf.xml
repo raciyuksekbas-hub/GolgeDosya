@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<template format_id="1.8"><content><![CDATA[SAYIN MAHKEMEYE
+Taraflar arasında yazılı bir sözleşme kurulmuş bulunmaktadır.
+Davalı, sözleşmeden doğan edimini yerine getirmemiştir.
+Yukarıda açıklanan nedenlerle davanın kabulüne karar verilmesini talep ederiz.
+]]></content><styles><style name="default" family="Times New Roman" size="12"/></styles><elements resolver="hvl-default"><paragraph Alignment="3"><content startOffset="0" length="16" family="Times New Roman" size="12" bold="true"/></paragraph><paragraph Alignment="3"><content startOffset="16" length="62" family="Times New Roman" size="12"/></paragraph><paragraph Alignment="3"><content startOffset="78" length="56" family="Times New Roman" size="12"/></paragraph><paragraph Alignment="3"><content startOffset="134" length="79" family="Times New Roman" size="12"/></paragraph></elements></template>

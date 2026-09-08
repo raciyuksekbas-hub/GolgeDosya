@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "TYPO_TAB_IN_TEXT": 1
+  }
+}

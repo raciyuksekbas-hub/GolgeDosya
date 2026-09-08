@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "ORTHO_SEPARATE_WRITING": 2
+  }
+}

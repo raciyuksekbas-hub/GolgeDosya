@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "TYPO_UNCLOSED_PAIR": 1
+  }
+}

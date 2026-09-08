@@ -152,3 +152,102 @@ boşluğu atlamaya çevirmek, boşluğu gizlemek olur.
 
 ### `sandbox-exec` kullanımdan kalkmış
 Bkz. §2. Bugün çalışıyor, ölçüldü; yerine geçecek mimari ayrı iştir.
+
+---
+
+# Final consolidation kararları — 2026-09-08
+
+## 5. İkinciGöz parser'ı `document-core`'a taşınsın mı? — **HAYIR, kalıcı karar**
+
+### Ölçüm
+
+İkinciGöz'ün lint motoru metni **serileştirilmiş kabın içindeki adresle** bulur:
+
+| Kap | Adres | Nerede üretiliyor |
+|---|---|---|
+| DOCX | `docx:t:{ordinal}` — akış hâlinde XML ayrıştırmada karşılaşılan **N.** `<w:t>` düğümü | `parser/docx.rs:460` |
+| UDF | `udf:off:{offset}:{utf16_len}` — ham içerik blob'una offset | `parser/udf.rs:309,390` |
+
+`writeback.rs` bu adresleri kullanarak **hiçbir şeyi yeniden serileştirmez**: yalnız
+kabul edilen değişikliğin dokunduğu metin düğümlerini yamalar, kabın diğer her
+baytını olduğu gibi kopyalar. Stil, numaralandırma, üstbilgi, görsel ve
+metadata tam olarak oldukları gibi kalır.
+
+`document-core` ise bir **dönüştürücüdür**: okur, modele alır, yeniden yazar.
+Modelinde kap içi adres yoktur ve olmasına da ihtiyacı yoktur.
+
+İkisinin çıkardığı şey de aynı değil. `image/table/section/numbering/header/footer`
+makinesine değen satır sayısı:
+
+| | Değinme |
+|---|---|
+| `ikincigoz-core/parser/docx.rs` | **2** |
+| `document-core/docx/reader.rs` | **74** |
+
+İkinciGöz düz metin + kaba biçim + adres çıkarır; `document-core` tam sadakatli
+tur atmak için tablo, görsel, bölüm, üstbilgi/altbilgi ve numaralandırma çıkarır.
+Ortaklık ZIP açmak ve XML akıtmaktan ibarettir; modeller ve sözleşmeler ayrıdır.
+
+### Neden birleştirme güvenli değil
+
+Birleştirmek için `document-core`'un okuyucularına, İkinciGöz'ünkiyle **birebir aynı
+sırada** `<w:t>` ordinal'i ve **birebir aynı** UTF-16 offset'i üretmesi eklenmeliydi.
+Sayımın herhangi bir noktada ayrışması — alan kodları, köprüler, `smartTag`'ler,
+XML olayına bölünmüş `<w:t>`'lerin birleştirilmesi, üstbilgi/altbilginin gezilip
+gezilmemesi — o noktadan sonraki **bütün adresleri sessizce kaydırır**.
+
+Bu hata gürültülü değildir: yanlış metin düğümü yamalanır. Aradaki tek koruma
+writeback'in yeniden açıp karşılaştıran doğrulama adımıdır — yani hata, olduktan
+sonra yakalanır.
+
+Ayrıca `push_synthetic` (docx.rs:444) bilerek `container_path: None` üretir:
+arkasında düzenlenebilir düğüm olmayan metin **adreslenemez** olarak işaretlenir.
+Bu ayrım da yeniden türetilmek zorunda kalırdı.
+
+### Karar
+
+**İki parser kalıcı olarak ayrı kalır.** Bu bir borç değil, bir sınır kararıdır:
+farklı sözleşmelere hizmet ediyorlar. "Duplikasyon var, kaldıralım" gerekçesiyle
+müvekkil belgesinin sessizce yanlış yerinden yamanma riski alınmaz.
+
+Bugünkü koruma: 121 golden fikstür + writeback doğrulama turu, ikisi de birleşik
+depoda ve her sürüm kapısında koşuyor.
+
+---
+
+## 6. Değişikİş extraction'ı `document-core`'a taşınsın mı? — **HAYIR, bounded context**
+
+### Ölçüm
+
+Değişikİş'in çıkarıcısı webview içinde TypeScript olarak çalışıyor:
+
+| Girdi | Araç |
+|---|---|
+| DOCX | `mammoth` (DOCX → HTML) |
+| PDF | `pdfjs-dist` |
+| UDF | `fflate` + `udf.ts` |
+
+`document-core`'da **PDF okuma yoktur** ve olamaz: mimari değişmez bunu açıkça
+yasaklar (`document-core -> pdf` YASAK, `check-architecture.sh` her sürüm
+kapısında doğrular). Yani Değişikİş'in üç girdisinden biri oraya taşınamaz.
+
+DOCX yolu taşınabilirdi, ama karşılaştırma motorunun blok sınırları ve
+normalizasyonu tam olarak `mammoth`'un ürettiği çıktıya göre kalibre edilmiş
+durumda. Girdiyi değiştirmek 1.834 satırlık diff motorunun **ürünü olan çıktıyı**
+değiştirir.
+
+### Karar
+
+**Çıkarıcı bounded context olarak kalır.** Kazanç: paketten bir DOCX okuyucu
+eksilirdi. Bedel: pdfjs zaten taşınamıyor (yani ikinci bir yol yine kalırdı) ve
+bütün diff fikstürlerinin yeniden doğrulanması gerekirdi. Değer üretmiyor.
+
+### Canonical source
+
+TS karşılaştırma motorunun canonical kaynağı **birleşik depodur**. Standalone
+Değişikİş dondurulmuş baseline'dır (`degisikis-premerge-2026-09-07`).
+
+Altı motor dosyasından beşi (`normalize.ts`, `structure.ts`, `wordDiff.ts`,
+`udf.ts`, `types.ts`) standalone ile **birebir aynı**. `compare.ts`'in tek farkı,
+kabuğun `noUnusedParameters` ayarı için iki kullanılmayan parametrenin `_`
+önekini almasıdır; davranış aynıdır ve dosyada gerekçesiyle yazılıdır.

@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "TEXT_PARAGRAPH_DUPLICATION": 1
+  }
+}

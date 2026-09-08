@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "SEC_SEQ_DUPLICATE": 1
+  }
+}

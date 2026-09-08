@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "STYLE_HEADING_OUTLIER": 1
+  }
+}

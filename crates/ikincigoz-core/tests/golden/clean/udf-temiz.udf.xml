@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<template format_id="1.8">
+<content><![CDATA[SAYIN ANKARA 3. ASLİYE HUKUK MAHKEMESİNE
+Davacı vekili olarak aşağıdaki hususları arz ederiz.
+Taraflar arasında yazılı bir sözleşme kurulmuş bulunmaktadır.
+Yukarıda açıklanan nedenlerle davanın kabulüne karar verilmesini talep ederiz.
+]]></content>
+<styles><style name="default" family="Times New Roman" size="12"/></styles>
+<elements resolver="hvl-default">
+<paragraph Alignment="1"><content startOffset="0" length="41" style="default" bold="true"/></paragraph>
+<paragraph Alignment="3"><content startOffset="41" length="50" style="default"/></paragraph>
+<paragraph Alignment="3"><content startOffset="91" length="56" style="default"/></paragraph>
+<paragraph Alignment="3"><content startOffset="147" length="76" style="default"/></paragraph>
+</elements>
+</template>

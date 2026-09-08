@@ -16,7 +16,7 @@ license = "Proprietary"
 
 [dependencies]
 # Geçici kardeş-dizin yolu; DüzenEk birleşik workspace'e taşınınca kalkar.
-ekler-core = { path = "../../../DuzenEk/crates/ekler-core" }
-tavzih-core = { path = "../../crates/document-core" }
+ekler-core.workspace = true
+tavzih-core.workspace = true
 lopdf = "0.34"
 serde_json = "1"

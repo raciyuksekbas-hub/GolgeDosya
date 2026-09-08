@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "TEXT_WORD_DUPLICATION": 1
+  }
+}

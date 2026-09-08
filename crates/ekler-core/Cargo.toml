@@ -1,0 +1,27 @@
+[package]
+name = "ekler-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# Kasten workspace sürümü DEĞİL. `document-core` thiserror 1.0.69, bu crate
+# 2.0.20 çözüyor ve ikisi de bugün çalışıyor. Sürüm birleştirmek bir yükseltmedir
+# ve migration'ın işi değildir; iki major yan yana yaşayabilir.
+thiserror = "2"
+lopdf.workspace = true
+image.workspace = true
+tiff.workspace = true
+zip.workspace = true
+quick-xml.workspace = true
+sha2.workspace = true
+rayon.workspace = true
+tavzih-core.workspace = true
+tempfile.workspace = true
+libc.workspace = true
+url.workspace = true
+flate2.workspace = true

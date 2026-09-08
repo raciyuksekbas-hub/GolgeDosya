@@ -5,17 +5,18 @@ Migration boyunca motorlar bağımsız depolarda kaldı: tek kaynak/iki tüketic
 modeli parity'yi tanım gereği garantiliyordu. Final mimaride bu kabul edilemez —
 taze bir klon kendi başına derlenebilmelidir.
 
-Bu bir MANDALDIR: sayı artarsa kapı kapanır, azaldığında da kapanır (mandalı
-düşürmeyi unutmayın). Hedef sıfırdır ve final consolidation'ın çıkış kapısıdır.
+Bu bir MANDALDIR ve mandal artık SIFIRDA: tek bir dış yol bağımlılığı eklemek
+kapıyı kapatır. Taze klon → kur → derle → test sözü doğrudan buna dayanır.
 """
 
 import pathlib
 import re
 import sys
 
-# 2026-09-07 · belge-shell→ekler-core, belge-shell→ikincigoz-core,
-# preflight→ekler-core. Azaldıkça bu sayı da düşürülmelidir.
-BASELINE = 3
+# 2026-09-08 · SIFIR. Final consolidation'da üç dış yol bağımlılığının tamamı
+# kaldırıldı; `ekler-core` ve `ikincigoz-core` artık bu deponun içinde canonical
+# source. Bu sayı bir daha ARTMAMALI: taze klon → derle → test sözü buna bağlı.
+BASELINE = 0
 
 
 def main() -> int:

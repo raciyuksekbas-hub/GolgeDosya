@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "CONSISTENCY_AMOUNT_WORDS": 1
+  }
+}

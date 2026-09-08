@@ -1,0 +1,7 @@
+{
+  "exact": true,
+  "findings": {
+    "ORTHO_USER_DICTIONARY": 1,
+    "MORPH_SAFE_REPLACEMENT": 4
+  }
+}

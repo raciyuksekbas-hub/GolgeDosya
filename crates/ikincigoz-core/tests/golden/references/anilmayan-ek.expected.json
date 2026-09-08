@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "REF_ATTACHMENT_UNUSED": 1
+  }
+}

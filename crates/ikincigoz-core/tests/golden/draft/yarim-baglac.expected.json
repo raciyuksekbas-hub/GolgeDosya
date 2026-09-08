@@ -1,0 +1,6 @@
+{
+  "exact": true,
+  "findings": {
+    "DRAFT_DANGLING_CONNECTOR": 1
+  }
+}
