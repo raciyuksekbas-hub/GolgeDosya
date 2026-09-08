@@ -25,7 +25,11 @@ pub struct OptimizationResult {
 
 /// Decode only color spaces and filters whose sample interpretation we can preserve.
 /// Unsupported images are reported separately; malformed supported images are errors.
-pub(crate) fn decode_image(stream: &lopdf::Stream) -> Result<Option<image::DynamicImage>> {
+///
+/// `pub` çünkü crate sınırını geçiyor: `ekler-core::toolbox` sıkıştırma kalitesini
+/// ölçerken önceki ve sonraki görseli bununla çözüyor. Bir PDF görsel akışını
+/// çözmek zaten bu crate'in işidir; genişletme değil, sınırın doğru tarafı.
+pub fn decode_image(stream: &lopdf::Stream) -> Result<Option<image::DynamicImage>> {
     let fail = |e: String| EklerError::InvalidPdf(format!("Görsel çözümlenemedi: {e}"));
     if stream.dict.has(b"Decode") || stream.dict.has(b"SMask") || stream.dict.has(b"Mask") {
         return Ok(None);

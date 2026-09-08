@@ -167,40 +167,16 @@ pub struct PhysicalOutput {
     pub sha256: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StampPosition {
-    TopRight,
-    TopLeft,
-    BottomRight,
-    BottomLeft,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct StampConfig {
-    pub enabled: bool,
-    pub position: StampPosition,
-    pub font_size: f32,
-    pub margin_pt: f32,
-    pub show_badge: bool,
-}
-
-impl Default for StampConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            position: StampPosition::TopRight,
-            font_size: 10.0,
-            margin_pt: 20.0,
-            show_badge: true,
-        }
-    }
-}
+// `StampPosition`, `StampConfig` ve `OptimizationLevel` bu modülden `pdf-core`'a
+// taşındı: üçü de PDF alanının kavramlarıdır, dava dosyası alanının değil. Burada
+// yeniden dışa aktarılıyorlar ki `ekler_core`'un genel API'si aynen kalsın.
+pub use pdf_core::optimizer::OptimizationLevel;
+pub use pdf_core::pdf::stamp::{StampConfig, StampPosition};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Project {
     #[serde(default)]
-    pub optimization: crate::optimizer::OptimizationLevel,
+    pub optimization: OptimizationLevel,
     pub version: String,
     pub name: String,
     pub created_at: String,

@@ -1,10 +1,13 @@
 pub mod accounting;
-pub mod error;
+// PDF alanı ayrı bir crate'e taşındı. Bu modüller oradan yeniden dışa
+// aktarılıyor: `crate::pdf::…`, `crate::optimizer::…` ve `crate::error::…`
+// yolları ve `ekler_core`'un genel API'si aynen çalışmaya devam ediyor.
+pub use pdf_core::error;
 pub mod exhibits_list;
 pub mod image;
 pub mod model;
-pub mod optimizer;
-pub mod pdf;
+pub use pdf_core::optimizer;
+pub use pdf_core::pdf;
 pub mod pipeline;
 pub mod plan;
 pub mod safe_io;

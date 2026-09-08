@@ -970,6 +970,7 @@ dependencies = [
  "image",
  "libc",
  "lopdf",
+ "pdf-core",
  "quick-xml 0.36.2",
  "rayon",
  "serde",
@@ -2686,6 +2687,18 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "pdf-core"
+version = "0.0.1"
+dependencies = [
+ "flate2",
+ "image",
+ "lopdf",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

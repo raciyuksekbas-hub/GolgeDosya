@@ -12,6 +12,7 @@ members = [
     "apps/belge-shell/src-tauri",
     "crates/document-core",
     "crates/ekler-core",
+    "crates/pdf-core",
     "crates/ikincigoz-core",
     "tools/preflight",
 ]
@@ -35,6 +36,7 @@ authors = ["Raci Çetin Yüksekbaş"]
 # değil: taze bir klon kendi başına derlenir.
 tavzih-core = { path = "crates/document-core" }
 ekler-core = { path = "crates/ekler-core" }
+pdf-core = { path = "crates/pdf-core" }
 ikincigoz-core = { path = "crates/ikincigoz-core" }
 
 serde = { version = "1", features = ["derive"] }

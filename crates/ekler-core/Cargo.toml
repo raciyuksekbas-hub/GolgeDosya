@@ -21,6 +21,7 @@ quick-xml.workspace = true
 sha2.workspace = true
 rayon.workspace = true
 tavzih-core.workspace = true
+pdf-core.workspace = true
 tempfile.workspace = true
 libc.workspace = true
 url.workspace = true

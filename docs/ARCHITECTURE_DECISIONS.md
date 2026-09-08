@@ -251,3 +251,41 @@ Altı motor dosyasından beşi (`normalize.ts`, `structure.ts`, `wordDiff.ts`,
 `udf.ts`, `types.ts`) standalone ile **birebir aynı**. `compare.ts`'in tek farkı,
 kabuğun `noUnusedParameters` ayarı için iki kullanılmayan parametrenin `_`
 önekini almasıdır; davranış aynıdır ve dosyada gerekçesiyle yazılıdır.
+
+---
+
+## 7. `pdf-core` — Seçenek A **uygulandı**
+
+§1'deki öneri gerçekleştirildi. Taşınanlar:
+
+| Kaynak | Hedef |
+|---|---|
+| `ekler-core/src/error.rs` | `pdf-core/src/error.rs` |
+| `ekler-core/src/optimizer.rs` | `pdf-core/src/optimizer.rs` |
+| `ekler-core/src/pdf/` (4 dosya) | `pdf-core/src/pdf/` |
+| `model.rs` içindeki `StampPosition`, `StampConfig` | `pdf-core/src/pdf/stamp.rs` |
+| `assets/brand-logo.ops` | `pdf-core/assets/` |
+
+`OptimizationLevel` zaten `optimizer.rs` içindeydi ve onunla birlikte gitti.
+
+### Genel API değişmedi
+`ekler-core` üç modülü yeniden dışa aktarıyor (`pub use pdf_core::{error, optimizer, pdf};`)
+ve `model.rs` üç tipi yeniden dışa aktarıyor. Böylece `ekler_core::pdf::…`,
+`ekler_core::OptimizationLevel`, `ekler_core::StampConfig` yolları aynen çalışıyor
+ve **taşınan 21 komut gövdesinin hiçbiri değişmedi** — komut gövdesi eşitliği
+kapısı bunu doğruluyor.
+
+### Derleyicinin ortaya çıkardığı, plandaki iki eksik
+1. **`brand-logo.ops`** — `stamp.rs` markayı `include_bytes!` ile gömüyor. Varlık
+   damgayı çizen kodla birlikte gitti. `brand-logo.svg` `ekler-core`'da kaldı:
+   onu UDF yolu kullanıyor. Her varlık tüketicisini izledi.
+2. **`decode_image`** — `optimizer.rs` içinde `pub(crate)` idi ve
+   `ekler-core::toolbox` sıkıştırma kalitesini ölçerken çağırıyordu. Artık crate
+   sınırını geçtiği için `pub`. Bir PDF görsel akışını çözmek zaten bu crate'in
+   işidir; API genişletmesi değil, sınırın doğru tarafı.
+
+### Kabul edilen tek pürüz
+`EklerError` bu crate'e taşındı ama `InvalidUdf` ve `InvalidImage` gibi PDF dışı
+varyantlar taşıyor. Hata tipini alanlara bölmek her `?` noktasında dönüşüm
+gerektirirdi; bugün hiçbir davranış kazancı yok ve bu fazın hedefi sınır, tip
+cerrahisi değil. Bilinçli olarak ertelendi.

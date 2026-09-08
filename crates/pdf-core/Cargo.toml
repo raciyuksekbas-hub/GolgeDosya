@@ -1,0 +1,18 @@
+[package]
+name = "pdf-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "PDF alanı: okuma, doğrulama, toleranslı yükleme, damga ve optimizasyon."
+
+[dependencies]
+lopdf.workspace = true
+image.workspace = true
+flate2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# `ekler-core` ile aynı sürüm: hata tipi bu crate'e taşındı ve `ekler-core`
+# onu yeniden dışa aktarıyor, dolayısıyla ikisi aynı `thiserror`'ı kullanmalı.
+thiserror = "2"

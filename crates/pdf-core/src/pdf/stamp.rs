@@ -1,5 +1,40 @@
 use crate::error::{EklerError, Result};
-use crate::model::{StampConfig, StampPosition};
+use serde::{Deserialize, Serialize};
+
+/// Damganın sayfadaki köşesi.
+///
+/// `ekler-core::model`'den buraya taşındı: bir damga konumu PDF alanının
+/// kavramıdır. Taşımadan önce `pdf` modülü yalnız bu iki tip için `model`'e
+/// bağlıydı ve crate sınırı çizilince bu bağ döngü doğuruyordu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StampPosition {
+    TopRight,
+    TopLeft,
+    BottomRight,
+    BottomLeft,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StampConfig {
+    pub enabled: bool,
+    pub position: StampPosition,
+    pub font_size: f32,
+    pub margin_pt: f32,
+    pub show_badge: bool,
+}
+
+impl Default for StampConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            position: StampPosition::TopRight,
+            font_size: 10.0,
+            margin_pt: 20.0,
+            show_badge: true,
+        }
+    }
+}
 use lopdf::content::{Content, Operation};
 use lopdf::{dictionary, Dictionary, Document as LopdfDoc, Object, Stream};
 
