@@ -21,16 +21,16 @@
  */
 
 .pdf-root {
-  /* -- DüzenEk değişken adları → kabuk token'ları ------------------------- */
-  --bg-card: var(--bg-content);
-  --bg-card-subtle: var(--bg-sunken);
-  --bg-app: var(--bg-window);
-  --text-primary: var(--text);
-  --border-color: var(--line-strong);
-  --border-light: var(--line);
+  /* -- DüzenEk değişken adları → ürün token'ları -------------------------- */
+  --bg-card: var(--surface-raised);
+  --bg-card-subtle: var(--surface-sunken);
+  --bg-app: var(--surface-app);
+  --text-primary: var(--text-primary);
+  --border-color: var(--border-strong);
+  --border-light: var(--border-subtle);
   --error: var(--danger);
-  /* Kabuk düz yüzeyler kullanıyor; gölge token'ı yok. */
   --shadow-sm: none;
+  --radius-lg: var(--radius-lg);
 }
 
 /* -- utility-workspace tabanı ------------------------------------------- */

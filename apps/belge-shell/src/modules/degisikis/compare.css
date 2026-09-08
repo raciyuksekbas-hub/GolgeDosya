@@ -23,119 +23,106 @@
    ========================================================================== */
 
 .compare-root {
-  /* -- Marka primitifleri -------------------------------------------------- */
-  --brand-graphite: #111417;
-  --brand-teal: #2a7f8e;
-  --brand-platinum: #d4d7db;
-  --brand-gray: #8c9196;
-  --brand-coral: #e06a5c;
+  /*
+   * Karşılaştır, taşındığında kendi tam tasarım sistemini yanında getirmişti:
+   * kendi marka paleti (--brand-teal, --brand-coral), kendi yüzeyleri ve kendi
+   * fontu (Manrope). Ürünün "dört uygulamanın yan yana dizilmiş hâli" gibi
+   * hissettirmesinin en büyük tek sebebi buydu.
+   *
+   * Aşağıdaki adlar KORUNDU — altındaki ~700 kural değişmeden çalışıyor ve
+   * diff motorunun görsel davranışı aynı kalıyor. Değişen tek şey, adların
+   * artık ürünün kendi token'larına bağlanması. Karşılaştır artık ürüne ait.
+   */
 
-  /* -- Yüzeyler ------------------------------------------------------------ */
-  --surface-window: #090c0f;
-  --surface-shell: var(--brand-graphite);
-  --surface-sidebar: #0d1013;
-  --surface-panel: #0f1317;
-  --surface-raised: #1b222a;
-  --surface-hover: #212932;
-  /* Temel sürüm nötr grafit; değişik sürüm aynı palette petrol'e bir adım
-     yaklaşır. Ayrım luminance ve hafif tint ile kurulur; diff semantiği
-     (teal/koral) panel zeminine taşınmaz. */
-  --surface-document: #161b22;
-  --surface-document-revised: #141e2b;
-  --surface-pane-head: var(--surface-shell);
-  --surface-pane-head-revised: #101922;
-  --surface-inset: #0c1014;
-  --surface-selected: rgb(255 255 255 / 3.5%);
-  --surface-veil: rgb(6 9 11 / 62%);
-  --surface-scrim: rgb(9 12 15 / 74%);
-  --surface-translucent: rgb(255 255 255 / 4%);
+  /* -- Yüzeyler ---------------------------------------------------------- */
+  --surface-window: var(--surface-app);
+  --surface-shell: var(--surface-raised);
+  --surface-sidebar: var(--surface-sidebar);
+  --surface-panel: var(--surface-raised);
+  --surface-raised: var(--surface-raised);
+  --surface-hover: var(--surface-hover);
+  --surface-document: var(--surface-document);
+  --surface-document-revised: var(--surface-document);
+  --surface-pane-head: var(--surface-raised);
+  --surface-pane-head-revised: var(--surface-raised);
+  --surface-inset: var(--surface-sunken);
+  --surface-selected: var(--surface-selected);
+  --surface-veil: rgb(0 0 0 / 22%);
+  --surface-scrim: rgb(0 0 0 / 30%);
+  --surface-translucent: var(--surface-hover);
 
-  /* -- Sınırlar ------------------------------------------------------------ */
-  --border-hairline: rgb(212 215 219 / 6%);
-  --border-subtle: rgb(212 215 219 / 10%);
-  --border-strong: rgb(212 215 219 / 17%);
-  --border-hover: rgb(212 215 219 / 28%);
+  /* -- Çizgiler ---------------------------------------------------------- */
+  --border-hairline: var(--border-subtle);
+  --border-subtle: var(--border-subtle);
+  --border-strong: var(--border-strong);
+  --border-hover: var(--border-strong);
 
-  /* -- Metin --------------------------------------------------------------- */
-  --text-primary: #e8ebee;
-  --text-secondary: #aeb5bc;
-  --text-muted: var(--brand-gray);
-  --text-faint: #667079;
-  --text-on-accent: #06171c;
+  /* -- Metin ------------------------------------------------------------- */
+  --text-primary: var(--text-primary);
+  --text-secondary: var(--text-secondary);
+  --text-muted: var(--text-muted);
+  --text-faint: var(--text-muted);
+  --text-on-accent: var(--on-accent);
 
-  /* -- Vurgu ---------------------------------------------------------------
-     --accent, Mineral Teal'in koyu yüzeyde okunur hâle getirilmiş karşılığıdır
-     ve içerik semantiğine (eklenen / seçili) ayrılmıştır. Kabuk kontrolleri
-     teal'in düşük yoğunluklu karşılığını kullanır; böylece arayüz kromu belge
-     farklarından daha fazla dikkat çekmez. */
-  --accent: #3fa0b2;
-  --accent-strong: #5cc0d2;
-  --accent-wash: rgb(63 160 178 / 13%);
-  --accent-line: rgb(63 160 178 / 34%);
-  --accent-glow: rgb(63 160 178 / 6%);
-  --accent-muted: #4e7f8b;
-  --accent-chrome-wash: rgb(78 127 139 / 16%);
-  --accent-chrome-line: rgb(78 127 139 / 38%);
+  /* -- Vurgu: ürünün tek mürekkep yeşili -------------------------------- */
+  --accent: var(--accent);
+  --accent-strong: var(--accent-hover);
+  --accent-wash: var(--accent-quiet);
+  --accent-line: var(--accent);
+  --accent-glow: transparent;
+  --accent-muted: var(--text-muted);
+  --accent-chrome-wash: var(--accent-quiet);
+  --accent-chrome-line: var(--border-strong);
 
-  /* -- Semantik fark renkleri ---------------------------------------------- */
-  --diff-added: #3fa0b2;
-  --diff-added-text: #a6dde8;
-  --diff-added-wash: rgb(63 160 178 / 14%);
-  --diff-added-line: rgb(63 160 178 / 52%);
-  --diff-added-rest: rgb(63 160 178 / 46%);
-  --diff-added-focus: rgb(63 160 178 / 22%);
+  /* -- Fark renkleri ----------------------------------------------------- */
+  /* Renk TEK taşıyıcı değildir: ChangeRail her farkı ayrıca +/− /değişti
+     işaretiyle ve metin etiketiyle gösterir. Renk yalnız tarama hızını
+     artırır. */
+  --diff-added: var(--success);
+  --diff-added-text: var(--success);
+  --diff-added-wash: var(--success-quiet);
+  --diff-added-line: var(--success);
+  --diff-added-rest: var(--success-quiet);
+  --diff-added-focus: var(--success-quiet);
 
-  --diff-removed: var(--brand-coral);
-  --diff-removed-text: #f0aca3;
-  --diff-removed-wash: rgb(224 106 92 / 13%);
-  --diff-removed-line: rgb(224 106 92 / 55%);
-  --diff-removed-rest: rgb(224 106 92 / 46%);
-  --diff-removed-focus: rgb(224 106 92 / 21%);
+  --diff-removed: var(--danger);
+  --diff-removed-text: var(--danger);
+  --diff-removed-wash: var(--danger-quiet);
+  --diff-removed-line: var(--danger);
+  --diff-removed-rest: var(--danger-quiet);
+  --diff-removed-focus: var(--danger-quiet);
 
-  /* Değiştirilen içerik yeni bir marka rengi almaz; platin ailesi içinde
-     opaklık, çizgi kalınlığı ve dolu/boş düğüm ayrımıyla görünür kılınır. */
-  --diff-modified: #bcc4cc;
-  --diff-modified-rest: rgb(188 196 204 / 44%);
-  --diff-modified-wash: rgb(188 196 204 / 10%);
+  --diff-modified: var(--review);
+  --diff-modified-rest: var(--review-quiet);
+  --diff-modified-wash: var(--review-quiet);
 
-  /* Koral yalnız negatif semantiktedir: silinen içerik ve belge okuma hatası. */
-  --danger-text: #f0aca3;
-  --danger-wash: rgb(224 106 92 / 9%);
-  --danger-line: rgb(224 106 92 / 32%);
+  --danger-text: var(--danger);
+  --danger-wash: var(--danger-quiet);
+  --danger-line: var(--danger);
 
-  /* -- Ölçü ---------------------------------------------------------------- */
+  /* -- Ölçü -------------------------------------------------------------- */
   --radius-xs: 3px;
-  --radius-sm: 5px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius-lg);
   --radius-pill: 999px;
-  --sidebar-w: 214px;
-  --topbar-h: 42px;
-  --statusbar-h: 40px;
 
-  /* -- Tipografi ----------------------------------------------------------- */
-  /* Manrope kurumsal referans karakterdir; sistemde varsa kullanılır. Uzak font
-     çağrısı yapılmaz, uygulama çevrimdışı çalışmaya devam eder. */
-  --font-ui: Manrope, "Avenir Next", "Segoe UI Variable Text", "Segoe UI", Inter,
-    system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --sidebar-w: 232px;
+  --topbar-h: var(--toolbar-h);
+  --statusbar-h: 26px;
+
+  /* -- Tipografi: sistem fontu. Manrope paketlenmiyordu zaten; adı yalnız
+        yedek listesindeydi ve ürünün geri kalanıyla çelişiyordu. ---------- */
+  --font-ui: var(--font-ui);
   --font-document: var(--font-ui);
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font-mono: var(--font-mono);
 
-  /* -- Gölge ---------------------------------------------------------------- */
-  --shadow-toast: 0 12px 34px rgb(0 0 0 / 45%);
-  --shadow-dialog: 0 28px 80px rgb(0 0 0 / 55%);
+  /* -- Yükselti: neredeyse görünmez ------------------------------------- */
+  --shadow-toast: 0 4px 16px rgb(0 0 0 / 12%);
+  --shadow-dialog: 0 8px 28px rgb(0 0 0 / 14%);
 
-  /* -- Hareket ------------------------------------------------------------- */
-  --ease: cubic-bezier(.32, .72, .35, 1);
-  --fast: .14s var(--ease);
-
-  font-family: var(--font-ui);
-  color: var(--text-primary);
-  background: var(--surface-window);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  color-scheme: dark;
+  --ease: var(--ease);
+  --fast: var(--motion-fast);
 }
 
 button, input { font: inherit; }
@@ -251,7 +238,7 @@ button { color: inherit; }
 .button:disabled { opacity: .34; cursor: not-allowed; }
 .button.primary { color: var(--text-on-accent); background: var(--accent); }
 .button.primary:hover:not(:disabled) { background: var(--accent-strong); }
-.button.primary:active:not(:disabled) { background: var(--brand-teal); }
+.button.primary:active:not(:disabled) { background: var(--accent-hover); }
 
 /* == Okuma yüzeyi ==========================================================
    Dikey alanın büyük bölümünü belge içeriği kaplar; çevresindeki krom
@@ -570,121 +557,10 @@ kbd { display: inline-grid; place-items: center; min-width: 16px; height: 16px; 
 
 /* == Açılış katmanı ========================================================
    Uygulama bu katmanın altında yüklü ve hazır durumda bekler. */
-.startup-splash {
-  position: fixed;
-  z-index: 1000;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 34px;
-  overflow: hidden;
-  color: var(--text-primary);
-  background: var(--surface-shell);
-  animation: startup-splash-lifecycle 3s ease forwards;
-}
-.startup-splash::before {
-  position: absolute;
-  inset: 0;
-  background-image: linear-gradient(var(--border-hairline) 1px, transparent 1px), linear-gradient(90deg, var(--border-hairline) 1px, transparent 1px);
-  background-size: 56px 56px;
-  content: "";
-  mask-image: radial-gradient(circle at 50% 42%, black, transparent 68%);
-}
-.startup-splash-glow {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 420px;
-  height: 260px;
-  border-radius: 50%;
-  background: var(--accent-glow);
-  filter: blur(60px);
-  transform: translate(-50%, -66%);
-  animation: startup-glow 2.4s ease both;
-}
-
-.startup-comparison { position: relative; display: flex; align-items: center; gap: 26px; height: 150px; }
-.startup-document {
-  position: relative;
-  box-sizing: border-box;
-  display: grid;
-  align-content: center;
-  gap: 11px;
-  width: 108px;
-  height: 142px;
-  padding: 24px 15px;
-  border: 1.5px solid var(--brand-platinum);
-  border-radius: var(--radius-sm);
-  background: var(--surface-raised);
-  background-origin: border-box;
-}
-/* Katlanan köşe logodaki geometrinin aynısıdır: dış üst köşe kesilir, kalan üçgen
-   kıvrılmış sayfa olarak doldurulur. Kesme çizgisi 22px'lik köşe karesinin
-   köşegeninde (22 * √2 / 2 ≈ 15.56px) yer alır; 3px'lik şerit kırpma sonrası
-   1.5px kenar kalınlığı bırakır. */
-.startup-document-base {
-  clip-path: polygon(22px 0, 100% 0, 100% 100%, 0 100%, 0 22px);
-  background:
-    linear-gradient(135deg, transparent 0 14.06px, var(--brand-platinum) 14.06px 17.06px, var(--surface-hover) 17.06px 31.12px, transparent 31.12px) top left / 22px 22px no-repeat,
-    var(--surface-raised);
-  animation: startup-document-left .85s var(--ease) both;
-}
-.startup-document-revised {
-  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 0 100%);
-  background:
-    linear-gradient(225deg, transparent 0 14.06px, var(--brand-platinum) 14.06px 17.06px, var(--surface-hover) 17.06px 31.12px, transparent 31.12px) top right / 22px 22px no-repeat,
-    var(--surface-raised);
-  animation: startup-document-right .85s var(--ease) .08s both;
-}
-.startup-document-label {
-  position: absolute;
-  top: 8px;
-  color: var(--text-faint);
-  font-size: 7px;
-  font-weight: 800;
-  letter-spacing: .14em;
-}
-.startup-document-base .startup-document-label { right: 12px; }
-.startup-document-revised .startup-document-label { left: 12px; }
-.startup-document i { display: block; height: 3.5px; border-radius: var(--radius-pill); background: var(--brand-gray); }
-.startup-document i:nth-of-type(2) { width: 78%; }
-.startup-document i:nth-of-type(4) { width: 88%; }
-.startup-document i:nth-of-type(5) { width: 62%; }
-.startup-document .startup-line-removed { background: var(--diff-removed); animation: startup-line-pulse .6s ease .75s both; }
-.startup-document .startup-line-added { background: var(--diff-added); animation: startup-line-pulse .6s ease .95s both; }
-.startup-document .startup-line-changed { background: var(--diff-modified); animation: startup-line-pulse .6s ease 1.12s both; }
 /* Belge kutusu clip-path ile kesildiğinden işaretler kutunun içinde durur. */
-.startup-change-mark {
-  position: absolute;
-  bottom: 10px;
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  color: var(--text-on-accent);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  opacity: 0;
-  animation: startup-mark-in .4s var(--ease) .85s forwards;
-}
-.startup-change-minus { left: 13px; background: var(--diff-removed); }
-.startup-change-plus { right: 13px; background: var(--diff-added); animation-delay: 1.02s; }
 
 /* Merkezî fark rayı — logodaki karşılaştırma hattının aynısı. */
-.startup-diff-bridge { position: relative; display: grid; justify-items: center; gap: 8px; height: 96px; align-content: center; opacity: 0; animation: startup-bridge-in .5s ease .5s forwards; }
-.startup-diff-bridge span { width: 1px; height: 26px; background: var(--accent-line); }
-.startup-diff-bridge svg { width: 26px; height: 26px; fill: none; stroke: var(--accent); }
-.startup-diff-bridge .bridge-node { fill: var(--brand-gray); stroke: none; }
-.startup-diff-bridge .bridge-node-active { fill: var(--accent); stroke: none; }
-.startup-diff-bridge .bridge-link { stroke-width: 2; stroke-linecap: round; }
 
-.startup-identity { position: relative; display: grid; justify-items: center; opacity: 0; animation: startup-identity-in .6s ease 1.15s forwards; }
-.startup-identity h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -.035em; }
-.startup-identity p { margin: 10px 0 0; color: var(--text-secondary); font-size: 12px; font-weight: 500; letter-spacing: .02em; }
-.startup-identity span { margin-top: 16px; color: var(--text-faint); font-family: var(--font-mono); font-size: 8px; letter-spacing: .12em; }
 
 @keyframes startup-splash-lifecycle { 0%, 89% { opacity: 1; visibility: visible; } 100% { opacity: 0; visibility: hidden; } }
 @keyframes startup-document-left { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: translateX(0); } }
@@ -697,47 +573,15 @@ kbd { display: inline-grid; place-items: center; min-width: 16px; height: 16px; 
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
-  .startup-splash, .startup-splash *, .startup-splash *::before, .startup-splash *::after { animation: none !important; }
-}
-
-.startup-splash.is-reduced-motion,
-.startup-splash.is-reduced-motion *,
-.startup-splash.is-reduced-motion *::before,
-.startup-splash.is-reduced-motion *::after {
-  animation: none !important;
 }
 
 
-/* -- Kabuk token'larına bağlama ------------------------------------------
- * Yalnız RENK ve YÜZEY değişkenleri yeniden bağlanır. Ölçü, boşluk ve
- * yerleşim değişkenlerine dokunulmaz: onlar diff hizalamasının parçasıdır.
- */
-.compare-root {
-  --surface-window: var(--bg-content);
-  --surface-shell: var(--bg-content);
-  --surface-sidebar: var(--bg-sidebar);
-  --surface-panel: var(--bg-content);
-  --surface-raised: var(--bg-sunken);
-  --surface-hover: var(--bg-hover);
-  --surface-document: var(--bg-content);
-  --surface-document-revised: var(--bg-sunken);
-  --surface-pane-head: var(--bg-sidebar);
-  --surface-pane-head-revised: var(--bg-sidebar);
-  --surface-inset: var(--bg-sunken);
 
-  --border-hairline: var(--line);
-  --border-subtle: var(--line);
-  --border-strong: var(--line-strong);
-  --border-hover: var(--line-strong);
-
-  --text-primary: var(--text);
-  --text-secondary: var(--text-secondary);
-  --text-muted: var(--text-tertiary);
-  --text-faint: var(--text-tertiary);
-  --text-on-accent: var(--on-accent);
-
-  --brand-teal: var(--accent);
-}
+/* Not: Buradaki eski "kabuk token'larına bağlama" bloğu kaldırıldı. Artık
+ * yeniden bağlama dosyanın başında, tek yerde yapılıyor; bu ikinci blok eski
+ * token adlarına (--bg-content, --text, --line) atıf yapıyordu ve o adlar
+ * tasarım turunda kalktı. İki ayrı bağlama noktası zaten kaçınılmaz biçimde
+ * ayrışırdı. */
 
 /* -- Kabuk içindeki yerleşim --------------------------------------------- */
 .compare-root {
@@ -752,7 +596,7 @@ kbd { display: inline-grid; place-items: center; min-width: 16px; height: 16px; 
   align-items: center;
   gap: 12px;
   padding: 0 0 10px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .compare-names { font-weight: 500; }
 .compare-summary { flex: 1; color: var(--text-secondary); }
