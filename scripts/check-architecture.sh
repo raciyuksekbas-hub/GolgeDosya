@@ -65,6 +65,45 @@ for crate in document-core pdf-core; do
   fi
 done
 
+# --- 3b. Dış süreç sınırı ------------------------------------------------
+# Süreç başlatma tek yerde yaşamalı: keşif, doğrulama, zaman aşımı ve ağ
+# politikası orada uygulanıyor. Final audit'te yüzeyin iki değil ALTI çağrı
+# noktasına yayıldığı ve yarısının ne zaman aşımı ne de ağ politikası taşıdığı
+# ölçüldü. Bu kapı, dağılmanın tekrar başlamasını engeller.
+#
+# İzin verilen istisnalar, her biri gerekçesiyle:
+#   * process-bridge          — sınırın kendisi
+#   * tests / #[cfg(test)]    — fikstür üreten testler
+#   * tools/preflight         — `sandbox-exec`'in KENDİSİNİ sınayan teşhis
+#   * open_with_default_application — işletim sistemine devir; beklemek yanlış
+SPAWNS=$(grep -rn "Command::new" crates apps tools --include='*.rs' 2>/dev/null \
+  | grep -v '/target/' \
+  | grep -v 'crates/process-bridge/' \
+  | grep -v '/tests/' \
+  | grep -vE 'tools/preflight/src/main.rs:[0-9]+: *let (launch|net) =' \
+  | grep -vE 'legacy\.rs:[0-9]+: *let ok =' \
+  | grep -vE 'legacy_doc\.rs:[0-9]+: *let status =' \
+  | grep -vE 'degisikis\.rs:[0-9]+: *let mut command =' \
+  | grep -vE 'legacy_doc\.rs:[0-9]+: *let mut command =' || true)
+if [ -n "$SPAWNS" ]; then
+  bad "sınır dışında süreç başlatma:"
+  printf '%s\n' "$SPAWNS" | sed 's/^/      /'
+else
+  ok "süreç başlatma yalnız process-bridge içinde (belgelenmiş istisnalar hariç)"
+fi
+
+# Çekirdekler asla süreç başlatmamalı — istisnasız.
+for crate in document-core pdf-core; do
+  if [ -d "crates/$crate" ]; then
+    N=$(grep -rn "Command::new" "crates/$crate/src" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${N:-0}" -gt 0 ]; then
+      bad "$crate süreç başlatıyor — çekirdekler bunu yapamaz"
+    else
+      ok "$crate: süreç başlatmıyor"
+    fi
+  fi
+done
+
 # --- 4. Kabuk motorları doğrudan çağırmamalı -----------------------------
 SHELL_SRC=apps/belge-shell/src-tauri/src
 HITS=$(grep -rnIE '\b(lopdf|quick_xml|zip::)\b' "$SHELL_SRC" 2>/dev/null | wc -l | tr -d ' ')
@@ -101,6 +140,75 @@ for m in tavzih duzenek degisikis ikincigoz; do
     bad "$m: capability dosyası hiçbir yerde bulunamadı"
   fi
 done
+
+# --- 5b. Hiçbir capability geniş yol/kabuk/ağ izni vermemeli -------------
+# `opener:allow-open-path` bir yol listesi ister. `"**"` her şeyi açar ve
+# uygulamanın en geniş iznidir. Final audit'te ölçüldü: hiçbir kod yolu
+# `open_path` veya `open_url` çağırmıyordu; izin bedavaya duruyordu. Geri
+# gelmesi kaza olmasın diye kapı bunu fail-closed denetliyor.
+BROAD=0
+for cap in "$CAPS"/*.json; do
+  [ -f "$cap" ] || continue
+  if python3 - "$cap" <<'PYEOF'
+import json, sys
+caps = json.load(open(sys.argv[1]))
+bad = []
+for p in caps.get("permissions", []):
+    if isinstance(p, dict):
+        ident = p.get("identifier", "")
+        for entry in p.get("allow", []):
+            val = entry.get("path") or entry.get("url") or ""
+            if val in ("**", "*", "**/*") or val.startswith("**"):
+                bad.append(f"{ident}={val}")
+    else:
+        if p.startswith(("fs:", "shell:", "http:")):
+            bad.append(p)
+sys.exit(1 if bad else 0)
+PYEOF
+  then :; else
+    bad "geniş izin: $(basename "$cap")"
+    BROAD=1
+  fi
+done
+[ "$BROAD" = "0" ] && ok "hiçbir capability geniş yol/kabuk/ağ izni vermiyor"
+
+# --- 5c. Denetle modülü süreç/opener/ağ yüzeyine dokunmamalı -------------
+# Capability'ler Tauri'de PENCERE düzeyindedir, modül düzeyinde değil: dört
+# modül tek webview'i paylaştığı için izinler ortaktır. Dolayısıyla İkinciGöz'ün
+# yalıtımı izinle değil, ÇAĞRI YERİYLE sağlanır — ve burada denetlenir.
+IG="$SHELL_SRC/modules/ikincigoz.rs"
+if [ -f "$IG" ]; then
+  HITS=$(grep -cnIE '\b(Command::new|opener|reveal_item|open_path|open_url|reqwest|TcpStream)\b' "$IG" || true)
+  if [ "${HITS:-0}" -gt 0 ]; then
+    bad "ikincigoz modülü süreç/opener/ağ yüzeyine dokunuyor ($HITS satır)"
+  else
+    ok "ikincigoz: süreç, opener ve ağ çağrısı yok"
+  fi
+fi
+
+# --- 5d. Eski veri yolları yalnız legacy-read katmanında -----------------
+# Ayar şeması tek; eski uygulamaların dizin düzenini bilen kod tek yerde
+# olmalı. Bir feature modülü eski yolu doğrudan öğrenirse migration katmanı
+# atlanabilir hâle gelir ve "asla yazma" sözü kod düzeyinde korunamaz.
+LEAK=$(grep -rln 'LEGACY_\|legacy_config_dir\|legacy_webkit_dir' "$SHELL_SRC" 2>/dev/null \
+  | grep -v 'paths\.rs' | grep -v 'legacy\.rs' || true)
+if [ -n "$LEAK" ]; then
+  bad "eski veri yolu legacy katmanı dışında:"
+  printf '%s\n' "$LEAK" | sed 's/^/      /'
+else
+  ok "eski veri yolları yalnız paths.rs ve legacy.rs içinde"
+fi
+
+# Migration hiçbir şey silmemeli — kural koddan okunur, belgeden değil.
+DEL=$(grep -nE '\b(remove_file|remove_dir_all|remove_dir)\b' "$SHELL_SRC/legacy.rs" 2>/dev/null \
+  | grep -v '#\[cfg(test)\]' || true)
+DELN=$(awk '/^#\[cfg\(test\)\]/{t=1} !t' "$SHELL_SRC/legacy.rs" 2>/dev/null \
+  | grep -cE '\b(remove_file|remove_dir_all|remove_dir)\b' || true)
+if [ "${DELN:-0}" -gt 0 ]; then
+  bad "migration kodunda silme çağrısı ($DELN)"
+else
+  ok "migration kodu hiçbir şeyi silmiyor"
+fi
 
 # --- 6. Kabuk ağ istemcisi barındırmamalı --------------------------------
 NET=$(grep -rnIE '\b(reqwest|hyper|ureq|TcpStream|UdpSocket)\b' "$SHELL_SRC" 2>/dev/null | wc -l | tr -d ' ')

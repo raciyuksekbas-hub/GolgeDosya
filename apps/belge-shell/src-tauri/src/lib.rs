@@ -121,23 +121,56 @@ pub fn run() {
     // binary'de hiç bulunmaz ve arayüz onu çağıramaz.
     //
     // `generate_handler!` listesinin içinde `#[cfg]` kullanılamaz, dolayısıyla
-    // her feature kombinasyonu ayrı bir kol gerektirir. Kol sayısı modül
-    // sayısıyla ÜSTEL büyür (üç modül = sekiz kol), bu yüzden yalnız iki
-    // derleme şekli desteklenir:
+    // her derleme şekli ayrı bir kol ister. Keyfî alt kümeler için kol sayısı
+    // üstel büyür (dört modül = on altı), ama DESTEKLENEN şekiller altıdır ve
+    // altısı da aşağıda yazılıdır:
     //
-    //   * varsayılan  — taşınmış bütün modüller açık (yayın şekli)
-    //   * çıplak      — hiçbir modül yok (kabuğun kendi smoke'u)
+    //   * dördü birden — yayın şekli
+    //   * yalnız Dönüştür · yalnız Denetle · yalnız Karşılaştır · yalnız Düzenle
+    //   * hiçbiri — kabuğun kendi smoke'u
     //
-    // Aradaki kombinasyonlar derleme hatası verir; sessizce yarım bir binary
-    // üretmektense açıkça durmak doğrudur. Günlük geri alma zaten derleme
-    // zamanı bayrağıyla değil, çalışma zamanı bayrağıyla yapılır:
-    // BELGE_DISABLE_<AD>=1 (bkz. features.rs).
+    // Bunların dışındaki bir ara kombinasyon (örneğin ikisi açık, ikisi kapalı)
+    // aşağıdaki `compile_error!` ile açıkça reddedilir. Sessizce yarım bir
+    // binary üretmektense derlemede durmak doğrudur. Günlük geri alma zaten
+    // çalışma zamanı bayrağıyla yapılır: BELGE_DISABLE_<AD>=1 (bkz. features.rs).
     #[cfg(not(any(
         all(
             feature = "feature_tavzih",
             feature = "feature_ikincigoz",
             feature = "feature_degisikis",
             feature = "feature_duzenek"
+        ),
+        all(
+            feature = "feature_tavzih",
+            not(any(
+                feature = "feature_ikincigoz",
+                feature = "feature_degisikis",
+                feature = "feature_duzenek"
+            ))
+        ),
+        all(
+            feature = "feature_ikincigoz",
+            not(any(
+                feature = "feature_tavzih",
+                feature = "feature_degisikis",
+                feature = "feature_duzenek"
+            ))
+        ),
+        all(
+            feature = "feature_degisikis",
+            not(any(
+                feature = "feature_tavzih",
+                feature = "feature_ikincigoz",
+                feature = "feature_duzenek"
+            ))
+        ),
+        all(
+            feature = "feature_duzenek",
+            not(any(
+                feature = "feature_tavzih",
+                feature = "feature_ikincigoz",
+                feature = "feature_degisikis"
+            ))
         ),
         not(any(
             feature = "feature_tavzih",
@@ -147,8 +180,9 @@ pub fn run() {
         ))
     )))]
     compile_error!(
-        "Modül feature'ları ya hep birlikte açık ya hep birlikte kapalı olmalı. \
-         Tek bir modülü kapatmak için çalışma zamanı bayrağını kullanın: \
+        "Desteklenmeyen feature kombinasyonu. Yalnız şunlar derlenir: dördü \
+         birden, tek başına bir modül, ya da hiçbiri. Tek bir modülü günlük \
+         kullanımda kapatmak için çalışma zamanı bayrağını kullanın: \
          BELGE_DISABLE_<AD>=1"
     );
 
@@ -196,6 +230,93 @@ pub fn run() {
         modules::degisikis::degisikis_convert_legacy_doc,
         modules::degisikis::degisikis_save_report,
         modules::degisikis::degisikis_open_report,
+        modules::duzenek::duzenek_preview_pdf_page,
+        modules::duzenek::duzenek_renderer_status,
+        modules::duzenek::duzenek_select_renderer,
+        modules::duzenek::duzenek_prepare_export_plan,
+        modules::duzenek::duzenek_execute_export_plan,
+        modules::duzenek::duzenek_split_into_new_exhibit,
+        modules::duzenek::duzenek_scan_source_files,
+        modules::duzenek::duzenek_prepare_uyap,
+        modules::duzenek::duzenek_convert_office_pdf,
+        modules::duzenek::duzenek_convert_udf_to_md,
+        modules::duzenek::duzenek_pdf_to_images,
+        modules::duzenek::duzenek_run_pdf_tool,
+        modules::duzenek::duzenek_merge_pdfs,
+        modules::duzenek::duzenek_split_pdf,
+        modules::duzenek::duzenek_delete_pdf_pages,
+        modules::duzenek::duzenek_rotate_pdf_pages_cmd,
+        modules::duzenek::duzenek_images_to_pdf,
+        modules::duzenek::duzenek_detect_blank_pages,
+        modules::duzenek::duzenek_save_project_to_file,
+        modules::duzenek::duzenek_load_project_from_file,
+        modules::duzenek::duzenek_relink_source,
+    ]);
+
+    #[cfg(all(
+        feature = "feature_tavzih",
+        not(any(
+            feature = "feature_ikincigoz",
+            feature = "feature_degisikis",
+            feature = "feature_duzenek"
+        ))
+    ))]
+    let builder = builder.invoke_handler(shell_commands![
+        modules::tavzih::tavzih_inspect_file,
+        modules::tavzih::tavzih_inspect_files,
+        modules::tavzih::tavzih_convert_file,
+        modules::tavzih::tavzih_convert_batch,
+        modules::tavzih::tavzih_terms_accepted,
+        modules::tavzih::tavzih_accept_terms,
+        modules::tavzih::tavzih_output_folder,
+        modules::tavzih::tavzih_set_output_folder,
+        modules::tavzih::tavzih_reveal_output_folder,
+    ]);
+
+    #[cfg(all(
+        feature = "feature_ikincigoz",
+        not(any(
+            feature = "feature_tavzih",
+            feature = "feature_degisikis",
+            feature = "feature_duzenek"
+        ))
+    ))]
+    let builder = builder.invoke_handler(shell_commands![
+        modules::ikincigoz::ikincigoz_analyze_document,
+        modules::ikincigoz::ikincigoz_apply_fixes,
+        modules::ikincigoz::ikincigoz_preview_fixes,
+        modules::ikincigoz::ikincigoz_list_rules,
+        modules::ikincigoz::ikincigoz_get_dictionary,
+        modules::ikincigoz::ikincigoz_accept_word,
+        modules::ikincigoz::ikincigoz_remove_accepted_word,
+        modules::ikincigoz::ikincigoz_add_correction,
+        modules::ikincigoz::ikincigoz_remove_correction,
+    ]);
+
+    #[cfg(all(
+        feature = "feature_degisikis",
+        not(any(
+            feature = "feature_tavzih",
+            feature = "feature_ikincigoz",
+            feature = "feature_duzenek"
+        ))
+    ))]
+    let builder = builder.invoke_handler(shell_commands![
+        modules::degisikis::degisikis_read_document,
+        modules::degisikis::degisikis_convert_legacy_doc,
+        modules::degisikis::degisikis_save_report,
+        modules::degisikis::degisikis_open_report,
+    ]);
+
+    #[cfg(all(
+        feature = "feature_duzenek",
+        not(any(
+            feature = "feature_tavzih",
+            feature = "feature_ikincigoz",
+            feature = "feature_degisikis"
+        ))
+    ))]
+    let builder = builder.invoke_handler(shell_commands![
         modules::duzenek::duzenek_preview_pdf_page,
         modules::duzenek::duzenek_renderer_status,
         modules::duzenek::duzenek_select_renderer,

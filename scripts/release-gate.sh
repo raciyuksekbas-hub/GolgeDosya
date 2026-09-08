@@ -62,8 +62,10 @@ b "2. Mimari değişmezler"
 gate "pdf-core → document-core yönü" bash scripts/check-architecture.sh
 # Geri alma yolu bir belge değil, derlenen bir yapılandırmadır. Dört modülün
 # tamamı kapalıyken derlenmiyorsa feature bazlı geri alma sözü tutulamaz.
-gate "tam geri alma derlemesi (dört modül kapalı)" \
-  cargo check -p belge-shell --no-default-features --features custom-protocol
+# Altı desteklenen derleme şeklinin hepsi + desteklenmeyen bir kombinasyonun
+# açıkça reddedildiği. Tek bir "kapalı derleniyor mu" kontrolü yetmiyor:
+# geri alma sözü modül BAŞINA verildi.
+gate "feature derleme matrisi (6 şekil)" bash scripts/check-feature-matrix.sh
 # Taşınan komutların gövdeleri bağımsız uygulamadakiyle aynı mı? Bağımsız
 # komutlar `pub` değil, baseline dondurulmuş; iki katman yan yana çağrılamıyor.
 # Bu yüzden eşitlik kaynak düzeyinde kanıtlanır, davranış ise
