@@ -115,6 +115,15 @@ test("belge bağlamı kipler arasında korunur", () => {
     "gezinme belgeyi sessizce temizlememeli");
 });
 
+test("Türkçe büyük harf doğru: lang=tr olmadan İ noktasını kaybeder", () => {
+  // CSS `text-transform: uppercase` yerel ayara duyarlıdır. lang="tr"
+  // olmadan "Erişilebilirlik" ekranda "ERISILEBILIRLIK" olarak çıkar —
+  // Türkçe bir hukuk ürününde kabul edilemez. Arayüzde yedi yerde uppercase
+  // kullanılıyor, hepsi bu tek özniteliğe bağlı.
+  const html = readFileSync("index.html", "utf8");
+  assert.match(html, /<html[^>]*lang="tr"/, 'index.html lang="tr" taşımalı');
+});
+
 test("teknik ayrıntı kullanıcı arayüzünde görünmez", () => {
   const forbidden = [
     "localStorage", "configDir", "migratedFrom", "feature_", "bundle",

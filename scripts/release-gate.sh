@@ -56,6 +56,12 @@ else
   bad "cargo bulunamadı"
 fi
 gate "tsc --noEmit" bash -c "cd '$APP_DIR' && npx tsc --noEmit"
+# Arayüz testleri buraya kadar sürüm kapısında KOŞMUYORDU: yalnız tsc vardı.
+# Erişilebilirlik ve tasarım sözleşmeleri kapıda değilse, sözleşme değildir.
+gate "arayüz sözleşmeleri (UX + a11y + tasarım)" \
+  bash -c "cd '$APP_DIR' && npm run test:ux"
+gate "motor testleri (vitest)" \
+  bash -c "cd '$APP_DIR' && npx vitest run --pool=forks --poolOptions.forks.singleFork=true"
 echo
 
 b "2. Mimari değişmezler"
