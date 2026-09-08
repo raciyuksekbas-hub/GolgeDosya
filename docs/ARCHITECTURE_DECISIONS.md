@@ -292,36 +292,66 @@ cerrahisi değil. Bilinçli olarak ertelendi.
 
 ---
 
-## 8. Lisans beyanı — **sahibinin kararı bekleniyor**
+## 8. Lisans beyanı — **karar verildi: Proprietary**
 
-Birleşme, farklı lisans beyan eden dört depoyu tek workspace altında topladı:
+Sahibinin kararı (2026-09-08): birleşik ürün ve bütün birinci taraf crate'ler
+**Proprietary / All Rights Reserved**.
 
-| Kaynak | Beyan |
+### Önce provenance
+
+Hiçbir şey yeniden damgalanmadan önce içerik denetlendi. Yedi birinci taraf
+bileşenin hiçbirinde gömülü üçüncü taraf kaynak kod bulunmadı:
+
+| Aranan | Bulunan |
 |---|---|
-| Tavzih | `MIT` |
-| DüzenEk | `MIT` |
-| İkinciGöz | `Proprietary` |
-| Değişikİş | Rust workspace lisans satırı yok |
-| **Birleşik workspace** | **`Proprietary`** |
+| Telif başlığı / `(c) 20xx` | yok |
+| SPDX bildirimi | yok |
+| "adapted / derived / ported / taken from" | yok |
+| Vendored dosya | yok |
+| Paketlenmiş font | **yok** — CSS'teki adlar sistem yedek listesi |
 
-Sonuç: `license.workspace = true` kullanan her crate — `ekler-core` (DüzenEk'ten)
-dâhil — artık **Proprietary** beyan ediyor. `document-core` ise Tavzih'ten
-gelirken kendi `license = "MIT"` satırını koruduğu için MIT kalmış durumda.
+`document-core/src/udf/mod.rs` biçim bilgisinin kara kutu gözleminden
+türetildiğini ve **başka bir uygulamadan türetilmediğini** açıkça beyan ediyor.
+Marka varlıkları, PowerShell yardımcısı ve test korpusu da birinci taraf.
 
-Yani bugün aynı depoda, aynı ürünün içinde, biri MIT biri Proprietary iki
-çekirdek var; ve DüzenEk'in motoru bağımsız depoda MIT iken burada Proprietary.
+Bu yüzden yedisi de standardize edilebildi ve `document-core`'un sabit `MIT`
+satırı workspace'in `Proprietary` beyanına döndü.
 
-**Bu bir mühendislik kararı değildir.** Kod sahibinin lisans kararıdır ve bu
-turda hiçbir beyan değiştirilmedi. `scripts/check-licensing.py` mevcut durumu
-tablo hâlinde tutar ve bir beyan sessizce kayarsa kapıyı kapatır.
+### Değiştirilmeyen şey
 
-Kapatılması gereken iki madde:
-1. Dört motorun tek bir lisans altında mı toplanacağı (ve hangisi).
-2. Birleşik depoda **LICENSE dosyası yok**; dört bağımsız depoda vardı.
-   `THIRD_PARTY_NOTICES` / `THIRD_PARTY_LICENSES` dosyaları da taşınmadı.
+Bağımsız Tavzih ve DüzenEk depolarının **yayımlanmış MIT sürümleri** ve onlara
+dayanan haklar bu kararla değişmez. Karar yalnız birleşik ürünün bu ve bundan
+sonraki sürümleri için geçerlidir. Hem `LICENSE` hem `document-core`'un manifest
+yorumu bunu açıkça söyler.
 
-Üçüncü taraf bağımlılıklar temiz: 527 paket incelendi, GPL/AGPL yok, lisansı
-bilinmeyen paket yok, git kaynaklı bağımlılık yok — hepsi paket kayıtlarından.
+### Üçüncü taraf
+
+`THIRD_PARTY_NOTICES.md` dört ayrı kaydın yerine geçen tek canonical kayıttır ve
+kopyalanmadı, gerçek denetimden üretildi: 520 Rust crate, 141 npm paketi,
+GPL/AGPL yok, lisansı bilinmeyen paket yok.
+
+Özellikle açıkça yazılan üç şey:
+
+1. **MPL-2.0 (5 crate)** — `cssparser`, `cssparser-macros`, `dtoa-short`,
+   `option-ext`, `selectors`. Tauri'nin webview yığını üzerinden, **değiştirilmeden**
+   kullanılıyor. Dosya düzeyinde zayıf copyleft olduğu için mülkiyet dağıtımına
+   engel değil; **ama biri değiştirilirse** değiştirilen dosyaları yayımlama
+   yükümlülüğü doğar.
+2. **jszip** — `MIT OR GPL-3.0-or-later`. **MIT seçeneği seçilmiştir.**
+3. **duck** — yalnız `"BSD"` beyan ediyor; SPDX belirsiz, özü izin verici.
+
+Ayrıca dağıtılan ile dağıtılmayan ayrıldı: 141 npm paketinin yalnız **35'i**
+çalışma zamanı kapanışında. `caniuse-lite` CC-BY-4.0'dır ama yalnız derleme
+zamanında kullanılır, dağıtılmaz, dolayısıyla atıf yükümlülüğü doğmaz — yine de
+kayda geçirildi.
+
+### Kapı
+
+`scripts/check-licensing.py` beş koşulu **fail-closed** denetler: workspace
+Proprietary, her birinci taraf crate onu miras alır, kökte mülkiyet `LICENSE`
+var, `THIRD_PARTY_NOTICES.md` var ve dikkat gerektiren kayıtları taşıyor,
+hiçbir bağımlılık GPL/AGPL veya lisanssız değil. Beşinin de ihlal edildiğinde
+gerçekten düştüğü ayrı ayrı doğrulandı.
 
 ---
 

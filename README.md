@@ -41,6 +41,18 @@ cargo test --workspace
 Bu sıra `scripts/check-fresh-clone.sh` tarafından her koşuda doğrulanır: depo,
 eski dört depo erişilemezken klonlanıp derlenir ve test edilir.
 
+## Lisans
+
+**Proprietary / All Rights Reserved** — © 2026 Raci Çetin Yüksekbaş.
+Bkz. `LICENSE`.
+
+Yedi birinci taraf bileşenin tamamı bu ürün için özgün geliştirilmiştir ve
+gömülü üçüncü taraf kaynak kod içermez. Üçüncü taraf açık kaynak bağımlılıklar
+kendi lisanslarına tabidir; tek canonical kayıt `THIRD_PARTY_NOTICES.md`.
+
+Bağımsız Tavzih ve DüzenEk depolarının yayımlanmış MIT sürümleri bu kararla
+değişmez; karar yalnız birleşik ürünün bundan sonraki rejimidir.
+
 ## Kapılar
 
 | Betik | Ne kanıtlar |
@@ -49,7 +61,7 @@ eski dört depo erişilemezken klonlanıp derlenir ve test edilir.
 | `scripts/check-external-dependencies.py` | depo dışı yol bağımlılığı **sıfır** (mandal) |
 | `scripts/check-feature-matrix.sh` | altı derleme şeklinin hepsi derlenir, yedincisi reddedilir |
 | `scripts/check-command-parity.py` | taşınan 21 DüzenEk komutunun gövdesi bağımsız depoyla aynı |
-| `scripts/check-licensing.py` | lisans beyanları sessizce kaymaz |
+| `scripts/check-licensing.py` | Proprietary rejimi, LICENSE, üçüncü taraf kaydı ve bağımlılık lisansları — fail-closed |
 | `scripts/check-fresh-clone.sh` | taze klon → kur → derle → test, eski depolar olmadan |
 | `scripts/release-gate.sh` | hepsi + lisans, ağ bağımsızlığı, paketleme, kullanıcı verisi değişmezliği |
 
