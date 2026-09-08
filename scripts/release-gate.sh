@@ -74,6 +74,7 @@ gate "duzenek komut gövdesi eşitliği" python3 scripts/check-command-parity.py
 # Dış depo bağımlılığı mandalı. Taze klon → derle → test hedefi, bu sayı
 # sıfırlanmadan tutulamaz; artması sessizce olmamalı.
 gate "depo dışı bağımlılık mandalı" python3 scripts/check-external-dependencies.py
+gate "lisans beyanı tutarlılığı" python3 scripts/check-licensing.py
 echo
 
 b "3. Testler"
@@ -182,6 +183,16 @@ else
   else
     gate "macOS paketleme zinciri (imza + notarization + karantina provası)" bash scripts/bundle-macos.sh
   fi
+  echo
+fi
+
+if [ "$FAST" = "1" ]; then
+  b "9. Taze klon kanıtı"; skip "--fast"; echo
+else
+  b "9. Taze klon kanıtı"
+  # Deponun eski dört depo olmadan klonlanıp derlenip test edilebildiği.
+  # Soğuk derleme olduğu için pahalı; bu yüzden yalnız tam koşuda.
+  gate "taze klon → kur → derle → test" bash scripts/check-fresh-clone.sh
   echo
 fi
 
