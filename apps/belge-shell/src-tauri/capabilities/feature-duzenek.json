@@ -1,20 +1,12 @@
 {
+  "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "feature-duzenek",
-  "description": "DüzenEk: kaynak dosyaları seç, çıktı klasörü seç, üretilen paketi Finder'da göster ve aç. `opener:allow-open-path` bu dörtlünün EN GENİŞ iznidir; bu yüzden yalnız Düzenle modülü etkinken yüklenir. Bu modül ayrıca harici süreç çalıştırır (LibreOffice `soffice`, `sandbox-exec` ile ağı reddedilmiş olarak; HEIC için `sips`) ve macOS CoreGraphics FFI kullanır. Bu yüzey İkinciGöz'e SIZAMAZ: izinler feature başına ayrıdır ve check-architecture.sh feature/capability tutarlılığını zorlar. AÇIK İŞ: open-path kapsamı kullanıcının seçtiği çıktı köküyle daraltılmalıdır.",
+  "description": "Düzenle. Belge ve hedef klasör seçer, yeni PDF kaydeder. Opener izni yoktur. Dış süreçleri (LibreOffice, sips) process-bridge üzerinden çalıştırır: zaman aşımı ve ağ reddi orada uygulanır.",
   "windows": [
     "main"
   ],
   "permissions": [
     "dialog:allow-open",
-    "dialog:allow-save",
-    "opener:allow-reveal-item-in-dir",
-    {
-      "identifier": "opener:allow-open-path",
-      "allow": [
-        {
-          "path": "**"
-        }
-      ]
-    }
+    "dialog:allow-save"
   ]
 }

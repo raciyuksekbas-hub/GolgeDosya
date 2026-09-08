@@ -1,7 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "feature-degisikis",
-  "description": "Karşılaştır: kullanıcının seçtiği iki belgeyi webview'e alır ve karşılaştırma raporunu kaydeder. Diff motoru webview içinde çalışır ve belgeyi oradan aldığı için Rust tarafında dosya OKUMA izni istemez. Ağ izni yoktur. Rapor yazma ve açma, kendi komutları içinde iki kez doğrulanmış bir yol üzerinden yapılır; genel bir opener izni verilmez.",
-  "windows": ["main"],
-  "permissions": ["dialog:allow-open", "dialog:allow-save"]
+  "description": "Karşılaştır. Yalnız fark raporunu kaydeder; ağ ve opener izni yoktur. Not: bu modülün Rust tarafı eski .doc dosyaları için textutil çalıştırır ve raporu işletim sistemine devreder. Tauri capability'leri Rust tarafındaki süreç başlatmayı YÖNETMEZ; o yüzey process-bridge sınırında denetlenir.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "dialog:allow-save"
+  ]
 }

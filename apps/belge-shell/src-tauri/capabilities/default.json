@@ -1,13 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Kabuğun TAMAMI. Phase 2'de hiçbir feature taşınmadığı için kabuk yalnız bir dosya seçici açabilir ve bir kaydetme yeri sorabilir. Ağ izni yok, shell izni yok, filesystem eklentisi yok, opener yok. Yeni izinler ancak ilgili feature taşınırken ve kendi capability dosyasıyla eklenir; bu dosya büyütülmez.",
+  "description": "Kabuğun kendi yüzeyi. Yalnız pencere ve belge açma. Modül izinleri feature-*.json dosyalarında yaşar ve modülüyle birlikte gelir gider.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-set-theme",
-    "dialog:allow-open",
-    "dialog:allow-save"
+    "dialog:allow-open"
   ]
 }

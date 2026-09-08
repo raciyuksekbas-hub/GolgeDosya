@@ -1,6 +1,11 @@
 {
+  "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "feature-ikincigoz",
-  "description": "İkinciGöz yalnız bir dosya seçici açar ve düzeltilmiş kopyayı kaydeder. Filesystem, shell, http ve updater izni YOKTUR; uygulama seçilen dosyanın dışına hiç çıkmaz ve ağla konuşmaz. Bu duruş bağımsız uygulamada yayımlanmış bir gizlilik iddiasıdır (PRIVACY_AUDIT.md) ve birleşmede genişletilemez.",
-  "windows": ["main"],
-  "permissions": ["dialog:allow-open", "dialog:allow-save", "dialog:allow-message"]
+  "description": "Denetle. Yalnız düzeltilmiş kopyayı kaydeder. Bu modülün Rust tarafında süreç, opener ve ağ çağrısı YOKTUR ve bu, check-architecture.sh ile fail-closed denetlenir.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "dialog:allow-save"
+  ]
 }

@@ -1,11 +1,10 @@
 {
+  "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "feature-tavzih",
-  "description": "Tavzih: dosya/klasör seç, dönüştürülen belgeyi Finder'da göster, sistem uygulamasıyla aç, geri bildirim için mailto aç. Shell yok, filesystem eklentisi yok, HTTP istemcisi yok.",
+  "description": "Dönüştür. Belge seçer ve çıktı klasörünü Finder'da gösterir.",
   "windows": ["main"],
   "permissions": [
     "dialog:allow-open",
-    "opener:allow-reveal-item-in-dir",
-    { "identifier": "opener:allow-open-path", "allow": [{ "path": "**" }] },
-    { "identifier": "opener:allow-open-url", "allow": [{ "url": "mailto:*" }] }
+    "opener:allow-reveal-item-in-dir"
   ]
 }
