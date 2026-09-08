@@ -1,64 +1,84 @@
-/* Kabuk yerleşimi: kenar çubuğu + içerik. */
+/*
+ * Yüksekbaş Belge — kabuk ve ortak ilkeller.
+ *
+ * Buradaki her sınıf birden çok kipte kullanılır. Bir kipte tek kullanılan
+ * görünüm buraya değil, o kipin kendi dosyasına aittir.
+ *
+ * Kanso: bilgi, eylem veya yön üretmeyen öğe yok. Kart yığını yok — yüzeyler
+ * düz, ayrımlar ince çizgiyle. Gölge yalnız gerçekten yükselen yüzeyde
+ * (sheet, popover) ve o zaman da neredeyse görünmez.
+ */
+
+/* ==========================================================================
+   Pencere iskeleti
+   ========================================================================== */
 
 .shell {
   display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   height: 100%;
+  background: var(--surface-app);
 }
 
-/* ---------------------------------------------------------------- sidebar */
+.shell[data-sidebar="collapsed"] { grid-template-columns: 0 minmax(0, 1fr); }
+
+/* ---------------------------------------------------------------- Sidebar */
 
 .sidebar {
   display: flex;
   flex-direction: column;
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--line);
-  /* Trafik ışıkları için üst boşluk: pencere başlığı görünür durumda ama
-     kenar çubuğu onun altına uzanıyor. */
-  padding-top: 8px;
+  min-width: 0;
+  padding: var(--space-2) 0 var(--space-2);
+  overflow: hidden;
+  background: var(--surface-sidebar);
+  border-right: 1px solid var(--border-subtle);
 }
 
 .sidebar-title {
-  padding: 6px 14px 12px;
-  font-size: 0.92em;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-meta);
   font-weight: 600;
-  letter-spacing: 0.1px;
-  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .sidebar-nav {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
 }
 
 .sidebar-item {
   display: flex;
+  gap: var(--space-3);
   align-items: center;
-  gap: 9px;
   width: 100%;
-  padding: 6px 8px;
-  border: none;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--text);
+  padding: 6px var(--space-2);
+  color: var(--text-primary);
   font: inherit;
   text-align: left;
-  cursor: default;
-  transition: background var(--duration);
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  transition: background var(--motion-fast) var(--ease);
 }
-.sidebar-item:hover:not(:disabled) { background: var(--bg-hover); }
+
+.sidebar-item:hover:not(:disabled) { background: var(--surface-hover); }
 .sidebar-item[aria-current="page"] {
-  background: var(--accent);
-  color: var(--on-accent);
+  color: var(--accent);
+  font-weight: 500;
+  background: var(--accent-quiet);
 }
 .sidebar-item[aria-current="page"] .sidebar-icon { opacity: 1; }
-.sidebar-item:disabled { color: var(--text-tertiary); }
-.sidebar-item:disabled .sidebar-icon { opacity: 0.35; }
+.sidebar-item:disabled { color: var(--text-muted); }
+.sidebar-item:disabled .sidebar-icon { opacity: 0.3; }
 
 .sidebar-icon {
-  flex: 0 0 16px;
+  flex: none;
   width: 16px;
   height: 16px;
   opacity: 0.72;
@@ -67,320 +87,462 @@
 .sidebar-spacer { flex: 1; }
 
 .sidebar-footer {
-  padding: 8px;
-  border-top: 1px solid var(--line);
+  padding: var(--space-2) var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+  margin: 0 var(--space-2);
 }
 
-/* ---------------------------------------------------------------- content */
+/* Açık belge — kenar çubuğunun altında, bağlamı görünür tutar. */
+.sidebar-context {
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  overflow: hidden;
+}
+
+.sidebar-context-label {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sidebar-context-name {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- İçerik */
 
 .content {
   display: flex;
   flex-direction: column;
-  background: var(--bg-content);
+  min-width: 0;
   overflow: hidden;
+  background: var(--surface-raised);
 }
 
-.content-header {
+/* Toolbar: başlık ve bağlamsal eylemler tek satırda. Ayrı bir "sayfa
+   başlığı" bloğu yok — dikey alan belgeye ait. */
+.toolbar {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 22px 12px;
-  border-bottom: 1px solid var(--line);
-  -webkit-app-region: drag;
+  flex: none;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: var(--toolbar-h);
+  padding: 0 var(--space-4);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-subtle);
 }
-.content-header h1 {
+
+.toolbar-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.toolbar-title h1 {
   margin: 0;
-  font-size: 1.08em;
+  overflow: hidden;
+  font-size: var(--text-heading);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.006em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.content-header p {
-  margin: 0;
+
+.toolbar-subtitle {
+  overflow: hidden;
   color: var(--text-secondary);
-  font-size: 0.92em;
+  font-size: var(--text-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolbar-spacer { flex: 1; min-width: var(--space-4); }
+
+.toolbar-group {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.toolbar-divider {
+  align-self: center;
+  width: 1px;
+  height: 18px;
+  background: var(--border-subtle);
 }
 
 .content-body {
   flex: 1;
+  min-height: 0;
   overflow: auto;
-  padding: 22px;
 }
 
-/* ------------------------------------------------------------ belge yüzeyi */
+.content-body:focus { outline: none; }
 
-.doc-surface {
-  max-width: 640px;
+/* Kip yüzeyi: içeriğin nefes aldığı ölçülü kolon. */
+.surface {
+  max-width: 780px;
+  padding: var(--space-6) var(--space-5) var(--space-7);
   margin: 0 auto;
+}
+
+.surface-wide { max-width: none; padding: 0; }
+
+/* ==========================================================================
+   İlkeller
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- Button */
+
+.btn {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 var(--space-3);
+  color: var(--text-primary);
+  font: inherit;
+  white-space: nowrap;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  transition:
+    background var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+
+.btn:hover:not(:disabled) { background: var(--surface-hover); }
+.btn:active:not(:disabled) { background: var(--surface-selected); }
+.btn:disabled { color: var(--text-muted); border-color: var(--border-subtle); }
+
+.btn-primary {
+  color: var(--on-accent);
+  font-weight: 500;
+  background: var(--accent);
+  border-color: transparent;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-primary:disabled { color: var(--on-accent); background: var(--text-muted); }
+
+.btn-quiet {
+  color: var(--text-secondary);
+  background: none;
+  border-color: transparent;
+}
+.btn-quiet:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.btn-danger { color: var(--danger); border-color: var(--border-strong); }
+
+/* ------------------------------------------------------------ IconButton */
+
+.icon-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  color: var(--text-primary);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.icon-btn:hover:not(:disabled) { background: var(--surface-hover); }
+.icon-btn:active:not(:disabled) { background: var(--surface-selected); }
+.icon-btn:disabled { color: var(--text-muted); }
+.icon-btn[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-quiet);
+}
+.icon-btn svg { width: 16px; height: 16px; }
+
+/* --------------------------------------------------------------- Divider */
+
+.divider {
+  height: 1px;
+  background: var(--border-subtle);
+  border: 0;
+  margin: var(--space-5) 0;
+}
+
+/* -------------------------------------------------------- Section header */
+
+.section-head {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.section + .section { margin-top: var(--space-6); }
+
+/* ------------------------------------------------------------ EmptyState */
+
+.empty {
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-7) var(--space-5);
+  text-align: center;
 }
 
+.empty-icon { color: var(--text-muted); opacity: 0.55; }
+.empty-primary { font-size: var(--text-heading); font-weight: 500; }
+.empty-hint { color: var(--text-secondary); }
+.empty-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+
+/* Sürükle-bırak hedefi: kesikli çerçeve yalnız üzerine gelindiğinde belirir. */
 .dropzone {
   display: flex;
   flex-direction: column;
+  gap: var(--space-3);
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  min-height: 208px;
-  padding: 32px 24px;
-  border: 1.5px dashed var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--bg-sunken);
-  color: var(--text-secondary);
+  padding: var(--space-7) var(--space-5);
   text-align: center;
-  transition: border-color var(--duration), background var(--duration);
+  border: 1px dashed transparent;
+  border-radius: var(--radius-lg);
+  transition:
+    background var(--motion) var(--ease),
+    border-color var(--motion) var(--ease);
 }
+
 .dropzone[data-over="true"] {
-  border-color: var(--accent);
-  border-style: solid;
   background: var(--accent-quiet);
-}
-.dropzone-icon { color: var(--text-tertiary); }
-.dropzone[data-over="true"] .dropzone-icon { color: var(--accent); }
-.dropzone-primary {
-  color: var(--text);
-  font-size: 1.02em;
-}
-.dropzone-hint { font-size: 0.92em; }
-
-/* ---------------------------------------------------------------- buttons */
-
-.btn {
-  padding: 4px 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--bg-content);
-  color: var(--text);
-  font: inherit;
-  cursor: default;
-  transition: background var(--duration);
-}
-.btn:hover:not(:disabled) { background: var(--bg-hover); }
-.btn:disabled { color: var(--text-tertiary); }
-
-.btn-primary {
-  border-color: transparent;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 500;
-}
-.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-
-.btn-quiet {
-  border-color: transparent;
-  background: transparent;
-  color: var(--text-secondary);
-  padding: 4px 8px;
-}
-.btn-quiet:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
-
-/* ------------------------------------------------------------ son belgeler */
-
-.recents h2 {
-  margin: 0 0 6px;
-  font-size: 0.86em;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-tertiary);
+  border-color: var(--accent);
 }
 
-.recents-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid var(--line);
-}
-.recents-list li { border-bottom: 1px solid var(--line); }
+/* --------------------------------------------------------------- FileRow */
 
-.recent-item {
+.file-list { padding: 0; margin: 0; list-style: none; }
+.file-list li + li { border-top: 1px solid var(--border-subtle); }
+
+.file-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
+  align-items: baseline;
   width: 100%;
-  padding: 8px 6px;
-  border: none;
-  background: transparent;
+  padding: 7px var(--space-2);
   color: inherit;
   font: inherit;
   text-align: left;
-  cursor: default;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  transition: background var(--motion-fast) var(--ease);
 }
-.recent-item:hover { background: var(--bg-hover); }
-.recent-name {
+
+button.file-row:hover { background: var(--surface-hover); }
+
+.file-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.recent-kind {
-  flex: 0 0 auto;
-  font-size: 0.8em;
-  font-variant: all-small-caps;
-  letter-spacing: 0.04em;
-  color: var(--text-tertiary);
+
+.file-kind {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  text-transform: uppercase;
 }
 
-.recents-empty {
-  padding: 10px 6px;
-  border-top: 1px solid var(--line);
-  color: var(--text-tertiary);
-  font-size: 0.92em;
+.file-time {
+  flex: none;
+  min-width: 8ch;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  text-align: right;
 }
 
-/* ---------------------------------------------------------------- ayarlar */
+/* ---------------------------------------------------------------- Status
+   Küçük, anlaşılır bildirim. Büyük yeşil kutu yok. */
+
+.status {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  border-radius: var(--radius);
+}
+
+.status[data-tone="error"] {
+  color: var(--danger);
+  background: var(--danger-quiet);
+}
+.status[data-tone="success"] {
+  color: var(--success);
+  background: var(--success-quiet);
+}
+.status-mark { flex: none; font-weight: 600; }
+.status-text { min-width: 0; }
+
+/* İş sürüyor: satır içi, tam ekran değil. */
+.spinner {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 720ms linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.progress {
+  overflow: hidden;
+  width: 100%;
+  height: 3px;
+  background: var(--surface-sunken);
+  border-radius: 2px;
+}
+.progress-bar {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--motion) var(--ease);
+}
+
+/* ------------------------------------------------------------- Inspector
+   Yalnız gösterilecek içerik varken görünür. Boşsa hiç yok. */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.workspace[data-inspector="true"] {
+  grid-template-columns: minmax(0, 1fr) var(--inspector-w);
+}
+
+.inspector {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  background: var(--surface-raised);
+  border-left: 1px solid var(--border-subtle);
+}
+
+.inspector-head {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.inspector-title {
+  flex: 1;
+  font-size: var(--text-meta);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.inspector-body { padding: var(--space-4); }
+.inspector-body > * + * { margin-top: var(--space-3); }
+
+/* ----------------------------------------------------------- Dialog/Sheet
+   macOS sheet: üstten iner, pencereye bağlıdır. */
 
 .sheet-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.28);
+  z-index: 50;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 64px;
+  background: rgb(0 0 0 / 22%);
+  animation: sheet-veil var(--motion) var(--ease);
 }
+
 .sheet {
-  width: min(480px, calc(100vw - 48px));
-  max-height: calc(100vh - 128px);
+  width: min(520px, calc(100vw - var(--space-6)));
+  max-height: calc(100vh - var(--space-7));
   overflow: auto;
-  background: var(--bg-content);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
-  padding: 20px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 14%);
+  animation: sheet-in var(--motion) var(--ease);
 }
-.sheet h2 { margin: 0 0 14px; font-size: 1.02em; }
-.sheet-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 7px 0;
+
+@keyframes sheet-veil { from { opacity: 0; } }
+@keyframes sheet-in { from { transform: translateY(-10px); opacity: 0; } }
+
+.sheet-head {
+  padding: var(--space-5) var(--space-5) var(--space-3);
 }
-.sheet-row + .sheet-row { border-top: 1px solid var(--line); }
-.sheet-row label { color: var(--text); }
-.sheet select {
-  font: inherit;
-  padding: 3px 6px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--bg-content);
-  color: var(--text);
+.sheet-head h2 {
+  margin: 0;
+  font-size: var(--text-heading);
+  font-weight: 600;
 }
+.sheet-body { padding: 0 var(--space-5) var(--space-4); }
 .sheet-actions {
   display: flex;
+  gap: var(--space-2);
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 18px;
+  padding: var(--space-3) var(--space-5) var(--space-5);
 }
 
-/* ------------------------------------------------------------------ durum */
+/* --------------------------------------------------------- Form control */
 
-.notice {
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-sunken);
-  color: var(--text-secondary);
-  font-size: 0.94em;
-}
-.notice[data-tone="error"] {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-/* ---------------------------------------------------------------- bulgular */
-
-.findings {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid var(--line);
-}
-
-.finding {
-  border-bottom: 1px solid var(--line);
-  /* Ciddiyet YALNIZ renkle verilmez: her satır metin etiketi ve şekil taşır.
-     Sol şerit bir üçüncü, yardımcı ipucudur. */
-  border-left: 3px solid transparent;
-}
-.finding[data-severity="error"]   { border-left-color: var(--danger); }
-.finding[data-severity="warning"] { border-left-color: #b7791f; }
-.finding[data-severity="review"]  { border-left-color: var(--text-tertiary); }
-.finding[data-active="true"]      { background: var(--bg-sunken); }
-
-.finding-head {
+.field {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 10px;
-  border: none;
-  background: transparent;
-  color: inherit;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+}
+
+.field + .field { border-top: 1px solid var(--border-subtle); }
+.field-label { min-width: 0; }
+.field-label > span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+}
+
+select,
+input[type="text"],
+input[type="number"] {
+  min-height: 24px;
+  padding: 2px var(--space-2);
+  color: var(--text-primary);
   font: inherit;
-  text-align: left;
-  cursor: default;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
 }
-.finding-head:hover { background: var(--bg-hover); }
 
-.finding-mark { flex: 0 0 auto; font-size: 0.8em; }
-.finding[data-severity="error"]   .finding-mark { color: var(--danger); }
-.finding[data-severity="warning"] .finding-mark { color: #b7791f; }
-.finding[data-severity="review"]  .finding-mark { color: var(--text-tertiary); }
-
-.finding-sev {
-  flex: 0 0 auto;
-  min-width: 8ch;
-  font-size: 0.84em;
-  font-weight: 600;
+.prose {
+  max-width: var(--measure);
   color: var(--text-secondary);
 }
-.finding-title { flex: 1; min-width: 0; }
-.finding-loc {
-  flex: 0 0 auto;
-  font-size: 0.84em;
-  color: var(--text-tertiary);
-}
-
-.finding-body { padding: 0 10px 12px 10px; }
-.finding-message { margin: 0 0 8px; }
-.finding-excerpt {
-  margin: 0 0 8px;
-  padding: 8px 10px;
-  background: var(--bg-content);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.9em;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.finding-excerpt mark {
-  background: rgba(183, 121, 31, 0.28);
-  color: inherit;
-  /* İşaretli aralık yalnız arka planla değil, alt çizgiyle de belli olur. */
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
-}
-.finding-why { margin: 0 0 8px; color: var(--text-secondary); }
-.finding-fix {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px 10px;
-  background: var(--bg-content);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-.finding-fix code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: var(--bg-sunken);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-.finding-fixnote { color: var(--text-tertiary); }
-.finding-nofix { margin: 0; color: var(--text-tertiary); }
