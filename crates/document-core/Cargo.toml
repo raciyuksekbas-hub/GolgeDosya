@@ -13,7 +13,15 @@ name = "tavzih-core"
 version = "1.0.1"
 edition = "2021"
 rust-version = "1.77"
-license = "MIT"
+# Birleşik ürünün lisans rejimi Proprietary'dir (sahibinin 2026-09-08 kararı).
+# Bu crate Tavzih'ten geldi ve orada MIT beyan ediyordu; bağımsız Tavzih'in
+# YAYIMLANMIŞ MIT geçmişi değiştirilmedi ve değiştirilemez. Bu satır yalnız
+# birleşik üründeki bundan sonraki rejimi bildirir.
+#
+# İçerik denetimi: bu crate'te gömülü üçüncü taraf kaynak kod YOKTUR.
+# `src/udf/mod.rs` biçim bilgisinin kara kutu gözleminden türetildiğini açıkça
+# beyan eder; başka bir uygulamadan türetilmemiştir.
+license.workspace = true
 description = "Tavzih conversion engine: DOCX <-> UDF via a format-neutral canonical document model."
 
 [dependencies]

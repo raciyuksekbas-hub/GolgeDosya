@@ -12,7 +12,7 @@ version = "0.0.0"
 edition = "2021"
 publish = false
 # Ürünün parçası değil ama sürüm kapısı her crate'ten lisans bekler; haklı.
-license = "Proprietary"
+license.workspace = true
 
 [dependencies]
 # Geçici kardeş-dizin yolu; DüzenEk birleşik workspace'e taşınınca kalkar.

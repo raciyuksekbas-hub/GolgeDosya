@@ -1,86 +1,158 @@
 #!/usr/bin/env python3
-"""Lisans beyanı tutarlılığı.
+"""Lisans rejimi denetimi — fail-closed.
 
-Birleşme, dört bağımsız deponun kodunu tek workspace altında topladı. Bu
-depolar AYNI lisansı beyan etmiyordu:
+Sahibinin 2026-09-08 kararı: birleşik ürün ve bütün birinci taraf crate'ler
+**Proprietary / All Rights Reserved**.
 
-    Tavzih      MIT
-    DüzenEk     MIT
-    İkinciGöz   Proprietary
-    Değişikİş   (Rust workspace lisans satırı yok)
+Provenance denetimi (2026-09-08) birinci taraf bileşenlerin hiçbirinde gömülü
+üçüncü taraf kaynak kod bulunmadığını gösterdi: telif başlığı yok, SPDX
+bildirimi yok, "adapted/derived/ported from" işareti yok, vendored dosya yok.
+`document-core/src/udf/mod.rs` kara kutu gözlemine dayandığını açıkça beyan
+eder. Bu yüzden hepsi Proprietary olarak standardize edilebildi.
 
-Birleşik workspace `Proprietary` beyan ediyor, dolayısıyla `license.workspace`
-kullanan her crate Proprietary oluyor. Bu, MIT beyan eden iki deponun motor
-kodunun beyanını sessizce değiştirmek anlamına gelir.
+Bağımsız Tavzih ve DüzenEk depolarının YAYIMLANMIŞ MIT sürümleri bu kararla
+değişmez; burada denetlenen yalnız birleşik ürünün rejimidir.
 
-Bu bir MÜHENDİSLİK kararı değildir; sahibinin kararıdır. Bu betik karar vermez,
-tutarsızlığı görünür tutar ve sessizce kaymasını engeller.
-
-Çıkış kodu 0 = beklenen durum; 1 = beyanlar beklenenden farklı.
+Bu betik beş şeyi denetler ve herhangi biri tutmazsa çıkış kodu 1 verir:
+  1. workspace lisansı Proprietary
+  2. her birinci taraf crate ya workspace'ten miras alır ya Proprietary beyan eder
+  3. depo kökünde LICENSE var
+  4. depo kökünde THIRD_PARTY_NOTICES.md var
+  5. hiçbir bağımlılık GPL/AGPL değil ve lisansı bilinmeyen paket yok
 """
 
+import json
 import pathlib
 import re
+import subprocess
 import sys
 
-# Bilinen ve KABUL EDİLMİŞ durum. Bir crate'in beyanı değişirse kapı kapanır ve
-# değişiklik bilinçli olarak buraya yazılmak zorunda kalır.
-EXPECTED = {
-    "document-core": "MIT",          # Tavzih'ten geldi, kendi beyanını koruyor
-    "pdf-core": "workspace",
-    "ekler-core": "workspace",
-    "ikincigoz-core": "workspace",
-    "process-bridge": "workspace",
-}
 WORKSPACE_LICENSE = "Proprietary"
+
+FIRST_PARTY = [
+    "crates/document-core",
+    "crates/pdf-core",
+    "crates/ekler-core",
+    "crates/ikincigoz-core",
+    "crates/process-bridge",
+    "apps/belge-shell/src-tauri",
+    "tools/preflight",
+]
+
+ok_count = 0
+bad = []
+
+
+def ok(msg):
+    global ok_count
+    print(f"  \033[32m✓\033[0m {msg}")
+    ok_count += 1
+
+
+def fail(msg):
+    print(f"  \033[31m✗\033[0m {msg}")
+    bad.append(msg)
 
 
 def declared(manifest: pathlib.Path) -> str:
     for line in manifest.read_text().splitlines():
+        if line.lstrip().startswith("#"):
+            continue
         m = re.match(r'\s*license\s*=\s*"([^"]+)"', line)
         if m:
             return m.group(1)
-        if re.match(r"\s*license\.workspace\s*=\s*true", line):
-            return "workspace"
-        if re.match(r"\s*license\s*=\s*\{\s*workspace\s*=\s*true", line):
+        if re.match(r"\s*license(\.workspace\s*=\s*true|\s*=\s*\{\s*workspace\s*=\s*true)", line):
             return "workspace"
     return "BEYAN YOK"
 
 
 def main() -> int:
     root = pathlib.Path(__file__).resolve().parent.parent
-    ws = declared(root / "Cargo.toml")
-    print(f"workspace lisansı: {ws}")
-    if ws != WORKSPACE_LICENSE:
-        print(f"  workspace beyanı {WORKSPACE_LICENSE} bekleniyordu", file=sys.stderr)
-        return 1
+    print("\n\033[1mLİSANS REJİMİ\033[0m")
 
-    bad = False
-    for crate, expect in sorted(EXPECTED.items()):
-        manifest = root / "crates" / crate / "Cargo.toml"
+    # 1 — workspace
+    ws = declared(root / "Cargo.toml")
+    if ws == WORKSPACE_LICENSE:
+        ok(f"workspace lisansı: {ws}")
+    else:
+        fail(f"workspace lisansı {WORKSPACE_LICENSE} olmalı, {ws} bulundu")
+
+    # 2 — birinci taraf crate'ler
+    inconsistent = []
+    for rel in FIRST_PARTY:
+        manifest = root / rel / "Cargo.toml"
         if not manifest.is_file():
-            print(f"  {crate}: manifest yok", file=sys.stderr)
-            bad = True
+            inconsistent.append(f"{rel}: manifest yok")
             continue
         got = declared(manifest)
-        effective = ws if got == "workspace" else got
-        flag = "✓" if got == expect else "✗"
-        print(f"  {flag} {crate:<16} beyan={got:<12} etkin={effective}")
-        if got != expect:
-            bad = True
+        if got not in ("workspace", WORKSPACE_LICENSE):
+            inconsistent.append(f"{rel}: {got}")
+    if inconsistent:
+        fail("birinci taraf lisans metadata tutarsız: " + "; ".join(inconsistent))
+    else:
+        ok(f"birinci taraf {len(FIRST_PARTY)} crate: hepsi {WORKSPACE_LICENSE}")
 
-    if bad:
-        print(
-            "\nLisans beyanı beklenenden farklı. Bu kapıyı gevşetmeden önce\n"
-            "sahibinin kararını alın ve EXPECTED tablosunu güncelleyin.",
-            file=sys.stderr,
+    # 3 — LICENSE
+    lic = next((root / n for n in ("LICENSE", "LICENSE.md", "LICENSE.txt") if (root / n).is_file()), None)
+    if lic is None:
+        fail("depo kökünde LICENSE dosyası yok")
+    elif "Tüm hakları saklıdır" not in lic.read_text():
+        fail(f"{lic.name} bir mülkiyet lisansı gibi görünmüyor")
+    else:
+        ok(f"{lic.name} mevcut (mülkiyet)")
+
+    # 4 — üçüncü taraf bildirimleri
+    notices = root / "THIRD_PARTY_NOTICES.md"
+    if not notices.is_file():
+        fail("THIRD_PARTY_NOTICES.md yok")
+    else:
+        text = notices.read_text()
+        missing = [k for k in ("MPL-2.0", "jszip", "pdfjs-dist", "mammoth") if k not in text]
+        if missing:
+            fail("THIRD_PARTY_NOTICES.md eksik kayıt: " + ", ".join(missing))
+        else:
+            ok("THIRD_PARTY_NOTICES.md mevcut ve dikkat gerektiren kayıtları taşıyor")
+
+    # 5 — bağımlılık lisansları (fail-closed)
+    try:
+        meta = json.loads(
+            subprocess.run(
+                ["cargo", "metadata", "--format-version", "1"],
+                capture_output=True, text=True, cwd=root, check=True,
+            ).stdout
         )
-        return 1
+    except Exception as e:
+        fail(f"cargo metadata çalıştırılamadı: {e}")
+        meta = None
 
-    # Deponun kendi LICENSE dosyası — dört bağımsız depoda vardı, burada yok.
-    if not any((root / n).exists() for n in ("LICENSE", "LICENSE.md", "LICENSE.txt")):
-        print("\n  ! Bu depoda LICENSE dosyası yok (dört bağımsız depoda vardı).")
-        print("    Yayın öncesi kapatılması gereken açık bir madde.")
+    if meta:
+        copyleft, unknown = [], []
+        for p in meta["packages"]:
+            if p.get("source") is None:
+                continue
+            lic = (p.get("license") or "").strip()
+            if not lic and not p.get("license_file"):
+                unknown.append(p["name"])
+                continue
+            u = lic.upper()
+            # İzin verici bir seçenek sunan çoklu lisans kabul edilir.
+            if " OR " in u or "/" in u:
+                continue
+            if re.search(r"\bA?GPL-", u) and "LGPL" not in u:
+                copyleft.append(f"{p['name']} ({lic})")
+        if unknown:
+            fail("lisansı bilinmeyen Rust paketi: " + ", ".join(sorted(set(unknown))))
+        elif copyleft:
+            fail("GPL/AGPL Rust paketi: " + ", ".join(sorted(set(copyleft))))
+        else:
+            n = sum(1 for p in meta["packages"] if p.get("source"))
+            ok(f"Rust: {n} bağımlılık, GPL/AGPL yok, bilinmeyen lisans yok")
+
+    print()
+    if bad:
+        print("\033[31m  LİSANS DENETİMİ BAŞARISIZ\033[0m\n")
+        return 1
+    print(f"\033[32m  LİSANS DENETİMİ GEÇTİ ({ok_count} kontrol)\033[0m\n")
     return 0
 
 

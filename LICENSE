@@ -1,0 +1,65 @@
+Yüksekbaş Belge — Telif Hakkı ve Kullanım Koşulları
+
+© 2026 Raci Çetin Yüksekbaş. Tüm hakları saklıdır.
+
+Yüksekbaş Belge, Yüksekbaş LegalTech ürün ailesinin bir parçasıdır. Tavzih,
+DüzenEk, Değişikİş ve İkinciGöz uygulamalarının bu ürün içinde birleştirilmiş
+hâlini kapsar.
+
+Bu ürünün adı, logosu, görsel kimliği, kullanıcı arayüzü ve bu ürün için özgün
+olarak geliştirilen bütün yazılım bileşenleri ilgili mevzuat kapsamında
+korunmaktadır. Bunların izinsiz çoğaltılması, değiştirilmesi, yeniden
+yayımlanması veya başka bir ürünün parçası olarak kullanılması yasaktır.
+
+Bu depodaki birinci taraf bileşenler şunlardır ve tamamı bu ürün için özgün
+olarak geliştirilmiştir:
+
+    crates/document-core      belge dönüştürme çekirdeği
+    crates/pdf-core           PDF alanı
+    crates/ekler-core         ek hazırlama ve PDF araçları
+    crates/ikincigoz-core     denetim ve düzeltme çekirdeği
+    crates/process-bridge     dış süreç sınırı
+    apps/belge-shell          birleşik kabuk ve modüller
+    tools/preflight           dış süreç ön kontrolü
+
+Bu bileşenlerin hiçbirinde gömülü üçüncü taraf kaynak kod bulunmamaktadır.
+
+Uygulamada kullanılan üçüncü taraf açık kaynak bileşenler kendi lisans
+koşullarına tabidir. Adları, sürümleri ve lisansları THIRD_PARTY_NOTICES.md
+dosyasında listelenir. Bu bileşenlerin telif hakları ilgili hak sahiplerine
+aittir ve lisans bildirimleri kaldırılmamıştır.
+
+Önceki bağımsız sürümler hakkında: Tavzih ve DüzenEk uygulamalarının bağımsız
+depolarında yayımlanmış sürümleri MIT lisansı altında dağıtılmıştır. O yayımlar
+ve onlara dayanan haklar bu belgeyle değiştirilmez. Buradaki koşullar yalnız
+birleşik ürünün bu ve bundan sonraki sürümleri için geçerlidir.
+
+--------------------------------------------------------------------------------
+
+Yüksekbaş Belge — Copyright and Terms of Use
+
+© 2026 Raci Çetin Yüksekbaş. All rights reserved.
+
+Yüksekbaş Belge is part of the Yüksekbaş LegalTech product family. It comprises
+the unified form of the Tavzih, DüzenEk, Değişikİş and İkinciGöz applications.
+
+The product name, logo, visual identity, user interface and all software
+components developed originally for this product are protected under applicable
+law. Reproducing, modifying, republishing or incorporating them into another
+product without permission is prohibited.
+
+The first-party components in this repository — document-core, pdf-core,
+ekler-core, ikincigoz-core, process-bridge, belge-shell and preflight — were all
+developed originally for this product. None of them contains embedded
+third-party source code.
+
+Third-party open source components used by this application remain subject to
+their own licence terms. Their names, versions and licences are listed in
+THIRD_PARTY_NOTICES.md. Copyright in those components belongs to their
+respective holders and their licence notices have not been removed.
+
+Regarding earlier standalone releases: versions of Tavzih and DüzenEk published
+from their own repositories were distributed under the MIT licence. Those
+publications, and rights arising from them, are not altered by this document.
+The terms here apply only to this and subsequent versions of the unified
+product.
