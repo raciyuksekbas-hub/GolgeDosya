@@ -247,6 +247,7 @@ dependencies = [
  "ekler-core",
  "ikincigoz-core",
  "lopdf",
+ "process-bridge",
  "serde",
  "serde_json",
  "sha2",
@@ -946,6 +947,7 @@ version = "0.0.0"
 dependencies = [
  "ekler-core",
  "lopdf",
+ "process-bridge",
  "serde_json",
  "tavzih-core",
 ]
@@ -971,6 +973,7 @@ dependencies = [
  "libc",
  "lopdf",
  "pdf-core",
+ "process-bridge",
  "quick-xml 0.36.2",
  "rayon",
  "serde",
@@ -2933,6 +2936,10 @@ checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "process-bridge"
+version = "0.0.1"
 
 [[package]]
 name = "pxfm"

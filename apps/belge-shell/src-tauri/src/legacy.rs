@@ -354,14 +354,24 @@ fn read_localstorage_value(db: &Path, key: &str) -> Result<Option<String>, Strin
         .map_err(|e| e.to_string())?;
     std::fs::copy(db, tmp.path()).map_err(|e| e.to_string())?;
     let query = format!("SELECT hex(value) FROM ItemTable WHERE key='{key}';");
-    let out = std::process::Command::new(SQLITE)
-        .arg(tmp.path())
-        .arg(&query)
-        .output();
-    let out = out.map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
+    // Dış süreç sınırından geçer. Eski verinin kopyası okunuyor; yine de
+    // zaman aşımı ve ağ reddi uygulanır — migration okuması bir kullanıcı
+    // işlemini süresiz bekletemez.
+    let out = process_bridge::run(
+        process_bridge::Spawn::new(std::path::Path::new(SQLITE))
+            .arg(tmp.path())
+            .arg(&query)
+            .timeout(std::time::Duration::from_secs(20))
+            .network(process_bridge::NetworkPolicy::Deny),
+    )
+    .map_err(|e| {
+        let stderr = String::from_utf8_lossy(e.stderr()).trim().to_string();
+        if stderr.is_empty() {
+            e.to_string()
+        } else {
+            stderr
+        }
+    })?;
     let hex = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if hex.is_empty() {
         return Ok(None);

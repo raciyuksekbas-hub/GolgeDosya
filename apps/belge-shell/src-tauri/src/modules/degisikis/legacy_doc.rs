@@ -73,7 +73,6 @@ pub fn convert(contents: &[u8]) -> Result<Vec<u8>, &'static str> {
 #[cfg(target_os = "macos")]
 mod platform {
     use super::*;
-    use std::process::Command;
 
     pub fn convert(contents: &[u8]) -> Result<Vec<u8>, &'static str> {
         let temporary = TempConversionDir::create()?;
@@ -81,23 +80,26 @@ mod platform {
         let converted = temporary.path().join("converted.docx");
         fs::write(&source, contents).map_err(|_| "DOC_CONVERSION")?;
 
-        let output = Command::new("/usr/bin/textutil")
-            .arg("-convert")
-            .arg("docx")
-            .arg("-output")
-            .arg(&converted)
-            .arg("--")
-            .arg(&source)
-            .output()
-            .map_err(|_| "DOC_CONVERSION")?;
+        // Dış süreç sınırından geçer: zaman aşımı ve ağ reddi burada uygulanır.
+        // Önceden ikisi de yoktu.
+        let result = process_bridge::run(
+            process_bridge::Spawn::new(std::path::Path::new("/usr/bin/textutil"))
+                .args(["-convert", "docx", "-output"])
+                .arg(&converted)
+                .arg("--")
+                .arg(&source)
+                .timeout(std::time::Duration::from_secs(60))
+                .network(process_bridge::NetworkPolicy::Deny),
+        );
 
-        if !output.status.success() {
+        if let Err(failure) = result {
+            let stderr = failure.stderr();
             #[cfg(debug_assertions)]
             eprintln!(
                 "textutil DOC dönüşümü başarısız: {}",
-                String::from_utf8_lossy(&output.stderr)
+                String::from_utf8_lossy(stderr)
             );
-            return Err(if password_error(&output.stderr) {
+            return Err(if password_error(stderr) {
                 "DOC_PASSWORD"
             } else {
                 "DOC_CONVERSION"

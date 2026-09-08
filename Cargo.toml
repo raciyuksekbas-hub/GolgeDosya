@@ -13,6 +13,7 @@ members = [
     "crates/document-core",
     "crates/ekler-core",
     "crates/pdf-core",
+    "crates/process-bridge",
     "crates/ikincigoz-core",
     "tools/preflight",
 ]
@@ -37,6 +38,7 @@ authors = ["Raci Çetin Yüksekbaş"]
 tavzih-core = { path = "crates/document-core" }
 ekler-core = { path = "crates/ekler-core" }
 pdf-core = { path = "crates/pdf-core" }
+process-bridge = { path = "crates/process-bridge" }
 ikincigoz-core = { path = "crates/ikincigoz-core" }
 
 serde = { version = "1", features = ["derive"] }

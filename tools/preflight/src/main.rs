@@ -177,14 +177,20 @@ fn sips() -> Result<String, String> {
     let src = d.join("kaynak.png");
     std::fs::write(&src, minimal_png()).map_err(|e| e.to_string())?;
     let out = d.join("cikti.jpg");
-    let r = Command::new("/usr/bin/sips")
-        .args(["-s", "format", "jpeg"])
-        .arg(&src)
-        .arg("--out")
-        .arg(&out)
-        .output();
+    // Üretimdeki yoldan geçer: `sips` artık `process-bridge` üzerinden
+    // çağrılıyor. Kapı, üretimin kullanmadığı bir yolu denemek yerine gerçek
+    // yolu denemeli — yoksa neyi doğruladığı belirsizleşir.
+    let r = process_bridge::run(
+        process_bridge::Spawn::new(std::path::Path::new("/usr/bin/sips"))
+            .args(["-s", "format", "jpeg"])
+            .arg(&src)
+            .arg("--out")
+            .arg(&out)
+            .timeout(std::time::Duration::from_secs(60))
+            .network(process_bridge::NetworkPolicy::Deny),
+    );
     let verdict = match r {
-        Err(e) => Err(format!("sips başlatılamadı: {e}")),
+        Err(e) => Err(format!("sips başarısız: {e}")),
         Ok(o) if !o.status.success() => Err(format!(
             "sips hata verdi: {}",
             String::from_utf8_lossy(&o.stderr).trim()

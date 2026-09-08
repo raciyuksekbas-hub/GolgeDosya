@@ -22,6 +22,7 @@ sha2.workspace = true
 rayon.workspace = true
 tavzih-core.workspace = true
 pdf-core.workspace = true
+process-bridge.workspace = true
 tempfile.workspace = true
 libc.workspace = true
 url.workspace = true

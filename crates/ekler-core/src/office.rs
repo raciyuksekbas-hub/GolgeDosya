@@ -3,7 +3,6 @@
 use crate::*;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 static SELECTED_RENDERER: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLock::new(None);
 pub fn select_renderer(path: &Path) -> Result<PathBuf> {
@@ -196,18 +195,11 @@ pub fn convert_to_pdf(path: &Path, approved: bool) -> Result<lopdf::Document> {
     let profile = work.path().join("profile");
     std::fs::create_dir_all(profile.join("user")).map_err(|e| err(e.to_string()))?;
     safe_io::write_new_bytes(&profile.join("user/registrymodifications.xcu"),&[],br#"<?xml version="1.0"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop></item><item oor:path="/org.openoffice.Office.Common/Misc"><prop oor:name="FirstRun" oor:op="fuse"><value>false</value></prop></item><item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item></oor:items>"#)?;
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut c = Command::new("/usr/bin/sandbox-exec");
-        c.args(["-p", "(version 1)(allow default)(deny network*)"])
-            .arg(&renderer);
-        c
-    };
-    #[cfg(not(target_os = "macos"))]
-    let mut command = Command::new(&renderer);
     let profile_url =
         url::Url::from_directory_path(&profile).map_err(|_| err("Geçersiz profil yolu"))?;
-    let mut child = command
+    // Süreç başlatma `process-bridge` üzerinden. Politika aynen korundu:
+    // ağ reddi (macOS'ta sandbox ile), 120 saniye zaman aşımı, çıktı yutulur.
+    let spawn = process_bridge::Spawn::new(&renderer)
         .arg(format!("-env:UserInstallation={profile_url}"))
         .args([
             "--headless",
@@ -221,28 +213,20 @@ pub fn convert_to_pdf(path: &Path, approved: bool) -> Result<lopdf::Document> {
         ])
         .arg(work.path())
         .arg(&input_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| err(format!("LibreOffice başlatılamadı: {e}")))?;
-    let start = std::time::Instant::now();
-    loop {
-        if let Some(status) = child.try_wait().map_err(|e| err(e.to_string()))? {
-            if !status.success() {
-                return Err(err(
-                    "LibreOffice bulundu, fakat çalıştırma veya dönüşüm başarısız oldu; kurulumu kontrol edin",
-                ));
-            }
-            break;
+        .timeout(std::time::Duration::from_secs(120))
+        .network(process_bridge::NetworkPolicy::Deny)
+        .capture(false);
+    process_bridge::run(spawn).map_err(|e| match e {
+        process_bridge::BridgeError::Timeout { .. } => {
+            err("LibreOffice dönüşümü zaman aşımına uğradı")
         }
-        if start.elapsed() > std::time::Duration::from_secs(120) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(err("LibreOffice dönüşümü zaman aşımına uğradı"));
+        process_bridge::BridgeError::Launch { source, .. } => {
+            err(format!("LibreOffice başlatılamadı: {source}"))
         }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
+        _ => err(
+            "LibreOffice bulundu, fakat çalıştırma veya dönüşüm başarısız oldu; kurulumu kontrol edin",
+        ),
+    })?;
     let output = std::fs::read(work.path().join("input.pdf"))
         .map_err(|_| err("LibreOffice çalıştı, fakat geçerli PDF dosyası üretmedi"))?;
     let doc = load_pdf_tolerant(&output, "dönüştürülmüş.pdf")?.document;

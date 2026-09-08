@@ -21,6 +21,7 @@ serde.workspace = true
 serde_json.workspace = true
 # Geçici dosyalar düşerken kendiliğinden silinsin: migration kodunda açık bir
 # dosya silme çağrısı bulunmasın (bkz. release-gate "migration değişmezleri").
+process-bridge.workspace = true
 tempfile.workspace = true
 
 # Modül motorları. Yalnız kendi feature'ı açıkken linklenir; kapalıyken binary'ye

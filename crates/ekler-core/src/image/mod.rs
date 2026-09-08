@@ -151,21 +151,24 @@ fn convert_heic_to_pdf(path: &Path) -> Result<LopdfDoc> {
                 source: e,
             })?;
 
-        let status = std::process::Command::new("/usr/bin/sips")
-            .arg("-s")
-            .arg("format")
-            .arg("png")
-            .arg(path)
-            .arg("--out")
-            .arg(tmp_jpg.path())
-            .output()
-            .map_err(|e| EklerError::InvalidImage(format!("sips çağrılamadı: {}", e)))?;
-
-        if !status.status.success() {
-            return Err(EklerError::InvalidImage(
-                "sips HEIC dönüşümünde hata verdi".to_string(),
-            ));
-        }
+        // Süreç başlatma `process-bridge` üzerinden. Bu çağrının önceden
+        // zaman aşımı da ağ politikası da YOKTU; ikisi de eklendi. Ağ reddinin
+        // `sips`'i bozmadığı ölçüldü, varsayılmadı.
+        process_bridge::run(
+            process_bridge::Spawn::new(std::path::Path::new("/usr/bin/sips"))
+                .args(["-s", "format", "png"])
+                .arg(path)
+                .arg("--out")
+                .arg(tmp_jpg.path())
+                .timeout(std::time::Duration::from_secs(60))
+                .network(process_bridge::NetworkPolicy::Deny),
+        )
+        .map_err(|e| match e {
+            process_bridge::BridgeError::Launch { source, .. } => {
+                EklerError::InvalidImage(format!("sips çağrılamadı: {}", source))
+            }
+            _ => EklerError::InvalidImage("sips HEIC dönüşümünde hata verdi".to_string()),
+        })?;
 
         let img =
             image::open(tmp_jpg.path()).map_err(|e| EklerError::InvalidImage(e.to_string()))?;
@@ -177,21 +180,22 @@ fn convert_heic_to_pdf(path: &Path) -> Result<LopdfDoc> {
         let temp = tempfile::tempdir().map_err(|e| EklerError::InvalidImage(e.to_string()))?;
         let output = temp.path().join("image.png");
         let script = r#"$ErrorActionPreference='Stop'; Add-Type -AssemblyName PresentationCore; $inputStream=[IO.File]::OpenRead($env:DUZENEK_IMAGE_SOURCE); try {$decoder=[Windows.Media.Imaging.BitmapDecoder]::Create($inputStream,[Windows.Media.Imaging.BitmapCreateOptions]::PreservePixelFormat,[Windows.Media.Imaging.BitmapCacheOption]::OnLoad); if($decoder.Frames.Count -ne 1){throw 'Expected one HEIC frame'}; $encoder=New-Object Windows.Media.Imaging.PngBitmapEncoder; $encoder.Frames.Add($decoder.Frames[0]); $outputStream=[IO.File]::Open($env:DUZENEK_IMAGE_OUTPUT,[IO.FileMode]::CreateNew); try {$encoder.Save($outputStream)} finally {$outputStream.Dispose()}} finally {$inputStream.Dispose()}"#;
-        let status = std::process::Command::new("powershell.exe")
-            .args([
-                "-NoLogo",
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                script,
-            ])
-            .env("DUZENEK_IMAGE_SOURCE", path)
-            .env("DUZENEK_IMAGE_OUTPUT", &output)
-            .output()
-            .map_err(|e| EklerError::InvalidImage(e.to_string()))?;
-        if !status.status.success() {
-            return Err(EklerError::UnsupportedFormat("Windows HEIF/WIC codec bulunamadı veya görsel çözümlenemedi. Yerel PNG/JPEG kopyası kullanın.".into()));
-        }
+        // Süreç başlatma `process-bridge` üzerinden; zaman aşımı eklendi.
+        // Ağ politikası Windows'ta UYGULANAMAZ: `sandbox-exec` macOS'a özgüdür
+        // ve bu platformda karşılığı yoktur. Köprü bunu sessizce geçmez,
+        // `NetworkPolicy::applied_on_this_platform()` false döner.
+        process_bridge::run(
+            process_bridge::Spawn::new(std::path::Path::new("powershell.exe"))
+                .os_resolved()
+                .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script])
+                .env("DUZENEK_IMAGE_SOURCE", path)
+                .env("DUZENEK_IMAGE_OUTPUT", &output)
+                .timeout(std::time::Duration::from_secs(60))
+                .network(process_bridge::NetworkPolicy::Deny),
+        )
+        .map_err(|_| {
+            EklerError::UnsupportedFormat("Windows HEIF/WIC codec bulunamadı veya görsel çözümlenemedi. Yerel PNG/JPEG kopyası kullanın.".into())
+        })?;
         let image = image::open(&output).map_err(|e| EklerError::InvalidImage(e.to_string()))?;
         convert_single_image_to_pdf(image)
     }
