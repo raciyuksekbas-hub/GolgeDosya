@@ -289,3 +289,36 @@ kapısı bunu doğruluyor.
 varyantlar taşıyor. Hata tipini alanlara bölmek her `?` noktasında dönüşüm
 gerektirirdi; bugün hiçbir davranış kazancı yok ve bu fazın hedefi sınır, tip
 cerrahisi değil. Bilinçli olarak ertelendi.
+
+---
+
+## 8. Lisans beyanı — **sahibinin kararı bekleniyor**
+
+Birleşme, farklı lisans beyan eden dört depoyu tek workspace altında topladı:
+
+| Kaynak | Beyan |
+|---|---|
+| Tavzih | `MIT` |
+| DüzenEk | `MIT` |
+| İkinciGöz | `Proprietary` |
+| Değişikİş | Rust workspace lisans satırı yok |
+| **Birleşik workspace** | **`Proprietary`** |
+
+Sonuç: `license.workspace = true` kullanan her crate — `ekler-core` (DüzenEk'ten)
+dâhil — artık **Proprietary** beyan ediyor. `document-core` ise Tavzih'ten
+gelirken kendi `license = "MIT"` satırını koruduğu için MIT kalmış durumda.
+
+Yani bugün aynı depoda, aynı ürünün içinde, biri MIT biri Proprietary iki
+çekirdek var; ve DüzenEk'in motoru bağımsız depoda MIT iken burada Proprietary.
+
+**Bu bir mühendislik kararı değildir.** Kod sahibinin lisans kararıdır ve bu
+turda hiçbir beyan değiştirilmedi. `scripts/check-licensing.py` mevcut durumu
+tablo hâlinde tutar ve bir beyan sessizce kayarsa kapıyı kapatır.
+
+Kapatılması gereken iki madde:
+1. Dört motorun tek bir lisans altında mı toplanacağı (ve hangisi).
+2. Birleşik depoda **LICENSE dosyası yok**; dört bağımsız depoda vardı.
+   `THIRD_PARTY_NOTICES` / `THIRD_PARTY_LICENSES` dosyaları da taşınmadı.
+
+Üçüncü taraf bağımlılıklar temiz: 527 paket incelendi, GPL/AGPL yok, lisansı
+bilinmeyen paket yok, git kaynaklı bağımlılık yok — hepsi paket kayıtlarından.
