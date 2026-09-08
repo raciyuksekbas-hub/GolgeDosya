@@ -7,7 +7,7 @@ Dört bağımsız masaüstü uygulamasının — **Tavzih**, **DüzenEk**, **De�
 > Ürün markası kararı verilmedi. Kod, `AppInfo.nameIsProvisional = true` ile
 > bunu açıkça bildirir.
 
-## Durum — Phase 1, 2, 3, 4, 5 tamamlandı
+## Durum — mimari tamamlandı, GUI bilinçli olarak ertelendi
 
 | Faz | İş | Durum |
 |---|---|---|
@@ -17,14 +17,41 @@ Dört bağımsız masaüstü uygulamasının — **Tavzih**, **DüzenEk**, **De�
 | 3 | Tavzih migration'ı | ✅ |
 | 4 | İkinciGöz migration'ı (mevcut parser korunarak) | ✅ |
 | 5 | Değişikİş migration'ı (TS diff motoru korunarak) | ✅ |
-| 6 | DüzenEk migration'ı (dondurulmuş temele karşı) | ⏭ **sıradaki** |
-| 7 | Provenance üzerinden parser konsolidasyonu araştırması | ⏸ |
-| 8 | Ayar migration'ı + gizlilik/capability sıkılaştırma | 🟡 okuma katmanı hazır |
-| 9 | Tam sürüm/notarization kapısı | 🟡 hat kuruldu, kimlik bilgisi gerekiyor |
-| 10 | Legacy uygulamaların emeklilik değerlendirmesi | ⏸ |
+| 6 | DüzenEk migration'ı (dondurulmuş temele karşı) | ✅ |
+| 7 | Final mimari konsolidasyon | ✅ |
+| — | **GUI tasarımı ve GUI kabulü** | ⏸ **bilinçli olarak ertelendi** |
 
-**Dört bağımsız uygulama çalışmaya devam ediyor.** Hiçbiri emekliye ayrılmadı,
-hiçbirine bu çalışmada dokunulmadı.
+**Dört bağımsız uygulama çalışmaya devam ediyor.** Hiçbiri emekliye ayrılmadı;
+dördü de dondurulmuş referans olarak `*-premerge-2026-09-07` etiketlerinde
+duruyor. **Bu deponun derlenmesi artık onlara bağlı değildir.**
+
+## Kurulum ve derleme
+
+Sıra zorunludur. Tauri, `generate_context!` sırasında `dist/` dizinini binary'ye
+gömer; `dist/` git'te tutulmadığı için frontend derlemesi Rust derlemesinden
+**önce** gelmelidir. Aksi hâlde taze bir klonda `error: proc macro panicked`
+alırsınız.
+
+```bash
+cd apps/belge-shell && npm ci && npm run build   # dist/ üretir
+cd ../.. && cargo build --workspace
+cargo test --workspace
+```
+
+Bu sıra `scripts/check-fresh-clone.sh` tarafından her koşuda doğrulanır: depo,
+eski dört depo erişilemezken klonlanıp derlenir ve test edilir.
+
+## Kapılar
+
+| Betik | Ne kanıtlar |
+|---|---|
+| `scripts/check-architecture.sh` | katman yönleri, süreç sınırı, capability yüzeyi, legacy yolu izolasyonu |
+| `scripts/check-external-dependencies.py` | depo dışı yol bağımlılığı **sıfır** (mandal) |
+| `scripts/check-feature-matrix.sh` | altı derleme şeklinin hepsi derlenir, yedincisi reddedilir |
+| `scripts/check-command-parity.py` | taşınan 21 DüzenEk komutunun gövdesi bağımsız depoyla aynı |
+| `scripts/check-licensing.py` | lisans beyanları sessizce kaymaz |
+| `scripts/check-fresh-clone.sh` | taze klon → kur → derle → test, eski depolar olmadan |
+| `scripts/release-gate.sh` | hepsi + lisans, ağ bağımsızlığı, paketleme, kullanıcı verisi değişmezliği |
 
 ## Yapı
 

@@ -322,3 +322,28 @@ Kapatılması gereken iki madde:
 
 Üçüncü taraf bağımlılıklar temiz: 527 paket incelendi, GPL/AGPL yok, lisansı
 bilinmeyen paket yok, git kaynaklı bağımlılık yok — hepsi paket kayıtlarından.
+
+---
+
+## 9. Taze klonda derleme sırası — frontend ÖNCE
+
+Taze klon kanıtının ilk koşusu `cargo build`'i önce çalıştırdı ve
+`error: proc macro panicked` ile düştü.
+
+Sebep yapısaldır: Tauri, `generate_context!` sırasında `dist/` dizinini
+binary'ye gömer. `dist/` derleme çıktısıdır ve git'te tutulmaz. Dolayısıyla
+taze bir klonda **frontend derlemesi Rust derlemesinden önce gelmek
+zorundadır**.
+
+Bu bir tercih değil, deponun bir özelliğidir; ve tam olarak taze klon
+kanıtının ortaya çıkarması gereken cinsten bir şeydir. Bu depoda çalışan
+herkes için doğru sıra:
+
+```
+npm ci            (veya node_modules kurulumu)
+npm run build     → dist/
+cargo build --workspace
+cargo test --workspace
+```
+
+`scripts/check-fresh-clone.sh` bu sırayı uygular ve her koşuda doğrular.

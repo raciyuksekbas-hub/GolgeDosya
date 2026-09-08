@@ -7,7 +7,8 @@
 //! bulgu sayısı, kural kimliği, severity, kaynak konumu (blok + codepoint
 //! offset), önerilen düzeltme ve writeback çıktısı.
 //!
-//! Referans fixture'lar standalone deposunun `samples/` klasöründedir. Aynı
+//! Referans fixture'lar artık `ikincigoz-core`'un kendi `tests/samples/`
+//! klasöründedir; bağımsız depodan taşındıklarında içerikleri değişmedi. Aynı
 //! çekirdek crate'i tükettiğimiz için farkın çıkabileceği tek yer sarmalayan
 //! katmandır — ayarlar, sözlük, profil ve seçeneklerin bağlanması.
 
@@ -20,12 +21,16 @@ use ikincigoz_core::rules::{analyze, Context, LintOptions};
 use ikincigoz_core::writeback;
 use std::path::PathBuf;
 
-/// Standalone deposundaki örnek belgeler.
+/// Örnek belgeler — birleşik depo içinde, `ikincigoz-core` ile birlikte.
 ///
-/// Bu yol geçicidir: İkinciGöz henüz emekliye ayrılmadı ve çekirdeği hâlâ orada.
+/// Eskiden bağımsız İkinciGöz deposuna işaret ediyordu. Taze klon kanıtı bunu
+/// yakaladı: manifest'te yol bağımlılığı yoktu, ama KAYNAK KODU depo dışına
+/// uzanıyordu ve klonda beş test düşüyordu.
+///
 /// Bulunamazsa test SESSİZCE GEÇMEZ — parity ölçülmediyse bunu bilmemiz gerekir.
 fn samples() -> PathBuf {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../../İkinciGöz/samples");
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../crates/ikincigoz-core/tests/samples");
     assert!(
         p.is_dir(),
         "Referans fixture'lar bulunamadı: {}. Parity ölçülemez.",

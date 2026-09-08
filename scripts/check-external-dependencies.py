@@ -37,7 +37,40 @@ def main() -> int:
                     f"{manifest.relative_to(root)}: {line.strip()}  →  {resolved}"
                 )
 
+    # Manifest yetmez. Taze klon kanıtı, `ikincigoz_parity_tests.rs`'in
+    # KAYNAK KOD içinden bağımsız depoya uzandığını ortaya çıkardı: manifest'te
+    # yol bağımlılığı yoktu, klonda beş test düşüyordu. Bu yüzden kaynak da
+    # taranır.
+    #
+    # `#[ignore]` ile işaretli testler hariç: onlar sahibinin makinesindeki özel
+    # fikstürlere bilerek bağlı ve derlemeyi ya da klon kanıtını etkilemiyorlar.
+    source_refs = []
+    old_repos = ("İkinciGöz/", "DuzenEk/", "Documents/Tavzih/", "Degisik-Is/")
+    for src in sorted(root.rglob("*.rs")):
+        parts = src.parts
+        if "target" in parts or "node_modules" in parts:
+            continue
+        text = src.read_text(errors="replace")
+        ignored = "#[ignore" in text
+        for n, line in enumerate(text.splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("//"):
+                continue
+            if any(r in line for r in old_repos):
+                if ignored:
+                    continue
+                source_refs.append(f"{src.relative_to(root)}:{n}: {stripped[:90]}")
+
     print(f"depo dışı derleme bağımlılığı: {len(external)} (mandal: {BASELINE})")
+    if source_refs:
+        print(f"KAYNAK KODDA depo dışı yol: {len(source_refs)}")
+        for r in source_refs:
+            print("  " + r)
+        print(
+            "Kaynak koddan eski depoya uzanan yol, taze klonu bozar.",
+            file=sys.stderr,
+        )
+        return 1
     for e in external:
         print("  " + e)
 
