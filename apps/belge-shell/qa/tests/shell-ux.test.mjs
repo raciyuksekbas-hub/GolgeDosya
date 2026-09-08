@@ -124,10 +124,14 @@ test("taşınmamış bölüm soluk ve tıklanamaz, gövdede açıklama yok", () 
 });
 
 test("ana ekran belge merkezlidir", () => {
-  assert.ok(render.surfaceEmpty.includes("Dosya Aç"));
-  assert.ok(render.surfaceEmpty.includes("buraya bırakın"));
-  assert.ok(render.surfaceEmpty.includes("Son kullanılanlar"));
-  assert.ok(render.surfaceEmpty.includes("Henüz belge açmadınız"));
+  // Tek net birincil görev. Metin tasarım turunda "Dosya Aç"tan "Belge Aç"a
+  // döndü: ürün dosyalarla değil BELGELERLE çalışır ve dil bunu yansıtmalı.
+  // Sözleşme değişmedi — tek, açık, birincil bir açma eylemi.
+  assert.ok(render.surfaceEmpty.includes("Belge Aç"), "birincil açma eylemi görünmeli");
+  assert.ok(render.surfaceEmpty.includes("sürükleyin"), "sürükle-bırak ipucu olmalı");
+  // Boş durumda son kullanılanlar bölümü hiç çizilmez: gösterilecek bir şey
+  // yokken başlık ve "henüz yok" metni bilgi üretmez (Kanso).
+  assert.ok(!render.surfaceEmpty.includes("Son kullanılanlar"), "boşken başlık çizilmemeli");
 });
 
 test("son kullanılanlar dosya adını gösterir, tam yolu değil", () => {

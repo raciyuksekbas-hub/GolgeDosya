@@ -1,6 +1,7 @@
 import type { FeatureState } from "./types";
 import { IconCompare, IconConvert, IconEdit, IconReview, IconSettings } from "./icons";
 import { announce } from "../shared-ui/Announcer";
+import { MODES, fileNameOf } from "./modes";
 
 const ICONS = {
   duzenek: IconEdit,
@@ -14,21 +15,32 @@ interface Props {
   current: string;
   onNavigate: (route: string) => void;
   onOpenSettings: () => void;
+  /** Açık belgeler. Boş bağlam geçerli bir durumdur; verilmezse boş sayılır. */
+  openDocuments?: string[];
 }
 
 /**
- * Kenar çubuğu.
+ * Kenar çubuğu — dört çalışma kipi.
  *
- * Kullanılamayan bir bölüm macOS'ta olduğu gibi **soluk ve tıklanamaz** görünür;
- * gövdede hiçbir açıklama metni yoktur. Neden kullanılamadığı son kullanıcıyı
- * ilgilendiren bir bilgi değildir; geliştirici tarafı için `console.debug`'a
- * yazılır (bkz. App.tsx).
+ * Kullanılamayan bir kip macOS'ta olduğu gibi soluk ve tıklanamaz görünür;
+ * gövdede açıklama metni yoktur. Neden kullanılamadığı son kullanıcıyı
+ * ilgilendirmez.
+ *
+ * Altta açık belge durur: kullanıcı kipler arasında gezerken hangi belge
+ * üzerinde çalıştığını görmeyi bırakmaz. Tam dosya yolu gösterilmez.
  */
-export function Sidebar({ features, current, onNavigate, onOpenSettings }: Props) {
+export function Sidebar({
+  features,
+  current,
+  onNavigate,
+  onOpenSettings,
+  openDocuments = [],
+}: Props) {
   return (
     <aside className="sidebar">
       <div className="sidebar-title">Yüksekbaş Belge</div>
-      <nav className="sidebar-nav" aria-label="Bölümler">
+
+      <nav className="sidebar-nav" aria-label="Çalışma kipleri">
         {features.map((f) => {
           const Icon = ICONS[f.key];
           const active = current === f.route;
@@ -42,16 +54,29 @@ export function Sidebar({ features, current, onNavigate, onOpenSettings }: Props
               disabled={!f.enabled}
               onClick={() => {
                 onNavigate(f.route);
-                announce(`${f.label}`);
+                announce(MODES[f.key].label);
               }}
             >
               <Icon className="sidebar-icon" />
-              <span>{f.label}</span>
+              <span>{MODES[f.key].label}</span>
             </button>
           );
         })}
       </nav>
+
       <div className="sidebar-spacer" />
+
+      {openDocuments.length > 0 ? (
+        <div className="sidebar-context">
+          <div className="sidebar-context-label">Açık belge</div>
+          {openDocuments.map((p) => (
+            <div key={p} className="sidebar-context-name" title={fileNameOf(p)}>
+              {fileNameOf(p)}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="sidebar-footer">
         <button type="button" className="sidebar-item" onClick={onOpenSettings}>
           <IconSettings className="sidebar-icon" />

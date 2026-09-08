@@ -546,3 +546,111 @@ input[type="number"] {
   max-width: var(--measure);
   color: var(--text-secondary);
 }
+
+/* ==========================================================================
+   Bulgu listesi
+   --------------------------------------------------------------------------
+   Denetle'de kullanılır. Ciddiyet ASLA yalnız renkle verilmez: her satırda
+   ayrı bir şekil işareti (.finding-mark) ve ayrı bir metin etiketi
+   (.finding-sev) bulunur; renk yalnız yardımcıdır. İşaretlenen metin aralığı
+   da arka planla yetinmez, alt çizgi taşır — yüksek kontrast ve renk körlüğü
+   durumunda arka plan farkı kaybolabilir.
+
+   Bu sözleşme `qa/tests/denetle-a11y.test.mjs` tarafından kilitlenmiştir.
+   ========================================================================== */
+
+.findings { padding: 0; margin: 0; list-style: none; }
+.finding { border-bottom: 1px solid var(--border-subtle); }
+
+.finding-head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  width: 100%;
+  padding: var(--space-2) var(--space-2);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.finding-head:hover { background: var(--surface-hover); }
+.finding[data-active="true"] .finding-head { background: var(--surface-selected); }
+
+/* Şekil işareti — rengin taşımadığı ayrımı taşır. */
+.finding-mark {
+  flex: none;
+  width: 1.1em;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* Metin etiketi — "Hata", "Uyarı", "İnceleme". */
+.finding-sev {
+  flex: none;
+  min-width: 7ch;
+  font-size: var(--text-meta);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.finding-title { flex: 1; min-width: 0; }
+
+.finding-loc {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.finding[data-severity="error"] .finding-mark,
+.finding[data-severity="error"] .finding-sev { color: var(--danger); }
+.finding[data-severity="warning"] .finding-mark,
+.finding[data-severity="warning"] .finding-sev { color: var(--warning); }
+.finding[data-severity="review"] .finding-mark,
+.finding[data-severity="review"] .finding-sev { color: var(--review); }
+
+.finding-body {
+  padding: 0 var(--space-2) var(--space-4) calc(1.1em + 7ch + var(--space-3) * 2);
+}
+.finding-body > * + * { margin-top: var(--space-2); }
+.finding-message { margin: 0; max-width: var(--measure); }
+.finding-why { margin: 0; max-width: var(--measure); color: var(--text-secondary); }
+
+.finding-excerpt {
+  max-width: var(--measure);
+  padding: var(--space-2) var(--space-3);
+  margin: 0;
+  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+}
+
+/* Arka plan tek başına yetmez: alt çizgi renkten bağımsız olarak kalır. */
+.finding-excerpt mark {
+  color: var(--text-primary);
+  background: var(--warning-quiet);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.finding-fix {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  max-width: var(--measure);
+}
+.finding-fix code {
+  padding: 1px 4px;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+}
+.finding-fixnote { color: var(--text-muted); }
+.finding-nofix { margin: 0; color: var(--text-muted); }

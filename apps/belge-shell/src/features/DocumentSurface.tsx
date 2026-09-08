@@ -4,91 +4,57 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { FeatureState, RecentDocument } from "../shell/types";
 import { IconDocumentLarge } from "../shell/icons";
 import { announce } from "../shared-ui/Announcer";
-
-/** Her bölümün kabul ettiği belgeler ve yüzey metni. */
-const MODES: Record<
-  FeatureState["key"],
-  { extensions: string[]; label: string; prompt: string; multiple: boolean }
-> = {
-  duzenek: {
-    extensions: ["pdf", "docx", "doc", "udf", "jpg", "jpeg", "png", "tiff", "heic"],
-    label: "Belge veya görsel",
-    prompt: "Düzenlemek istediğiniz belgeyi açın",
-    multiple: true,
-  },
-  tavzih: {
-    extensions: ["docx", "udf"],
-    label: "Word veya UYAP belgesi",
-    prompt: "Dönüştürmek istediğiniz belgeyi açın",
-    multiple: true,
-  },
-  degisikis: {
-    extensions: ["pdf", "docx", "doc", "udf"],
-    label: "Karşılaştırılacak belgeler",
-    prompt: "Karşılaştırmak için iki belge açın",
-    multiple: true,
-  },
-  ikincigoz: {
-    extensions: ["docx", "udf"],
-    label: "Word veya UYAP belgesi",
-    prompt: "Denetlemek istediğiniz belgeyi açın",
-    multiple: false,
-  },
-};
+import { Button, EmptyState, Section, Status } from "../shared-ui/primitives";
+import { MODES, extensionOf, fileNameOf, type ContextOutcome } from "../shell/modes";
 
 interface Props {
   feature: FeatureState;
   recents: RecentDocument[];
+  /** Kip değişince belgeye ne olduğu. Uyuşmazlık sessizce geçilmez. */
+  outcome: ContextOutcome | null;
   onDocuments: (paths: string[]) => void;
   onForget: () => void;
 }
 
-function fileName(path: string): string {
-  const parts = path.split("/");
-  return parts[parts.length - 1] || path;
-}
-
-function extension(path: string): string {
-  const name = fileName(path);
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+/** "3 dakika önce", "dün", "12 Eyl" — tam zaman damgası değil. */
+function relativeTime(ms: number): string {
+  const diff = Date.now() - ms;
+  const minute = 60_000;
+  if (diff < minute) return "az önce";
+  if (diff < 60 * minute) return `${Math.round(diff / minute)} dk önce`;
+  if (diff < 24 * 60 * minute) return `${Math.round(diff / (60 * minute))} sa önce`;
+  if (diff < 48 * 60 * minute) return "dün";
+  return new Date(ms).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
 }
 
 /**
- * Belge-merkezli ana yüzey.
+ * Belge yüzeyi — uygulamanın açılış görüntüsü.
  *
- * Uygulamanın açılışta gösterdiği tek şey budur: bir belge açma daveti ve son
- * kullanılanlar. Sürüm, yapılandırma yolu, taşıma durumu, feature bayrağı gibi
- * hiçbir teknik bilgi burada görünmez.
+ * Dashboard yok. Merkezde tek net görev: belge aç. Son kullanılanlar kart
+ * galerisi değil, liste. Tam dosya yolu varsayılan görünümde gösterilmez.
  */
-export function DocumentSurface({ feature, recents, onDocuments, onForget }: Props) {
+export function DocumentSurface({ feature, recents, outcome, onDocuments, onForget }: Props) {
   const mode = MODES[feature.key];
   const [over, setOver] = useState(false);
-  const [needsSecond, setNeedsSecond] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
   const accepted = useRef(mode.extensions);
   accepted.current = mode.extensions;
 
   const accept = useCallback(
     (paths: string[]) => {
-      const usable = paths.filter((p) => accepted.current.includes(extension(p)));
+      const usable = paths.filter((p) => accepted.current.includes(extensionOf(p)));
       if (usable.length === 0) {
-        announce("Bu bölüm seçilen dosya türünü kabul etmiyor.");
+        setRefused("Bu kip seçilen belge türünü açamıyor.");
+        announce("Bu kip seçilen belge türünü açamıyor.");
         return;
       }
-      // Karşılaştırma iki belge gerektirir; tek belgeyle başlatılmaz.
-      if (feature.key === "degisikis" && usable.length < 2) {
-        setNeedsSecond(true);
-        announce("Karşılaştırmak için iki belge gerekiyor.");
-        return;
-      }
-      setNeedsSecond(false);
-      onDocuments(mode.multiple ? usable : usable.slice(0, 1));
+      setRefused(null);
+      onDocuments(mode.needs === 2 ? usable : usable.slice(0, 1));
     },
-    [mode.multiple, onDocuments, feature.key],
+    [mode.needs, onDocuments],
   );
 
-  // Native sürükle-bırak. Webview'in kendi olayı kullanılır; HTML5 drop olayı
-  // Tauri'de dosya yolunu vermez.
+  // Native sürükle-bırak. HTML5 drop olayı Tauri'de dosya yolunu vermez.
   useEffect(() => {
     let dispose: (() => void) | undefined;
     let cancelled = false;
@@ -106,7 +72,7 @@ export function DocumentSurface({ feature, recents, onDocuments, onForget }: Pro
         else dispose = unlisten;
       })
       .catch(() => {
-        /* Sürükle-bırak yoksa dosya açma düğmesi tek yoldur; hata gösterilmez. */
+        /* Sürükle-bırak yoksa düğme tek yoldur; hata gösterilmez. */
       });
     return () => {
       cancelled = true;
@@ -116,16 +82,30 @@ export function DocumentSurface({ feature, recents, onDocuments, onForget }: Pro
 
   const browse = useCallback(async () => {
     const picked = await open({
-      multiple: mode.multiple,
+      multiple: mode.needs === 2,
       directory: false,
-      filters: [{ name: mode.label, extensions: mode.extensions }],
+      filters: [{ name: mode.pickerLabel, extensions: mode.extensions }],
     });
     if (!picked) return;
     accept(Array.isArray(picked) ? picked : [picked]);
   }, [mode, accept]);
 
   return (
-    <div className="doc-surface">
+    <div className="surface">
+      {/* Kip değişiminde belge taşınamadıysa, sebebi sade biçimde söylenir. */}
+      {outcome?.kind === "mismatch" ? (
+        <Status tone="info">
+          {outcome.rejected.map(fileNameOf).join(", ")} bu kipte açılamıyor.{" "}
+          {mode.label} {mode.extensions.slice(0, 4).join(", ").toUpperCase()} belgeleriyle çalışır.
+        </Status>
+      ) : null}
+      {outcome?.kind === "needsMore" ? (
+        <Status tone="info">
+          Karşılaştırmak için bir belge daha açın.
+        </Status>
+      ) : null}
+      {refused ? <Status tone="error">{refused}</Status> : null}
+
       <div
         className="dropzone"
         data-over={over}
@@ -133,48 +113,38 @@ export function DocumentSurface({ feature, recents, onDocuments, onForget }: Pro
         role="group"
         aria-label={mode.prompt}
       >
-        <IconDocumentLarge className="dropzone-icon" />
-        <div className="dropzone-primary">{mode.prompt}</div>
-        <div className="dropzone-hint">veya belgeyi buraya bırakın</div>
-        <button type="button" className="btn btn-primary" onClick={browse}>
-          Dosya Aç…
-        </button>
-        {needsSecond ? (
-          <p role="alert" style={{ margin: 0, color: "var(--danger)" }}>
-            Karşılaştırmak için iki belge seçin.
-          </p>
-        ) : null}
+        <EmptyState
+          icon={<IconDocumentLarge />}
+          primary={mode.prompt}
+          hint="veya buraya sürükleyin"
+          actions={
+            <Button variant="primary" onClick={browse}>
+              Belge Aç
+            </Button>
+          }
+        />
       </div>
 
-      <section className="recents" aria-labelledby="son-baslik">
-        <h2 id="son-baslik">Son kullanılanlar</h2>
-        {recents.length === 0 ? (
-          <p className="recents-empty">Henüz belge açmadınız.</p>
-        ) : (
-          <>
-            <ul className="recents-list">
-              {recents.map((r) => (
-                <li key={r.path}>
-                  <button
-                    type="button"
-                    className="recent-item"
-                    onClick={() => accept([r.path])}
-                    title={r.path}
-                  >
-                    <span className="recent-name">{fileName(r.path)}</span>
-                    <span className="recent-kind">{extension(r.path)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
-              <button type="button" className="btn btn-quiet" onClick={onForget}>
-                Listeyi temizle
-              </button>
-            </div>
-          </>
-        )}
-      </section>
+      {recents.length > 0 ? (
+        <Section title="Son kullanılanlar" id="son">
+          <ul className="file-list">
+            {recents.map((r) => (
+              <li key={r.path}>
+                <button type="button" className="file-row" onClick={() => accept([r.path])}>
+                  <span className="file-name">{fileNameOf(r.path)}</span>
+                  <span className="file-kind">{extensionOf(r.path)}</span>
+                  <span className="file-time">{relativeTime(r.openedAt)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "var(--space-2)" }}>
+            <Button variant="quiet" onClick={onForget}>
+              Listeyi temizle
+            </Button>
+          </div>
+        </Section>
+      ) : null}
     </div>
   );
 }

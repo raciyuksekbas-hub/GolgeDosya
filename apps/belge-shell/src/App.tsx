@@ -10,31 +10,30 @@ import { ConvertWorkspace } from "./modules/tavzih/ConvertWorkspace";
 import { ReviewWorkspace } from "./modules/ikincigoz/ReviewWorkspace";
 import { CompareWorkspace } from "./modules/degisikis/CompareWorkspace";
 import { PdfWorkspace } from "./modules/duzenek/PdfWorkspace";
-
-/** Bölüm başlıkları. Kullanıcı eylem adını görür, ürün adını değil. */
-const HEADINGS: Record<FeatureState["key"], { title: string; subtitle: string }> = {
-  duzenek: { title: "Düzenle", subtitle: "Dilekçe eklerini hazırlayın" },
-  tavzih: { title: "Dönüştür", subtitle: "Word ve UYAP belgeleri arasında" },
-  degisikis: { title: "Karşılaştır", subtitle: "İki belge arasındaki değişiklikler" },
-  ikincigoz: { title: "Denetle", subtitle: "Göndermeden önce" },
-};
+import { MODES, carryContext, fileNameOf, type ContextOutcome } from "./shell/modes";
+import { Toolbar, ToolbarTitle, ToolbarSpacer, Button, Status } from "./shared-ui/primitives";
+import { announce } from "./shared-ui/Announcer";
 
 export function App() {
   const [features, setFeatures] = useState<FeatureState[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [route, setRoute] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  /** Etkin bölümde açılmış belgeler. Bölüm değişince temizlenir. */
+  /**
+   * Açık belgeler — kipe değil ORTAMA aittir.
+   *
+   * Ürünün en önemli davranışı: belge bir kez açılır, kipler arasında gezerken
+   * yeniden seçilmez. Eskiden her gezinmede temizleniyordu.
+   */
   const [documents, setDocuments] = useState<string[]>([]);
+  const [context, setContext] = useState<ContextOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        // Eski ayar taşıması açılışta bir kez. Sonucu KULLANICIYA GÖSTERİLMEZ:
-        // hangi eski uygulamadan ne okunduğu bir geliştirme ayrıntısıdır.
-        // Yeniden çalıştırmak güvenlidir; hiçbir değer ezilmez.
+        // Eski ayar taşıması açılışta bir kez. Sonucu KULLANICIYA GÖSTERİLMEZ.
         const report = await api.migrateLegacySettings().catch(() => null);
         const [f, s, info] = await Promise.all([
           api.enabledFeatures(),
@@ -62,14 +61,21 @@ export function App() {
     return applyPreferences(settings);
   }, [settings]);
 
+  const active = featureForRoute(route, features);
+
   const navigate = useCallback(
     (next: string) =>
       setRoute((current) => {
         const resolved = resolveRoute(next, features) || current;
-        if (resolved !== current) setDocuments([]);
+        if (resolved === current) return current;
+        const target = features.find((f) => f.route === resolved);
+        if (target) {
+          // Belge taşınır; yalnız tür uyuşmuyorsa açıkça anlatılır.
+          setContext(carryContext(target.key, documents));
+        }
         return resolved;
       }),
-    [features],
+    [features, documents],
   );
 
   const saveSettings = useCallback(async (next: Settings) => {
@@ -77,21 +83,40 @@ export function App() {
     setSettings(await api.saveSettings(next));
   }, []);
 
-  const openDocuments = useCallback(async (paths: string[]) => {
-    setDocuments(paths);
-    setSettings(await api.rememberDocuments(paths));
-    console.debug("[belge] documents opened", paths);
+  const openDocuments = useCallback(
+    async (paths: string[]) => {
+      setDocuments(paths);
+      if (active) setContext(carryContext(active.key, paths));
+      setSettings(await api.rememberDocuments(paths));
+    },
+    [active],
+  );
+
+  const closeDocuments = useCallback(() => {
+    setDocuments([]);
+    setContext(null);
+    announce("Belge kapatıldı.");
   }, []);
 
   const forgetDocuments = useCallback(async () => {
     setSettings(await api.forgetDocuments());
   }, []);
 
-  const active = featureForRoute(route, features);
-  const heading = useMemo(
-    () => (active ? HEADINGS[active.key] : null),
-    [active],
-  );
+  const mode = active ? MODES[active.key] : null;
+
+  /** Bu kip, açık belgelerle şu an çalışabiliyor mu? */
+  const usable = useMemo(() => {
+    if (!active || documents.length === 0) return false;
+    const outcome = context ?? carryContext(active.key, documents);
+    return outcome.kind === "keep";
+  }, [active, documents, context]);
+
+  const subtitle = useMemo(() => {
+    if (!mode) return undefined;
+    if (documents.length === 0) return mode.purpose;
+    if (documents.length === 1) return fileNameOf(documents[0]);
+    return documents.map(fileNameOf).join("  ·  ");
+  }, [mode, documents]);
 
   if (error) {
     return (
@@ -100,14 +125,21 @@ export function App() {
         current={route}
         onNavigate={navigate}
         onOpenSettings={() => setShowSettings(true)}
-        title="Yüksekbaş Belge"
+        openDocuments={[]}
+        toolbar={
+          <Toolbar>
+            <ToolbarTitle title="Yüksekbaş Belge" />
+          </Toolbar>
+        }
       >
-        <p className="notice" data-tone="error" role="alert">
-          Uygulama başlatılamadı. Lütfen yeniden açmayı deneyin.
-        </p>
+        <div className="surface">
+          <Status tone="error">Uygulama başlatılamadı. Lütfen yeniden açmayı deneyin.</Status>
+        </div>
       </Layout>
     );
   }
+
+  const outcome = active && documents.length > 0 ? context ?? carryContext(active.key, documents) : null;
 
   return (
     <>
@@ -116,22 +148,33 @@ export function App() {
         current={route}
         onNavigate={navigate}
         onOpenSettings={() => setShowSettings(true)}
-        title={heading?.title ?? "Yüksekbaş Belge"}
-        subtitle={heading?.subtitle}
+        openDocuments={documents}
+        toolbar={
+          <Toolbar>
+            <ToolbarTitle title={mode?.label ?? "Yüksekbaş Belge"} subtitle={subtitle} />
+            <ToolbarSpacer />
+            {documents.length > 0 ? (
+              <Button variant="quiet" onClick={closeDocuments}>
+                Kapat
+              </Button>
+            ) : null}
+          </Toolbar>
+        }
       >
         {active && settings ? (
-          documents.length > 0 && active.key === "tavzih" ? (
+          usable && active.key === "tavzih" ? (
             <ConvertWorkspace paths={documents} />
-          ) : documents.length > 0 && active.key === "ikincigoz" ? (
+          ) : usable && active.key === "ikincigoz" ? (
             <ReviewWorkspace path={documents[0]} />
-          ) : documents.length >= 2 && active.key === "degisikis" ? (
+          ) : usable && active.key === "degisikis" ? (
             <CompareWorkspace paths={documents} />
-          ) : documents.length > 0 && active.key === "duzenek" ? (
+          ) : usable && active.key === "duzenek" ? (
             <PdfWorkspace paths={documents} />
           ) : (
             <DocumentSurface
               feature={active}
               recents={settings.recentDocuments}
+              outcome={outcome}
               onDocuments={openDocuments}
               onForget={forgetDocuments}
             />

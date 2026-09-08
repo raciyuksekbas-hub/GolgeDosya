@@ -8,18 +8,25 @@ interface Props {
   current: string;
   onNavigate: (route: string) => void;
   onOpenSettings: () => void;
-  title: string;
-  subtitle?: string;
+  /** Açık belgeler — kenar çubuğunda bağlamı görünür tutar. */
+  openDocuments: string[];
+  toolbar: ReactNode;
   children: ReactNode;
 }
 
+/**
+ * Pencere iskeleti.
+ *
+ * Ayrı bir "sayfa başlığı" bloğu YOK. Başlık toolbar'ın içindedir: dikey alan
+ * belgeye aittir, kabuğa değil. Bu, envanterde bulunan ilk gereksiz katmandı.
+ */
 export function Layout({
   features,
   current,
   onNavigate,
   onOpenSettings,
-  title,
-  subtitle,
+  openDocuments,
+  toolbar,
   children,
 }: Props) {
   return (
@@ -30,12 +37,10 @@ export function Layout({
         current={current}
         onNavigate={onNavigate}
         onOpenSettings={onOpenSettings}
+        openDocuments={openDocuments}
       />
       <section className="content">
-        <header className="content-header">
-          <h1>{title}</h1>
-          {subtitle ? <p>{subtitle}</p> : null}
-        </header>
+        {toolbar}
         <main id="icerik" className="content-body" tabIndex={-1}>
           {children}
         </main>
