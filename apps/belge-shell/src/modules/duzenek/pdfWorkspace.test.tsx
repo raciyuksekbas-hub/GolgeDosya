@@ -194,6 +194,18 @@ describe("kabuğa bağlanma", () => {
       expect(source).toContain(marker);
   });
 
+  /** Araçlar eşit ağırlıkta değil: üç gruba ayrılmış ve nadir olanlar katlı. */
+  it("araç hiyerarşisi var, on bir araç düz bir yığın değil", () => {
+    for (const group of ["Sayfalar", "Belge", "Diğer"]) {
+      expect(html).toContain(group);
+    }
+    // Nadir grup katlı gelir; <details> olmadan hiyerarşi yalnız görsel olurdu.
+    expect(html).toContain("<details");
+    // Ama seçili araç içindeyse açık açılmalı — kullanıcı aracını kaybetmemeli.
+    const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
+    expect(source).toContain("open={group.keys.includes(kind)}");
+  });
+
   /** On bir araç da taşındı; hiçbiri migration sırasında düşmedi. */
   it("araç listesi eksiksiz", () => {
     for (const label of [

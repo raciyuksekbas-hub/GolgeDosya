@@ -124,6 +124,17 @@ test("Türkçe büyük harf doğru: lang=tr olmadan İ noktasını kaybeder", ()
   assert.match(html, /<html[^>]*lang="tr"/, 'index.html lang="tr" taşımalı');
 });
 
+test("belge seçici hatası kullanıcıya görünür", () => {
+  // Canlı klavye denemesinde ⌘O, seçici reddedince YAKALANMAMIŞ bir söz reddi
+  // üretiyordu: kullanıcı düğmeye basıyor, hiçbir şey olmuyordu. Sessiz
+  // başarısızlık, hata mesajından kötüdür.
+  const surface = readFileSync("src/features/DocumentSurface.tsx", "utf8");
+  const browse = surface.slice(surface.indexOf("const browse"));
+  assert.match(browse.slice(0, 900), /try \{/, "seçici çağrısı korunmalı");
+  assert.match(browse.slice(0, 900), /catch/, "reddi yakalamalı");
+  assert.match(browse.slice(0, 900), /setRefused/, "kullanıcıya söylemeli");
+});
+
 test("modül CSS'i kabuk ilkellerinin sınıf adlarını ezmez", () => {
   // compare.css kuralları kapsamsızdı: .status, .workspace ve .inspector-head
   // kabuğun ilkelleriyle AYNI adı taşıyordu ve yükleme sırasına göre onları

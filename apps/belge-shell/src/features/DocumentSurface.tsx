@@ -83,13 +83,22 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
   }, [accept]);
 
   const browse = useCallback(async () => {
-    const picked = await open({
-      multiple: mode.needs === 2,
-      directory: false,
-      filters: [{ name: mode.pickerLabel, extensions: mode.extensions }],
-    });
-    if (!picked) return;
-    accept(Array.isArray(picked) ? picked : [picked]);
+    // Seçici başarısız olabilir. Yakalanmazsa söz reddi sessizce düşer ve
+    // kullanıcı düğmeye bastığında HİÇBİR ŞEY olmaz — ne pencere ne açıklama.
+    // Canlı klavye denemesinde ⌘O tam olarak bunu ortaya çıkardı.
+    try {
+      const picked = await open({
+        multiple: mode.needs === 2,
+        directory: false,
+        filters: [{ name: mode.pickerLabel, extensions: mode.extensions }],
+      });
+      if (!picked) return;
+      setRefused(null);
+      accept(Array.isArray(picked) ? picked : [picked]);
+    } catch {
+      setRefused("Belge seçici açılamadı. Lütfen yeniden deneyin.");
+      announce("Belge seçici açılamadı.");
+    }
   }, [mode, accept]);
 
   // ⌘O düğmenin yaptığı işi yapar; ayrı bir yol açılmadı.
