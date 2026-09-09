@@ -124,6 +124,28 @@ test("Türkçe büyük harf doğru: lang=tr olmadan İ noktasını kaybeder", ()
   assert.match(html, /<html[^>]*lang="tr"/, 'index.html lang="tr" taşımalı');
 });
 
+test("modül CSS'i kabuk ilkellerinin sınıf adlarını ezmez", () => {
+  // compare.css kuralları kapsamsızdı: .status, .workspace ve .inspector-head
+  // kabuğun ilkelleriyle AYNI adı taşıyordu ve yükleme sırasına göre onları
+  // uygulamanın her yerinde eziyordu. Karşılaştır kapalıyken bile.
+  const shell = readFileSync("src/shared-ui/shell.css", "utf8");
+  const names = (css) => {
+    const out = new Set();
+    for (const m of css.matchAll(/(^|\})\s*([^{}@]+)\{/g)) {
+      for (const sel of m[2].split(",")) {
+        const t = sel.trim();
+        if (t.startsWith(".")) out.add(t.match(/^\.[A-Za-z0-9_-]+/)[0]);
+      }
+    }
+    return out;
+  };
+  const shellNames = names(shell);
+  for (const mod of ["src/modules/degisikis/compare.css", "src/modules/duzenek/pdf.css"]) {
+    const clash = [...names(readFileSync(mod, "utf8"))].filter((c) => shellNames.has(c));
+    assert.deepEqual(clash, [], `${mod} kabuk sınıflarını eziyor: ${clash.join(", ")}`);
+  }
+});
+
 test("kısayollar bağlı ve keşfedilebilir", () => {
   // macOS'un öğrettiği iki kısayol. Katalog üretilmedi: keşfedilemeyen bir
   // kısayol profesyonel kullanıcıya da yardım etmez, o yüzden ikisi de
