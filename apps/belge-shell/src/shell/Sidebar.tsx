@@ -78,7 +78,12 @@ export function Sidebar({
       ) : null}
 
       <div className="sidebar-footer">
-        <button type="button" className="sidebar-item" onClick={onOpenSettings}>
+        <button
+          type="button"
+          className="sidebar-item"
+          onClick={onOpenSettings}
+          title="Ayarlar  ⌘,"
+        >
           <IconSettings className="sidebar-icon" />
           <span>Ayarlar</span>
         </button>

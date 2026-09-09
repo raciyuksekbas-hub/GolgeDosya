@@ -34,7 +34,30 @@ const tools = {
     number: ['Sayfa numarası', 'Yeni kopyaya sıralı sayfa numarası ekler.'],
     raster: ['PDF → PNG/JPG', 'PDF sayfalarını ayrı görsel dosyalara dönüştürür.'],
 };
+
 type Kind = keyof typeof tools;
+
+/**
+ * Araç hiyerarşisi.
+ *
+ * On bir araç eşit görsel ağırlıkta duruyordu; kullanıcı hangisinin günlük iş,
+ * hangisinin nadir ayarlı işlem olduğunu ayırt edemiyordu. Gruplama gerçek
+ * kullanım modelinden çıkarıldı, keyfi değil:
+ *
+ *   Sayfalar — açık belgenin SAYFA SEÇİMİ üzerinde çalışır. Aynı zihinsel
+ *              model: işaretle, uygula. Günlük iş bunlar.
+ *   Belge    — belgenin BÜTÜNÜ üzerinde çalışır, sayfa seçimi gerektirmez.
+ *   Diğer    — ek AYAR ister (kenar boşluğu, metin, başlangıç numarası) ya da
+ *              farklı bir girdi türü alır. Seyrek; katlanmış durur.
+ *
+ * `kind` modeli, komut adları ve motor sözleşmesi DEĞİŞMEDİ — yalnız sunum.
+ */
+const TOOL_GROUPS: { title: string; keys: Kind[]; collapsed?: boolean }[] = [
+    { title: 'Sayfalar', keys: ['select', 'reorder', 'delete', 'rotate'] },
+    { title: 'Belge', keys: ['merge', 'compress', 'raster'] },
+    { title: 'Diğer', keys: ['crop', 'watermark', 'number', 'images'], collapsed: true },
+];
+
 type Page = {
     source: SourceFile;
     page: number;
@@ -188,7 +211,21 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
     const cannotSave = busy || !sources.length || (sources.some(s => s.is_signed) && !approved) ||
         (['select', 'delete'].includes(kind) && !selected.length) || outputCount === 0 || (kind === 'rotate' && !Object.values(rotations).some(Boolean));
     return <section className="pdf-root utility-workspace pdf-tools" aria-busy={busy}><h2>PDF Araçları</h2><p>Sayfaları görerek yeni bir kopya oluşturun. Kaynak belgeleriniz korunur.</p>
- <div className="pdf-workspace-layout"><aside className="pdf-controls" aria-label="PDF işlem kontrolleri"><div className="tool-grid">{Object.entries(tools).map(([key, [label, description]]) => <button key={key} className={`btn ${kind === key ? 'btn-primary' : ''}`} title={description} aria-pressed={kind === key} disabled={busy} onClick={() => { setKind(key as Kind); const kept = key === 'images' || kind === 'images' ? [] : (key === 'merge' ? sources : sources.slice(0, 1)); setSources(kept); build(kept); setStatus(''); setApproved(false); }}>{label}</button>)}</div>
+ <div className="pdf-workspace-layout"><aside className="pdf-controls" aria-label="PDF işlem kontrolleri">{TOOL_GROUPS.map(group => {
+     const buttons = group.keys.map(key => <button key={key} className={`btn ${kind === key ? 'btn-primary' : ''}`} title={tools[key][1]} aria-pressed={kind === key} disabled={busy} onClick={() => { setKind(key); const kept = key === 'images' || kind === 'images' ? [] : (key === 'merge' ? sources : sources.slice(0, 1)); setSources(kept); build(kept); setStatus(''); setApproved(false); }}>{tools[key][0]}</button>);
+     // Nadir araçlar katlı gelir ama içinde seçili bir araç varsa açık açılır:
+     // kullanıcı seçtiği aracı kaybolmuş sanmamalı.
+     if (group.collapsed) {
+       return <details key={group.title} className="tool-group" open={group.keys.includes(kind)}>
+         <summary>{group.title}</summary>
+         <div className="tool-grid">{buttons}</div>
+       </details>;
+     }
+     return <div key={group.title} className="tool-group">
+       <h3 className="section-head">{group.title}</h3>
+       <div className="tool-grid">{buttons}</div>
+     </div>;
+   })}
  <div className="card"><h3>{tools[kind][0]}</h3><p>{tools[kind][1]}</p><button className="btn" onClick={choose} disabled={busy}>Belge seç</button>
  {sources.length > 0 && <ol className="file-list">{sources.map((s, i) => <li key={s.path}>{i + 1}. {s.file_name} · {s.page_count} sayfa {sources.length > 1 && <button className="btn btn-sm" disabled={busy || i === 0} aria-label={`${i + 1}. belgeyi yukarı taşı`} onClick={() => moveSource(i)}>↑</button>}</li>)}</ol>}
  {kind === 'rotate' && <div className="rotation-actions"><button className="btn" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, -90))}>↶ Sola 90°</button><button className="btn" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, 90))}>↷ Sağa 90°</button><p>İşaretli sayfalara uygulanır. Her tıklama mevcut dönüşe eklenir.</p></div>}

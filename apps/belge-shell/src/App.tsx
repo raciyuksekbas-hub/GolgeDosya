@@ -13,6 +13,7 @@ import { PdfWorkspace } from "./modules/duzenek/PdfWorkspace";
 import { MODES, carryContext, fileNameOf, type ContextOutcome } from "./shell/modes";
 import { Toolbar, ToolbarTitle, ToolbarSpacer, Button, Status } from "./shared-ui/primitives";
 import { announce } from "./shared-ui/Announcer";
+import { useShortcuts } from "./shared-ui/useShortcuts";
 
 export function App() {
   const [features, setFeatures] = useState<FeatureState[]>([]);
@@ -28,6 +29,8 @@ export function App() {
   const [documents, setDocuments] = useState<string[]>([]);
   const [context, setContext] = useState<ContextOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** ⌘O sayacı — belge yüzeyine seçiciyi açması için verilen işaret. */
+  const [openRequest, setOpenRequest] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +105,18 @@ export function App() {
     setSettings(await api.forgetDocuments());
   }, []);
 
+  // macOS'un öğrettiği iki kısayol. Sheet açıkken kapalı: odak tuzağının
+  // içinden arka plandaki eylemi tetiklemek odak modelini bozar.
+  useShortcuts(
+    useMemo(
+      () => [
+        { key: "o", run: () => setOpenRequest((n) => n + 1), enabled: !showSettings },
+        { key: ",", run: () => setShowSettings(true) },
+      ],
+      [showSettings],
+    ),
+  );
+
   const mode = active ? MODES[active.key] : null;
 
   /** Bu kip, açık belgelerle şu an çalışabiliyor mu? */
@@ -175,6 +190,7 @@ export function App() {
               feature={active}
               recents={settings.recentDocuments}
               outcome={outcome}
+              openRequest={openRequest}
               onDocuments={openDocuments}
               onForget={forgetDocuments}
             />

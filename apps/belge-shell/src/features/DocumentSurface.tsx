@@ -12,6 +12,8 @@ interface Props {
   recents: RecentDocument[];
   /** Kip değişince belgeye ne olduğu. Uyuşmazlık sessizce geçilmez. */
   outcome: ContextOutcome | null;
+  /** ⌘O işareti. Her artışta belge seçici açılır; düğmeyle aynı yol. */
+  openRequest?: number;
   onDocuments: (paths: string[]) => void;
   onForget: () => void;
 }
@@ -33,7 +35,7 @@ function relativeTime(ms: number): string {
  * Dashboard yok. Merkezde tek net görev: belge aç. Son kullanılanlar kart
  * galerisi değil, liste. Tam dosya yolu varsayılan görünümde gösterilmez.
  */
-export function DocumentSurface({ feature, recents, outcome, onDocuments, onForget }: Props) {
+export function DocumentSurface({ feature, recents, outcome, openRequest, onDocuments, onForget }: Props) {
   const mode = MODES[feature.key];
   const [over, setOver] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
@@ -90,6 +92,16 @@ export function DocumentSurface({ feature, recents, outcome, onDocuments, onForg
     accept(Array.isArray(picked) ? picked : [picked]);
   }, [mode, accept]);
 
+  // ⌘O düğmenin yaptığı işi yapar; ayrı bir yol açılmadı.
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    if (openRequest !== undefined) void browse();
+  }, [openRequest, browse]);
+
   return (
     <div className="surface">
       {/* Kip değişiminde belge taşınamadıysa, sebebi sade biçimde söylenir. */}
@@ -118,7 +130,7 @@ export function DocumentSurface({ feature, recents, outcome, onDocuments, onForg
           primary={mode.prompt}
           hint="veya buraya sürükleyin"
           actions={
-            <Button variant="primary" onClick={browse}>
+            <Button variant="primary" onClick={browse} title="Belge Aç  ⌘O">
               Belge Aç
             </Button>
           }

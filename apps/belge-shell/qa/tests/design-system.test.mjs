@@ -124,6 +124,25 @@ test("Türkçe büyük harf doğru: lang=tr olmadan İ noktasını kaybeder", ()
   assert.match(html, /<html[^>]*lang="tr"/, 'index.html lang="tr" taşımalı');
 });
 
+test("kısayollar bağlı ve keşfedilebilir", () => {
+  // macOS'un öğrettiği iki kısayol. Katalog üretilmedi: keşfedilemeyen bir
+  // kısayol profesyonel kullanıcıya da yardım etmez, o yüzden ikisi de
+  // tetikledikleri kontrolün ipucunda yazılı.
+  const app = readFileSync("src/App.tsx", "utf8");
+  assert.match(app, /key: "o"/, "⌘O bağlı olmalı");
+  assert.match(app, /key: ","/, "⌘, bağlı olmalı");
+  assert.match(app, /enabled: !showSettings/, "sheet açıkken ⌘O kapalı olmalı");
+
+  const surface = readFileSync("src/features/DocumentSurface.tsx", "utf8");
+  assert.match(surface, /title="Belge Aç {2}⌘O"/, "Belge Aç ⌘O'yu göstermeli");
+  const sidebar = readFileSync("src/shell/Sidebar.tsx", "utf8");
+  assert.match(sidebar, /title="Ayarlar {2}⌘,"/, "Ayarlar ⌘,'i göstermeli");
+
+  // Metin girişindeyken kısayol çalışmamalı.
+  const hook = readFileSync("src/shared-ui/useShortcuts.ts", "utf8");
+  assert.match(hook, /inTextEntry/, "metin girişinde devre dışı olmalı");
+});
+
 test("teknik ayrıntı kullanıcı arayüzünde görünmez", () => {
   const forbidden = [
     "localStorage", "configDir", "migratedFrom", "feature_", "bundle",

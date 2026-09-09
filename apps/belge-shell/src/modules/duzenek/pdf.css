@@ -126,3 +126,34 @@
   .pdf-root .card { border: 1px solid CanvasText; }
   .pdf-root .btn-primary { outline: 2px solid Highlight; }
 }
+
+/* -- Araç hiyerarşisi ---------------------------------------------------
+   On bir araç eşit ağırlıkta durmaz. Sayfa işlemleri ilk ve açık; belge
+   işlemleri ikinci; ayar isteyen nadir araçlar katlı. */
+.pdf-root .tool-group + .tool-group { margin-top: var(--space-4); }
+.pdf-root .tool-group > .section-head { margin: 0 0 var(--space-2); }
+
+.pdf-root details.tool-group > summary {
+  padding: var(--space-1) 0;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: default;
+  list-style: none;
+}
+.pdf-root details.tool-group > summary::-webkit-details-marker { display: none; }
+.pdf-root details.tool-group > summary::before {
+  content: "›";
+  display: inline-block;
+  width: 1em;
+  transition: transform var(--motion-fast) var(--ease);
+}
+.pdf-root details.tool-group[open] > summary::before { transform: rotate(90deg); }
+.pdf-root details.tool-group > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+.pdf-root details.tool-group .tool-grid { margin-top: var(--space-2); }
