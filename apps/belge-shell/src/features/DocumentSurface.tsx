@@ -102,13 +102,16 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
   }, [mode, accept]);
 
   // ⌘O düğmenin yaptığı işi yapar; ayrı bir yol açılmadı.
-  const firstRender = useRef(true);
+  //
+  // "İlk render mı?" bayrağı yerine SON İŞLENEN DEĞER tutulur. Bayrak
+  // yaklaşımı StrictMode'un etkiyi iki kez çalıştırmasında kırılıyordu:
+  // ilk çalışma bayrağı düşürüyor, ikincisi seçiciyi açıyordu — uygulama
+  // açılır açılmaz. Değer karşılaştırması bu sıraya bağlı değildir.
+  const handledOpen = useRef(openRequest);
   useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
-    if (openRequest !== undefined) void browse();
+    if (openRequest === undefined || openRequest === handledOpen.current) return;
+    handledOpen.current = openRequest;
+    void browse();
   }, [openRequest, browse]);
 
   return (
