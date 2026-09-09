@@ -38,8 +38,6 @@ export function Sidebar({
 }: Props) {
   return (
     <aside className="sidebar">
-      <div className="sidebar-title">Yüksekbaş Belge</div>
-
       <nav className="sidebar-nav" aria-label="Çalışma kipleri">
         {features.map((f) => {
           const Icon = ICONS[f.key];

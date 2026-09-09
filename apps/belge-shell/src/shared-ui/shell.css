@@ -34,15 +34,10 @@
   border-right: 1px solid var(--border-subtle);
 }
 
-.sidebar-title {
-  padding: var(--space-2) var(--space-4) var(--space-4);
-  color: var(--text-muted);
-  font-size: var(--text-meta);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
+/* Uygulama adı kenar çubuğunda TEKRARLANMAZ: macOS başlık çubuğu onu zaten
+   gösteriyor. Ciddi bir masaüstü aleti adını iki kez yazmaz. Kenar çubuğu
+   pencere düğmelerinin altından başlar. */
+.sidebar { padding-top: var(--space-6); }
 
 .sidebar-nav {
   display: flex;
