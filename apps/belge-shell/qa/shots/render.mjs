@@ -25,6 +25,11 @@ try {
         import { DocumentSurface } from './src/features/DocumentSurface';
         import { SettingsSheet } from './src/shell/Settings';
         import { Button, Pill } from './src/shared-ui/primitives';
+        import { compareDocuments } from './src/modules/degisikis/core/compare';
+        import { buildComparisonViewModel } from './src/modules/degisikis/viewModels/comparisonViewModel';
+        import { DocumentPane } from './src/modules/degisikis/DocumentPane';
+        import { ChangeRail } from './src/modules/degisikis/ChangeRail';
+        import { ChangeInspector } from './src/modules/degisikis/ChangeInspector';
 
         const features = [
           { key: 'duzenek', label: 'Düzenle', route: 'duzenek', compiled: true, enabled: true },
@@ -92,6 +97,72 @@ try {
                 el('span', { className: 'finding-title' }, 'Uzun cümle okunabilirliği düşürüyor'),
                 el('span', { className: 'finding-loc' }, '7. paragraf')))))));
 
+        /**
+         * Karşılaştır — GERÇEK motorla. Diff motoru saf TypeScript olduğu için
+         * IPC olmadan çalışır: aşağıdaki satırlar, ray düğümleri, özet sayıları
+         * ve yüzdeler compareDocuments + buildComparisonViewModel
+         * çıktısıdır, elle yazılmış değil.
+         */
+        const makeBlocks = (texts, prefix) => texts.map((text, i) => ({
+          id: prefix + '-' + i, kind: /^MADDE/.test(text) ? 'heading' : 'paragraph',
+          text, label: /^MADDE/.test(text) ? text.split(' —')[0] : undefined,
+        }));
+        const BASE = [
+          'MADDE 1 — TARAFLAR',
+          'İşbu sözleşme, Yüksekbaş Ltd. Şti. ile Yüklenici arasında akdedilmiştir.',
+          'MADDE 2 — KONU',
+          'Sözleşmenin konusu, ekte belirtilen hizmetlerin ifasıdır.',
+          'MADDE 3 — HİZMET BEDELİ',
+          '3.1. Hizmet bedeli KDV dahil 118.000 TL olarak kararlaştırılmıştır.',
+          '3.2. Ödeme, fatura tarihinden itibaren 30 gün içinde yapılır.',
+        ];
+        const REVISED = [
+          'MADDE 1 — TARAFLAR',
+          'İşbu sözleşme, Yüksekbaş Limited Şirketi ile Yüklenici arasında akdedilmiştir.',
+          'MADDE 2 — KONU',
+          'Sözleşmenin konusu, ekte belirtilen hizmetlerin ifasıdır.',
+          'MADDE 3 — HİZMET BEDELİ',
+          '3.1. Hizmet bedeli KDV dahil 142.000 TL olarak kararlaştırılmıştır.',
+          '3.2. Ödeme, fatura tarihinden itibaren 45 gün içinde yapılır.',
+          '3.3. Gecikme hâlinde aylık %2 gecikme faizi uygulanır.',
+        ];
+        const comparison = compareDocuments(makeBlocks(BASE, 'base'), makeBlocks(REVISED, 'revised'));
+        const cmpModel = buildComparisonViewModel(comparison);
+        const noop = () => undefined;
+        const ref = { current: null };
+        const mapRef = { current: new Map() };
+        const cmpNames = el('span', { className: 'doc-chip' },
+          el('span', { className: 'doc-chip-name' }, 'sozlesme-v1.docx'),
+          el(Pill, null, 'docx'),
+          el('span', { className: 'doc-chip-sep' }, '↔'),
+          el('span', { className: 'doc-chip-name' }, 'sozlesme-v2.docx'),
+          el(Pill, null, 'docx'));
+        const doc = (name) => ({ name, extension: 'docx', size: 24576, blocks: [], warnings: [] });
+        export const compare = renderToStaticMarkup(shell({
+          current: 'degisikis', context: cmpNames,
+          actions: el(Button, { variant: 'quiet' }, 'Kapat'),
+        }, el('div', { className: 'compare-root' },
+          el('div', { className: 'compare-panes' },
+            el(DocumentPane, { side: 'base', doc: doc('sozlesme-v1.docx'), rows: comparison.rows,
+              changes: cmpModel.changes, selectedRows: cmpModel.changes[1]?.rowIndices ?? [],
+              paneRef: ref, rowRefs: mapRef, onScroll: noop }),
+            el(ChangeRail, { changes: cmpModel.changes, selectedIndex: 1, onSelect: noop, onMove: noop,
+              onSwap: noop, canSwap: true, paneRef: ref, rowRefs: mapRef, syncToken: 'x' }),
+            el(DocumentPane, { side: 'revised', doc: doc('sozlesme-v2.docx'), rows: comparison.rows,
+              changes: cmpModel.changes, selectedRows: cmpModel.changes[1]?.rowIndices ?? [],
+              paneRef: ref, rowRefs: mapRef, onScroll: noop })))));
+
+        // Panel gerçek pencerede kabuğun sağ yuvasına portallanır; statik
+        // çizimde portal çalışmadığı için kendi karesinde gösteriliyor.
+        export const comparePanel = renderToStaticMarkup(
+          el('div', { style: { width: '312px', height: '100vh', padding: '12px 12px 12px 0', background: 'var(--surface-workspace)' } },
+            el('aside', { className: 'inspector compare-root', 'aria-label': 'Farklar' },
+              el('div', { className: 'inspector-head' }, el('h2', { className: 'inspector-title' }, 'Farklar')),
+              el('div', { className: 'inspector-body' },
+                el(ChangeInspector, { summary: cmpModel.summary, changes: cmpModel.changes,
+                  filter: 'all', onFilterChange: noop, filteredChanges: cmpModel.changes,
+                  selectedChange: cmpModel.changes[1], onSelect: noop })))));
+
         export const settingsSheet = renderToStaticMarkup(
           el(React.Fragment, null,
             shell({}, el(DocumentSurface, {
@@ -112,6 +183,10 @@ try {
 
 const tokens = readFileSync("src/shared-ui/tokens.css", "utf8");
 const shell = readFileSync("src/shared-ui/shell.css", "utf8");
+// Modül stilleri de gerçek uygulamadaki sırayla: modüller önce, kabuk sonra
+// (main.tsx'te de böyle; eşit özgüllükte kabuk kazanır).
+const compare = readFileSync("src/modules/degisikis/compare.css", "utf8");
+const pdf = readFileSync("src/modules/duzenek/pdf.css", "utf8");
 
 for (const [name, body] of Object.entries(mod)) {
   for (const theme of ["light", "dark"]) {
@@ -120,7 +195,7 @@ for (const [name, body] of Object.entries(mod)) {
       // lang="tr" ZORUNLU: CSS `text-transform: uppercase` yerel ayara duyarlıdır.
       // Türkçe olmadan "Erişilebilirlik" → "ERISILEBILIRLIK" olur (noktasız I).
       `<!doctype html><html lang="tr" data-theme="${theme}"><head><meta charset="utf-8">` +
-        `<style>${tokens}\n${shell}</style></head>` +
+        `<style>${compare}\n${pdf}\n${tokens}\n${shell}</style></head>` +
         `<body><div style="height:100vh">${body}</div></body></html>`,
     );
   }
