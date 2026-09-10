@@ -21,6 +21,8 @@ export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [route, setRoute] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  /** Sürüm — yalnız Hakkında bölümünde. Yapılandırma dizini GÖSTERİLMEZ. */
+  const [version, setVersion] = useState<string | null>(null);
   /**
    * Açık belgeler — kipe değil ORTAMA aittir.
    *
@@ -45,6 +47,7 @@ export function App() {
           api.appInfo(),
         ]);
         if (cancelled) return;
+        setVersion(info.version);
         console.debug("[belge] app", info);
         console.debug("[belge] features", f);
         if (report) console.debug("[belge] legacy settings migration", report);
@@ -205,6 +208,7 @@ export function App() {
       {showSettings && settings ? (
         <SettingsSheet
           settings={settings}
+          version={version}
           onChange={saveSettings}
           onClose={() => setShowSettings(false)}
         />

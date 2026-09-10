@@ -5,6 +5,8 @@ import { Button, Field } from "../shared-ui/primitives";
 
 interface Props {
   settings: Settings;
+  /** Uygulama sürümü — yalnız Hakkında. Yapılandırma dizini asla gösterilmez. */
+  version?: string | null;
   onChange: (next: Settings) => void;
   onClose: () => void;
 }
@@ -20,7 +22,7 @@ interface Props {
  * eklenmedi. "Dönüştürme" bölümü yok çünkü çıktı klasörü Dönüştür kipinin
  * kendi yüzeyinde, işin yapıldığı yerde duruyor.
  */
-export function SettingsSheet({ settings, onChange, onClose }: Props) {
+export function SettingsSheet({ settings, version, onChange, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true, onClose);
 
@@ -105,7 +107,7 @@ export function SettingsSheet({ settings, onChange, onClose }: Props) {
           <section className="settings-group" aria-labelledby="ayar-hakkinda">
             <h3 id="ayar-hakkinda">Hakkında</h3>
             <p className="settings-about">
-              Yüksekbaş Belge — belge çalışma ortamı.
+              Yüksekbaş Belge{version ? ` ${version}` : ""} — belge çalışma ortamı.
               <br />
               © 2026 Raci Çetin Yüksekbaş
             </p>
