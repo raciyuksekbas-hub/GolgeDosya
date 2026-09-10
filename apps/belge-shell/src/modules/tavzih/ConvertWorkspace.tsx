@@ -4,7 +4,8 @@ import * as api from "./api";
 import type { BatchResult, ConversionResult, InspectOutcome, OutputFolder } from "./types";
 import { ConversionWarning, FirstUseAcceptance } from "./Consent";
 import { announce } from "../../shared-ui/Announcer";
-import { Button, Section, Status } from "../../shared-ui/primitives";
+import { Button, Pill, Section, Status } from "../../shared-ui/primitives";
+import { InspectorPanel, InspectorSection, ToolbarActions } from "../../shell/chrome";
 
 type Phase = "idle" | "confirm" | "running" | "done";
 
@@ -23,8 +24,11 @@ function results(outcome: BatchResult | ConversionResult | null): ConversionResu
  * Dönüştür — DOCX ↔ UDF.
  *
  * Motor `document-core`'un `convert` modülüdür ve hiç değiştirilmemiştir.
- * Bu bileşen yalnız bağımsız Tavzih'teki akışı yeni kabuğun görsel diliyle
- * yeniden çizer: onay → seçim → uyarı → dönüştürme → sonuç.
+ * Akış da aynı: onay → seçim → uyarı → dönüştürme → sonuç.
+ *
+ * Yüzey bir form değil, sakin bir dönüşüm akışıdır: KAYNAK, aşağı ok, HEDEF.
+ * Birincil eylem yardımcı barda; çıktı klasörü sağ panelde, işin yapıldığı
+ * yerin yanında. Sonuç tek yerde — workspace'te — durur.
  */
 export function ConvertWorkspace({ paths }: { paths: string[] }) {
   const [accepted, setAccepted] = useState<boolean | null>(null);
@@ -93,95 +97,127 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
 
   const items = results(outcome);
 
+  const target = usable[0]?.info?.target_format ?? null;
+
   return (
-    <div className="surface">
-      {failure ? <Status tone="error">{failure}</Status> : null}
-
+    <>
       {usable.length > 0 ? (
-        <Section title="Dönüştürülecek" id="secili">
-          <ul className="file-list">
-            {selected.map((s) => (
-              <li key={s.path}>
-                <div className="file-row">
-                  <span className="file-name">{s.info?.name ?? s.path.split("/").pop()}</span>
-                  {s.info ? (
-                    <span className="file-kind">
-                      {s.info.source_format} → {s.info.target_format}
-                    </span>
-                  ) : (
-                    <span className="file-kind" data-tone="error">
-                      {s.error?.message ?? "okunamadı"}
-                    </span>
-                  )}
-                  {s.info ? <span className="file-time">{s.info.size_label}</span> : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-          <div className="row-end">
-            <Button
-              variant="primary"
-              disabled={phase === "running"}
-              onClick={() => setPhase("confirm")}
-            >
-              {phase === "running" ? "Dönüştürülüyor…" : "Dönüştür"}
-            </Button>
-          </div>
-        </Section>
-      ) : null}
-
-      {items.length > 0 ? (
-        <Section title="Sonuç" id="sonuc">
-          {items.map((r) => (
-            <div key={r.source} className="result" data-tone={r.status === "failure" ? "error" : undefined}>
-              <div className="result-line">
-                {r.source_name} → {r.output_name ?? "—"}
-              </div>
-              {r.error ? <div>{r.error.message}</div> : null}
-              {/* Kaynak dosyanın değişmediği her sonuçta açıkça gösterilir:
-                  motor kaynağı asla değiştirmez ve bunu hash'le kanıtlar. */}
-              {r.source_unchanged ? <div>Kaynak belge değiştirilmedi.</div> : null}
-              {r.warnings.length > 0 ? (
-                <ul className="warn-list">
-                  {r.warnings.map((w, i) => (
-                    <li key={`${w.code}-${i}`}>
-                      <strong>{SEVERITY_LABEL[w.severity] ?? w.severity}:</strong>{" "}
-                      {w.title}
-                      {w.location ? ` (${w.location})` : ""}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          ))}
-        </Section>
+        <ToolbarActions>
+          <Button
+            variant="primary"
+            disabled={phase === "running"}
+            onClick={() => setPhase("confirm")}
+          >
+            {phase === "running" ? "Dönüştürülüyor…" : "Dönüştür"}
+          </Button>
+        </ToolbarActions>
       ) : null}
 
       {folder ? (
-        <Section title="Çıktı klasörü" id="klasor">
-          <p className="folder-path selectable">{folder.path}</p>
+        <InspectorPanel title="Çıktı">
+          <p className="folder-path selectable" title={folder.path}>
+            {folder.path}
+          </p>
           <div className="row">
+            <Button onClick={() => api.revealOutputFolder()}>Finder'da Göster</Button>
             <Button onClick={chooseFolder}>Değiştir…</Button>
-            <Button onClick={() => api.revealOutputFolder()}>Klasörde Göster</Button>
-            {!folder.is_default ? (
-              <Button variant="quiet" onClick={async () => setFolder(await api.setOutputFolder(null))}>
-                Varsayılana dön
-              </Button>
-            ) : null}
           </div>
-        </Section>
+          {!folder.is_default ? (
+            <Button variant="quiet" onClick={async () => setFolder(await api.setOutputFolder(null))}>
+              Varsayılana dön
+            </Button>
+          ) : null}
+          {items.length > 0 ? (
+            <InspectorSection title="Son işlem">
+              {items.map((r) => (
+                <p key={r.source} className="tool-hint">
+                  {r.output_name ?? r.source_name}
+                </p>
+              ))}
+            </InspectorSection>
+          ) : null}
+        </InspectorPanel>
       ) : null}
 
-      {phase === "confirm" ? (
-        <ConversionWarning
-          count={usable.length}
-          onCancel={() => setPhase("idle")}
-          onConfirm={() => {
-            setPhase("idle");
-            void run();
-          }}
-        />
-      ) : null}
-    </div>
+      <div className="surface convert">
+        {failure ? <Status tone="error">{failure}</Status> : null}
+
+        {selected.length > 0 ? (
+          <div className="flow">
+            <div className="flow-step">
+              <h2 className="section-head">Kaynak</h2>
+              <ul className="file-list">
+                {selected.map((s) => (
+                  <li key={s.path}>
+                    <div className="file-row">
+                      <span className="file-name">{s.info?.name ?? s.path.split("/").pop()}</span>
+                      {s.info ? (
+                        <>
+                          <Pill>{s.info.source_format}</Pill>
+                          <span className="file-time">{s.info.size_label}</span>
+                        </>
+                      ) : (
+                        <span className="file-kind" data-tone="error">
+                          {s.error?.message ?? "okunamadı"}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {target ? (
+              <>
+                <div className="flow-arrow" aria-hidden="true">
+                  ↓
+                </div>
+                <div className="flow-step">
+                  <h2 className="section-head">Hedef</h2>
+                  <p className="flow-target">{target === "UDF" ? "UYAP UDF" : "Word DOCX"}</p>
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+
+        {items.length > 0 ? (
+          <Section title="Sonuç" id="sonuc">
+            {items.map((r) => (
+              <div key={r.source} className="result" data-tone={r.status === "failure" ? "error" : undefined}>
+                <div className="result-line">
+                  {r.source_name} → {r.output_name ?? "—"}
+                </div>
+                {r.error ? <div>{r.error.message}</div> : null}
+                {/* Kaynak dosyanın değişmediği her sonuçta açıkça gösterilir:
+                    motor kaynağı asla değiştirmez ve bunu hash'le kanıtlar. */}
+                {r.source_unchanged ? <div>Kaynak belge değiştirilmedi.</div> : null}
+                {r.warnings.length > 0 ? (
+                  <ul className="warn-list">
+                    {r.warnings.map((w, i) => (
+                      <li key={`${w.code}-${i}`}>
+                        <strong>{SEVERITY_LABEL[w.severity] ?? w.severity}:</strong> {w.title}
+                        {w.location ? ` (${w.location})` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ))}
+          </Section>
+        ) : null}
+
+        {phase === "confirm" ? (
+          <ConversionWarning
+            count={usable.length}
+            onCancel={() => setPhase("idle")}
+            onConfirm={() => {
+              setPhase("idle");
+              void run();
+            }}
+          />
+        ) : null}
+      </div>
+    </>
   );
 }
