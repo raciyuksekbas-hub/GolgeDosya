@@ -5,6 +5,7 @@ import type { FeatureState, RecentDocument } from "../shell/types";
 import { IconDocumentLarge } from "../shell/icons";
 import { announce } from "../shared-ui/Announcer";
 import { Button, Pill, Status } from "../shared-ui/primitives";
+import { ToolbarActions } from "../shell/chrome";
 import { MODES, extensionOf, fileNameOf, type ContextOutcome } from "../shell/modes";
 import { relativeTime } from "./relativeTime";
 
@@ -19,16 +20,24 @@ interface Props {
   onForget: () => void;
 }
 
-/** Aşağı bölgede en fazla bu kadar satır: 900×600'de sütun kaymaz. */
-const RECENT_ROWS = 5;
+/** Depo on kayıt tutar; hepsi gösterilir, alan yetmezse liste kendi içinde kayar. */
+const RECENT_ROWS = 10;
 
 /**
  * Belge yüzeyi — uygulamanın açılış görüntüsü.
  *
- * Mod başlığı yok: kip kenar çubuğunda zaten seçili. Ekranın başlığı boş
- * durumun kendisidir ("Belge açın"), optik olarak üst-orta bölgede; altında bu
- * kipin gerçekten açtığı türler. Tek birincil eylem. Son kullanılanlar aşağı
- * bölgede liste olarak — kart galerisi değil; tam dosya yolu gösterilmez.
+ * Mod başlığı yok: kip kenar çubuğunda zaten seçili.
+ *
+ * Bu yüzey bir "boş durum ekranı" değil, **çalışma yüzeyidir**. Son kullanılan
+ * belgeler yüzeyin asıl içeriğidir ve yukarıdan başlar: belge açmanın en hızlı
+ * yolu onlardır. Birincil eylem yardımcı bardadır; böylece bar boş kalmaz ve
+ * yüzeyin ortasında tek başına duran bir düğme olmaz.
+ *
+ * Boş durum yalnız gerçekten boşken çizilir — hiç son kullanılan yoksa. O
+ * zaman optik olarak üst-orta bölgede durur.
+ *
+ * Sürükle-bırak hedefi tüm yüzeydir; kesikli çerçeve yalnız sürükleme
+ * sırasında belirir.
  */
 export function DocumentSurface({ feature, recents, outcome, openRequest, onDocuments, onForget }: Props) {
   const mode = MODES[feature.key];
@@ -112,7 +121,14 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
   const shown = recents.slice(0, RECENT_ROWS);
 
   return (
-    <div className="surface home">
+    <div className="surface home" data-over={over}>
+      {/* Birincil eylem barda: yüzeyin ortasında yalnız duran düğme yok. */}
+      <ToolbarActions>
+        <Button variant="primary" onClick={browse} title="Belge Aç  ⌘O">
+          Belge Aç
+        </Button>
+      </ToolbarActions>
+
       {/* Kip değişiminde belge taşınamadıysa, sebebi sade biçimde söylenir. */}
       {outcome?.kind === "mismatch" ? (
         <Status tone="info">
@@ -124,27 +140,6 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
         <Status tone="info">Karşılaştırmak için bir belge daha açın.</Status>
       ) : null}
       {refused ? <Status tone="error">{refused}</Status> : null}
-
-      <div
-        className="dropzone"
-        data-over={over}
-        onDoubleClick={browse}
-        role="group"
-        aria-label={mode.prompt}
-      >
-        <div className="empty">
-          <div className="empty-icon">
-            <IconDocumentLarge />
-          </div>
-          <h1 className="empty-primary">Belge açın</h1>
-          <p className="empty-hint">{mode.hint}</p>
-          <div className="empty-actions">
-            <Button variant="primary" onClick={browse} title="Belge Aç  ⌘O">
-              Belge Aç
-            </Button>
-          </div>
-        </div>
-      </div>
 
       {shown.length > 0 ? (
         <section className="recents" aria-labelledby="son-baslik">
@@ -168,7 +163,22 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
             </Button>
           </div>
         </section>
-      ) : null}
+      ) : (
+        <div className="dropzone" onDoubleClick={browse} role="group" aria-label={mode.prompt}>
+          <div className="empty">
+            <div className="empty-icon">
+              <IconDocumentLarge />
+            </div>
+            <h1 className="empty-primary">Belge açın</h1>
+            <p className="empty-hint">{mode.hint}</p>
+            <div className="empty-actions">
+              <Button variant="primary" onClick={browse} title="Belge Aç  ⌘O">
+                Belge Aç
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

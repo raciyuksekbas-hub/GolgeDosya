@@ -322,34 +322,6 @@
 }
 .workspace-head-actions { display: flex; flex: none; gap: var(--space-2); }
 
-/* ------------------------------------------------------------------ Splash
-   Açılış: yalnız ürünün adı. Kısa görünür — animasyon ve ilerleme çubuğu yok.
-   Zemin kabuk rengiyle aynı; splash kapanınca yüzey değişmez, yalnız dolar. */
-
-.splash {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  background: var(--surface-app);
-}
-.splash-mark { width: 44px; height: 44px; color: var(--text-primary); }
-.splash-name {
-  margin: var(--space-4) 0 0;
-  font-size: var(--text-title);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-}
-.splash-version {
-  position: absolute;
-  bottom: var(--space-7);
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-meta);
-}
-
 /* ==========================================================================
    İlkeller
    ========================================================================== */
@@ -473,10 +445,24 @@
 /* ------------------------------------------------------------ EmptyState
    Optik üst-orta: kalan alanın %38'inde. Kart içinde değil. */
 
-/* Home: boş durum kalan alanı alır, son kullanılanlar aşağı bölgede. */
-.home { padding-bottom: var(--space-5); }
-.recents { padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
-.recents .row-end { margin-top: var(--space-2); }
+/* Home: son kullanılanlar yüzeyin ASIL içeriğidir ve yukarıdan başlar.
+   Boş durum yalnız hiç kayıt yokken çizilir ve kalan alanı alır. */
+.recents { display: flex; flex-direction: column; min-height: 0; }
+.recents .file-list { min-height: 0; overflow: auto; }
+.recents .row-end { flex: none; margin-top: var(--space-3); }
+
+/* Sürükle-bırak hedefi tüm yüzey. Kesikli çerçeve yalnız sürükleme sırasında. */
+.home {
+  border: 1px dashed transparent;
+  border-radius: var(--radius-lg);
+  transition:
+    background var(--motion) var(--ease),
+    border-color var(--motion) var(--ease);
+}
+.home[data-over="true"] {
+  background: var(--accent-quiet);
+  border-color: var(--accent);
+}
 
 .dropzone {
   display: grid;
@@ -490,11 +476,6 @@
     border-color var(--motion) var(--ease);
 }
 .dropzone > .empty { grid-row: 2; }
-
-.dropzone[data-over="true"] {
-  background: var(--accent-quiet);
-  border-color: var(--accent);
-}
 
 .empty {
   display: flex;

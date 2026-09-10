@@ -257,15 +257,3 @@ test("marka varlıkları tek kaynaktan üretiliyor", () => {
   const icons = readFileSync("src/shell/icons.tsx", "utf8");
   assert.match(icons, /M12 8 H52 V32 L28 56 H12 Z/, "AppMark marka geometrisini taşımalı");
 });
-
-test("açılış ekranı ürünün adını ve sürümü taşır", () => {
-  const splash = readFileSync("src/shell/Splash.tsx", "utf8");
-  assert.match(splash, /GölgeDosya/);
-  assert.match(splash, /__APP_VERSION__/, "sürüm derleme zamanından gelmeli");
-  const vite = readFileSync("vite.config.ts", "utf8");
-  assert.match(vite, /__APP_VERSION__: JSON\.stringify\(version\)/);
-  // Sahte bekleme yok: açılış yalnız gerçek boot sürerken çizilir.
-  const app = readFileSync("src/App.tsx", "utf8");
-  assert.match(app, /features\.length === 0\) return <Splash \/>/);
-  assert.ok(!/setTimeout\([^)]*Splash/.test(app), "açılış ekranı zamanlayıcıyla uzatılmamalı");
-});

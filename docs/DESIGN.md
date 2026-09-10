@@ -151,6 +151,12 @@ Aşağıdaki kayıtlı kararlar **bilinçli olarak geçersizleşti**:
 
 ## Marka: GölgeDosya (2026-09-10)
 
+**Görsel kimlik geçicidir.** "Kat" işareti, pirinç palet ve marka varlıkları,
+dış tasarım seti gelene kadar ürünün adsız/işaretsiz kalmaması için üretildi;
+final tasarım kabulü değildir. Ad, kimlik (`tr.yuksekbas.golgedosya`), veri
+devralma ve varlık üretim hattı kalıcıdır — değişecek olan yalnız
+`brand/` içindeki çizimlerdir.
+
 Ürünün adı `GölgeDosya`. Kimlik `apps/belge-shell/brand/` altında tek kaynakta
 tutulur (`BRAND.md`, `appicon.svg`, `build-icons.sh`); `src-tauri/icons/`
 tamamen oradan türetilir ve elle düzenlenmez.
@@ -165,9 +171,10 @@ Geçersizleşen kararlar:
 - *"Kenar çubuğunda tek vurgu taşıyıcı seçili kip işaretidir"*: kimlik işareti
   de markanın pirincini taşır. Kural artık şöyle okunur — seçili kip işareti
   tek **etkileşimli** vurgudur; kimlik bir kontrol değildir.
-- *"Açılış ekranı yok"* (Faz 5'te bileşen emekliye ayrılmıştı): açılış IPC'si
-  sürerken pencere boş kalıyordu. O an artık `Splash` ile ürünün adını ve
-  sürümünü taşıyor. Zamanlayıcı yok; iş biter bitmez kaybolur.
+- *"Açılış ekranı yok"* kararı **korundu**. Kısa süre bir `Splash` denendi;
+  ölçüm gösterdi ki pencerenin yakalanabilir ilk karesi zaten çizilmiş ana
+  ekran oluyor, yani açılış ekranı en fazla tek karelik bir parlama olurdu.
+  Kaldırıldı. Sürüm Ayarlar → Hakkında'da.
 - Yapılandırma kimliği `tr.yuksekbas.belge` → `tr.yuksekbas.golgedosya`.
   Eski dizin bir migration kaynağıdır: yeni ad altında henüz `settings.json`
   yoksa eskisi devralınır, varsa dokunulmaz. Eski dizin **silinmez**.

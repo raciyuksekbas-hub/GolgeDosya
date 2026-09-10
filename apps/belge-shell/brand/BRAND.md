@@ -1,5 +1,11 @@
 # GölgeDosya — marka
 
+> **Bu set geçicidir (provisional).** Dış tasarım seti gelene kadar ürünün
+> boş kalmaması için üretildi; final tasarım kabulü değildir ve "tasarım
+> üretme" talimatının yerine geçmez. Dış set geldiğinde bu dizindeki SVG'ler
+> değiştirilir ve `build-icons.sh` yeniden çalıştırılır; ürün kodunda başka
+> hiçbir yer değişmez.
+
 Bu dizin markanın **tek kaynağıdır**. `src-tauri/icons/` altındaki her şey
 `appicon.svg`'den `build-icons.sh` ile türetilir; o dizin elle düzenlenmez.
 Marka değişirse burada değişir ve betik yeniden çalıştırılır.
@@ -68,7 +74,7 @@ edilir. Baskı için harfler bir tasarım aracında outline'a çevrilmelidir.
 | `horizontal.svg` / `-dark` | Yatay kilit: işaret + kelime işareti |
 | `stacked.svg` / `-dark` | Dikey kilit |
 | `appicon.svg` | Uygulama ikonu karosu (1024) |
-| `splash-dark.svg` / `-light` | Açılış ekranı |
+| `splash-dark.svg` / `-light` | Açılış görseli — **uygulama açılış ekranı göstermiyor** (aşağıya bakın); DMG arka planı gibi dış kullanımlar için |
 | `build-icons.sh` | `src-tauri/icons/` üretimi (sips + iconutil) |
 
 ## Kullanım kuralları
@@ -79,3 +85,11 @@ edilir. Baskı için harfler bir tasarım aracında outline'a çevrilmelidir.
 - Kelime işareti işaretten ayrı renklendirilmez.
 - 16 px altında yalnız `mark-mono` kullanılır.
 - Fotoğraf üzerine yerleştirilmez; düz sumi veya düz kâğıt zemin ister.
+
+## Açılış ekranı yok
+
+Ölçüldü: paketlenmiş pencerenin yakalanabilir ilk karesi zaten çizilmiş ana
+ekrandır (süreç başlatma ve WKWebView kurulumu dâhil ~1,3 s; bu sürenin
+tamamı pencere görünmeden önce geçer). Açılış IPC'si o karenin önünde bitiyor,
+yani bir açılış ekranı en fazla tek karelik bir parlama olurdu. Marka uğruna
+gereksiz bir açılış yüzeyi eklenmedi; sürüm Ayarlar → Hakkında'da durur.
