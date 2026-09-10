@@ -1,5 +1,12 @@
 // Tasarım değerlendirmesi için gerçek bileşenlerin statik çizimi.
-// Tauri IPC olmadan çalışır: yalnız görsel dili görmek için.
+//
+// Kabuğun KENDİSİ üzerinden çizer: `Layout` + `DocumentSurface`. Eskiden
+// kenar çubuğu, bar ve yüzey elle yan yana diziliyordu; kabuk değiştiğinde
+// çıktı sessizce yalan söylüyordu.
+//
+// Bu bir ekran görüntüsü değildir ve GUI kabulü yerine geçmez: yalnız görsel
+// dili tarayıcıda gözle kontrol etmek için HTML üretir. Gerçek kabul
+// paketlenmiş pencereden alınır (bkz. docs/design/02-yerlesim-haritasi.md §8).
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -14,10 +21,10 @@ try {
       contents: `
         import React from 'react';
         import { renderToStaticMarkup } from 'react-dom/server';
-        import { Sidebar } from './src/shell/Sidebar';
+        import { Layout } from './src/shell/Layout';
         import { DocumentSurface } from './src/features/DocumentSurface';
         import { SettingsSheet } from './src/shell/Settings';
-        import { Toolbar, ToolbarTitle, ToolbarSpacer, Button, Section, Status } from './src/shared-ui/primitives';
+        import { Button, Pill } from './src/shared-ui/primitives';
 
         const features = [
           { key: 'duzenek', label: 'Düzenle', route: 'duzenek', compiled: true, enabled: true },
@@ -25,11 +32,12 @@ try {
           { key: 'degisikis', label: 'Karşılaştır', route: 'degisikis', compiled: true, enabled: true },
           { key: 'ikincigoz', label: 'Denetle', route: 'ikincigoz', compiled: true, enabled: true },
         ];
-        const now = Date.now();
+        // Rust gibi Unix SANİYE.
+        const now = Math.floor(Date.now() / 1000);
         const recents = [
-          { path: '/Users/x/Belgeler/İŞ SÖZLEŞMESİ.docx', openedAt: now - 9e5 },
-          { path: '/Users/x/Belgeler/dilekçe-taslak.udf', openedAt: now - 7e6 },
-          { path: '/Users/x/Belgeler/ek-3 bilirkişi raporu.pdf', openedAt: now - 2e8 },
+          { path: '/Belgeler/dava-dilekcesi.docx', openedAt: now - 12 * 60 },
+          { path: '/Belgeler/ek-3 bilirkişi raporu.pdf', openedAt: now - 30 * 3600 },
+          { path: '/Belgeler/İŞ SÖZLEŞMESİ.udf', openedAt: now - 3 * 86400 },
         ];
         const settings = { theme:'system', textScale:100, highContrast:'system', reduceMotion:'system',
           respectReducedMotion:true, acceptedTerms:1, outputDir:null, rendererPath:null,
@@ -37,61 +45,59 @@ try {
           recentDocuments:recents, migratedFrom:[] };
 
         const el = React.createElement;
-        export const home = renderToStaticMarkup(
-          el('div', { className: 'shell' },
-            el(Sidebar, { features, current: 'tavzih', onNavigate(){}, onOpenSettings(){}, openDocuments: [] }),
-            el('section', { className: 'content' },
-              el(Toolbar, null,
-                el(ToolbarTitle, { title: 'Dönüştür', subtitle: 'Word ve UYAP biçimleri arasında' }),
-                el(ToolbarSpacer)),
-              el('main', { className: 'content-body' },
-                el(DocumentSurface, { feature: features[1], recents, outcome: null, onDocuments(){}, onForget(){} })))));
+        const shell = (props, children) => el(Layout, {
+          features, current: 'duzenek', onNavigate(){}, onOpenSettings(){}, ...props,
+        }, children);
 
-        export const withDoc = renderToStaticMarkup(
-          el('div', { className: 'shell' },
-            el(Sidebar, { features, current: 'ikincigoz', onNavigate(){}, onOpenSettings(){},
-              openDocuments: ['/Users/x/Belgeler/İŞ SÖZLEŞMESİ.docx'] }),
-            el('section', { className: 'content' },
-              el(Toolbar, null,
-                el(ToolbarTitle, { title: 'Denetle', subtitle: 'İŞ SÖZLEŞMESİ.docx' }),
-                el(ToolbarSpacer),
-                el(Button, { variant: 'quiet' }, 'Kapat')),
-              el('main', { className: 'content-body' },
-                el('div', { className: 'surface' },
-                  el('p', { className: 'doc-meta' }, '48 paragraf · 2.140 kelime — 3 bulgu: 1 hata, 2 uyarı'),
-                  el(Section, { title: 'Bulgular', id: 'b' },
-                    el('ul', { className: 'findings' },
-                      el('li', { className: 'finding', 'data-severity': 'error', 'data-active': 'true' },
-                        el('button', { className: 'finding-head' },
-                          el('span', { className: 'finding-mark' }, '✕'),
-                          el('span', { className: 'finding-sev' }, 'Hata'),
-                          el('span', { className: 'finding-title' }, 'Taraf adı belge içinde tutarsız'),
-                          el('span', { className: 'finding-loc' }, '12. paragraf')),
-                        el('div', { className: 'finding-body' },
-                          el('p', { className: 'finding-message' }, 'Aynı taraf iki farklı biçimde yazılmış.'),
-                          el('p', { className: 'finding-excerpt selectable' }, '…taraflar arasında ',
-                            el('mark', null, 'Yüksekbaş Ltd. Şti.'), ' ile akdedilen…'),
-                          el('p', { className: 'finding-why' }, 'Belge içinde aynı tüzel kişinin farklı yazımları, icra aşamasında taraf teşhisini güçleştirir.'))),
-                      el('li', { className: 'finding', 'data-severity': 'warning' },
-                        el('button', { className: 'finding-head' },
-                          el('span', { className: 'finding-mark' }, '!'),
-                          el('span', { className: 'finding-sev' }, 'Uyarı'),
-                          el('span', { className: 'finding-title' }, 'Madde numarası atlanmış'),
-                          el('span', { className: 'finding-loc' }, '31. paragraf'))),
-                      el('li', { className: 'finding', 'data-severity': 'review' },
-                        el('button', { className: 'finding-head' },
-                          el('span', { className: 'finding-mark' }, '?'),
-                          el('span', { className: 'finding-sev' }, 'İnceleme'),
-                          el('span', { className: 'finding-title' }, 'Uzun cümle okunabilirliği düşürüyor'),
-                          el('span', { className: 'finding-loc' }, '7. paragraf'))))))))));
+        export const home = renderToStaticMarkup(shell({}, el(DocumentSurface, {
+          feature: features[0], recents, outcome: null, onDocuments(){}, onForget(){},
+        })));
+
+        export const homeEmpty = renderToStaticMarkup(shell({}, el(DocumentSurface, {
+          feature: features[2], recents: [], outcome: null, onDocuments(){}, onForget(){},
+        })));
+
+        // Belge açıkken: barda bağlam ve kabuğun kendi eylemi.
+        const chip = el('span', { className: 'doc-chip' },
+          el('span', { className: 'doc-chip-name' }, 'İŞ SÖZLEŞMESİ.docx'),
+          el(Pill, null, 'docx'));
+        export const withDoc = renderToStaticMarkup(shell({
+          current: 'ikincigoz',
+          context: chip,
+          actions: el(Button, { variant: 'quiet' }, 'Kapat'),
+        }, el('div', { className: 'surface review' },
+          el('h2', { className: 'section-head' }, 'Bulgular'),
+          el('ul', { className: 'findings' },
+            el('li', { className: 'finding', 'data-severity': 'error', 'data-active': 'true' },
+              el('button', { className: 'finding-head' },
+                el('span', { className: 'finding-mark' }, '●'),
+                el('span', { className: 'finding-sev' }, 'Kesin hata'),
+                el('span', { className: 'finding-title' }, 'Taraf adı belge içinde tutarsız'),
+                el('span', { className: 'finding-loc' }, '12. paragraf')),
+              el('div', { className: 'finding-body' },
+                el('p', { className: 'finding-message' }, 'Aynı taraf iki farklı biçimde yazılmış.'),
+                el('p', { className: 'finding-excerpt selectable' }, 'İşbu sözleşme, taraflar arasında ',
+                  el('mark', null, 'Yüksekbaş Ltd. Şti.'), ' ile akdedilmiş olup hükümleri aşağıda gösterilmiştir.'),
+                el('p', { className: 'finding-why' }, 'Belge içinde aynı tüzel kişinin farklı yazımları, icra aşamasında taraf teşhisini güçleştirir.'))),
+            el('li', { className: 'finding', 'data-severity': 'warning' },
+              el('button', { className: 'finding-head' },
+                el('span', { className: 'finding-mark' }, '▲'),
+                el('span', { className: 'finding-sev' }, 'Uyarı'),
+                el('span', { className: 'finding-title' }, 'Madde numarası atlanmış'),
+                el('span', { className: 'finding-loc' }, '31. paragraf'))),
+            el('li', { className: 'finding', 'data-severity': 'review' },
+              el('button', { className: 'finding-head' },
+                el('span', { className: 'finding-mark' }, '○'),
+                el('span', { className: 'finding-sev' }, 'İncele'),
+                el('span', { className: 'finding-title' }, 'Uzun cümle okunabilirliği düşürüyor'),
+                el('span', { className: 'finding-loc' }, '7. paragraf')))))));
 
         export const settingsSheet = renderToStaticMarkup(
-          el('div', { className: 'shell' },
-            el(Sidebar, { features, current: 'duzenek', onNavigate(){}, onOpenSettings(){}, openDocuments: [] }),
-            el('section', { className: 'content' },
-              el(Toolbar, null, el(ToolbarTitle, { title: 'Düzenle', subtitle: 'Dilekçe eklerini hazırlayın' }), el(ToolbarSpacer)),
-              el('main', { className: 'content-body' })),
-            el(SettingsSheet, { settings, onChange(){}, onClose(){} })));
+          el(React.Fragment, null,
+            shell({}, el(DocumentSurface, {
+              feature: features[0], recents, outcome: null, onDocuments(){}, onForget(){},
+            })),
+            el(SettingsSheet, { settings, version: '0.0.1', onChange(){}, onClose(){} })));
       `,
       resolveDir: process.cwd(),
       loader: "tsx",
@@ -113,16 +119,9 @@ for (const [name, body] of Object.entries(mod)) {
       `qa/shots/${name}-${theme}.html`,
       // lang="tr" ZORUNLU: CSS `text-transform: uppercase` yerel ayara duyarlıdır.
       // Türkçe olmadan "Erişilebilirlik" → "ERISILEBILIRLIK" olur (noktasız I).
-      // Uygulamanın index.html'i lang="tr" taşıyor; inceleme koşumu da taşımalı,
-      // yoksa gerçekte olmayan bir hata görülür.
-      `<!doctype html><html lang="tr"><head><meta charset="utf-8">` +
+      `<!doctype html><html lang="tr" data-theme="${theme}"><head><meta charset="utf-8">` +
         `<style>${tokens}\n${shell}</style></head>` +
-        `<body${theme === "dark" ? ' data-shot-theme="dark"' : ""}>` +
-        `<div style="height:100vh">${body}</div>` +
-        (theme === "dark"
-          ? `<script>document.documentElement.setAttribute("data-theme","dark")</script>`
-          : "") +
-        `</body></html>`,
+        `<body><div style="height:100vh">${body}</div></body></html>`,
     );
   }
 }

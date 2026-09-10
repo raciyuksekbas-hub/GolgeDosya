@@ -3,13 +3,12 @@ import {
   AppMark,
   IconCompare,
   IconConvert,
-  IconDocument,
   IconEdit,
   IconReview,
   IconSettings,
 } from "./icons";
 import { announce } from "../shared-ui/Announcer";
-import { MODES, fileNameOf } from "./modes";
+import { MODES } from "./modes";
 
 const ICONS = {
   duzenek: IconEdit,
@@ -23,8 +22,6 @@ interface Props {
   current: string;
   onNavigate: (route: string) => void;
   onOpenSettings: () => void;
-  /** Açık belgeler. Boş bağlam geçerli bir durumdur; verilmezse boş sayılır. */
-  openDocuments?: string[];
 }
 
 /**
@@ -36,20 +33,18 @@ interface Props {
  * tıklanamaz görünür; gövdede açıklama metni yoktur.
  *
  * Seçili kip vurgu rengiyle boyanmaz: tonal bir yüzey ve solda ince bir vurgu
- * işareti yeter. Gruplar hairline ve küçük BÜYÜK HARF etiketle ayrılır.
+ * işareti yeter.
+ *
+ * Açık belge burada TEKRARLANMAZ: yardımcı bar her kipte belgenin adını ve
+ * türünü zaten taşıyor. İkisi aynı ekranda yan yana durunca aynı bilgi iki kez
+ * yazılmış oluyordu — gerçek pencerede görüldü.
  */
-export function Sidebar({
-  features,
-  current,
-  onNavigate,
-  onOpenSettings,
-  openDocuments = [],
-}: Props) {
+export function Sidebar({ features, current, onNavigate, onOpenSettings }: Props) {
   return (
     <aside className="sidebar" data-tauri-drag-region>
       <div className="sidebar-head" data-tauri-drag-region>
         <AppMark className="sidebar-mark" />
-        <span className="sidebar-brand">Yüksekbaş Belge</span>
+        <span className="sidebar-brand" title="Yüksekbaş Belge">Yüksekbaş Belge</span>
       </div>
 
       <nav className="sidebar-nav" aria-label="Çalışma kipleri">
@@ -75,18 +70,6 @@ export function Sidebar({
           );
         })}
       </nav>
-
-      {openDocuments.length > 0 ? (
-        <div className="sidebar-group">
-          <div className="sidebar-label">Açık belge</div>
-          {openDocuments.map((p) => (
-            <div key={p} className="sidebar-doc" title={fileNameOf(p)}>
-              <IconDocument className="sidebar-icon" />
-              <span>{fileNameOf(p)}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
 
       <div className="sidebar-spacer" data-tauri-drag-region />
 

@@ -1,3 +1,221 @@
+<!doctype html><html lang="tr" data-theme="light"><head><meta charset="utf-8"><style>/*
+ * Yüksekbaş Belge — görsel dil.
+ *
+ * Apple'ın masaüstü disiplini, Japon tasarımının ölçülülüğü. Taklit değil:
+ * Apple'dan hiyerarşi ve native davranış, Japon tasarımından boşluğun bilgi
+ * taşıması ve süsün yokluğu alınır.
+ *
+ *   Ma      — boşluk bilgi mimarisinin parçası; ne sıkışık ne savruk
+ *   Kanso   — bilgi, eylem veya yön üretmeyen öğe kaldırılır
+ *   Shibui  — sessiz premium; incelik kullandıkça fark edilir
+ *   Seijaku — saatlerce belge işi yapan kişiye sakinlik veren ritim
+ *
+ * Yasak: gradient, cam, neon, kalın gölge, kart yığını, renkli rozet çöplüğü,
+ * 16-20px radius'lu dev kutular, pazarlama başlıkları.
+ *
+ * Aile: NöbetçiTakvim ile aynı tasarım ekibinden çıkmış gibi durur — kenar
+ * çubuğu yoğunluğu, hairline ayırıcılar, BÜYÜK HARF grup etiketi, içeriden
+ * yerleşik sağ panel, kompakt buton, 4/6/8 radius. Ama merkezde zaman değil
+ * belge vardır. Ölçüm ve tercüme: docs/design/01-referans-analizi.md
+ *
+ * Üç tema karakteri (kullanıcıya tema adı olarak GÖSTERİLMEZ; iç referans):
+ *   Kanso — açık yüzeyler      Sumi — koyu mürekkep      Fuji — soğuk nötr
+ */
+
+:root {
+  --text-scale: 1;
+
+  /* ---------------------------------------------------------------- Kanso
+     Saf beyaz değil. Hafif sıcak nötr bir chrome; belge yüzeyi ondan daha
+     açık. Sepia/parşömen değil — modern ve hassas. */
+  --surface-app: #ebeae7;
+  --surface-sidebar: #e6e5e1;
+  --surface-workspace: #f3f2ef;
+  --surface-raised: #fbfbfa;
+  --surface-document: #ffffff;
+  --surface-sunken: #e2e1dd;
+  --surface-hover: rgb(0 0 0 / 4%);
+  --surface-selected: rgb(0 0 0 / 6%);
+
+  /* Sumi tonlu metin — saf siyah değil, mürekkep. */
+  --text-primary: #1c1c1e;
+  --text-secondary: #6b6b70;
+  --text-muted: #929297;
+
+  --border-subtle: rgb(0 0 0 / 9%);
+  --border-strong: rgb(0 0 0 / 16%);
+
+  /* Tek vurgu: mürekkep yeşili. Mavi "teknoloji" klişesinden uzak, kurumsal,
+     sessiz. Her yerde değil — seçili navigasyon, birincil eylem, aktif durum. */
+  --accent: #2f5d50;
+  --accent-hover: #264d42;
+  --accent-quiet: rgb(47 93 80 / 10%);
+  --on-accent: #ffffff;
+
+  /* Semantik. Hiçbir anlam YALNIZ renkle verilmez; işaret ve etiket eşlik eder. */
+  --danger: #a8322a;
+  --danger-quiet: rgb(168 50 42 / 9%);
+  --warning: #8a5a12;
+  --warning-quiet: rgb(138 90 18 / 10%);
+  --review: #2c5a86;
+  --review-quiet: rgb(44 90 134 / 9%);
+  --success: #2b6446;
+  --success-quiet: rgb(43 100 70 / 9%);
+
+  --focus: #0a84ff;
+
+  /* ------------------------------------------------------------- Ölçü ritmi
+     4'ün katları. Ma: boşluk keyfî değil, ölçülü. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Küçük radius: masaüstü aleti, yuvarlak kart değil. */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+
+  /* Tipografi — macOS sistem fontu. Yeni font paketlenmez. */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  --text-title: calc(20px * var(--text-scale));
+  --text-heading: calc(15px * var(--text-scale));
+  --text-body: calc(13px * var(--text-scale));
+  --text-meta: calc(12px * var(--text-scale));
+  /* BÜYÜK HARF grup ve panel etiketi — en küçük boy, aralıklı. */
+  --text-label: calc(11px * var(--text-scale));
+  --tracking-label: 0.06em;
+
+  /* Hareket: dikkat istemez, durumu anlatır. Spring/bounce yok. */
+  --motion-fast: 120ms;
+  --motion: 180ms;
+  --ease: cubic-bezier(0.32, 0.08, 0.24, 1);
+
+  /* Kabuk ölçüleri. Dört yüzeyin dört yoğunluğu: kenar çubuğu ve bar kompakt,
+     workspace ferah, panel orta. Referans oranlarından tercüme edildi. */
+  --sidebar-w: 232px;
+  --inspector-w: 300px;
+  --inspector-inset: 12px;
+  --toolbar-h: calc(48px * var(--text-scale));
+  /* Örtüşük başlık çubuğu: trafik ışıklarının kapladığı üst bant. */
+  --titlebar-h: 52px;
+  /* Satır ve kontrol yükseklikleri metin ölçeğiyle büyür; sabit px 28 px'lik
+     kutuya %200 metin sığdırmaya çalışırdı. Hepsi min-height olarak kullanılır. */
+  --row-h: calc(32px * var(--text-scale));
+  --control-h: calc(28px * var(--text-scale));
+
+  /* Okunabilir ölçü — uzun açıklama metni bu genişliği aşmaz. */
+  --measure: 62ch;
+}
+
+/* ------------------------------------------------------------------- Sumi
+   Gerçek siyah değil, çok koyu sumi. Yüzeyler arasında yalnız hafif ton farkı;
+   beyaz yerine yumuşak açık gri metin. Belge yüzeyi beyaz kalır ve chrome'dan
+   net ayrılır. */
+:root[data-theme="dark"] {
+  --surface-app: #1c1c1e;
+  --surface-sidebar: #1f1f21;
+  --surface-workspace: #171719;
+  --surface-raised: #232326;
+  --surface-document: #ffffff;
+  --surface-sunken: #131315;
+  --surface-hover: rgb(255 255 255 / 6%);
+  --surface-selected: rgb(255 255 255 / 9%);
+
+  --text-primary: #ececee;
+  --text-secondary: #9d9da3;
+  --text-muted: #76767c;
+
+  --border-subtle: rgb(255 255 255 / 9%);
+  --border-strong: rgb(255 255 255 / 17%);
+
+  --accent: #6fa392;
+  --accent-hover: #82b5a4;
+  --accent-quiet: rgb(111 163 146 / 14%);
+  --on-accent: #10201c;
+
+  --danger: #f08a80;
+  --danger-quiet: rgb(240 138 128 / 13%);
+  --warning: #e0b070;
+  --warning-quiet: rgb(224 176 112 / 13%);
+  --review: #86b4de;
+  --review-quiet: rgb(134 180 222 / 13%);
+  --success: #7dc09b;
+  --success-quiet: rgb(125 192 155 / 13%);
+
+  --focus: #4a9eff;
+}
+
+/* Yüksek kontrast: sınırlar gerçek renge, ikincil metin ana metne çıkar. */
+:root[data-contrast="more"] {
+  --border-subtle: currentColor;
+  --border-strong: currentColor;
+  --text-secondary: var(--text-primary);
+  --text-muted: var(--text-primary);
+}
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 1ms !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--surface-app);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  cursor: default;
+}
+
+/* Kabuk metni seçilebilir değil — native uygulama hissi. Belge içeriği
+   gösteren yüzeyler bunu kendi içinde geri açar. */
+body { user-select: none; -webkit-user-select: none; }
+.selectable { user-select: text; -webkit-user-select: text; }
+
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 0 0 var(--radius) 0;
+}
+.skip-link:focus { left: 0; }
+
 /*
  * Yüksekbaş Belge — kabuk ve ortak ilkeller.
  *
@@ -844,3 +1062,4 @@ input[type="number"] {
   color: var(--text-secondary);
   font-size: var(--text-meta);
 }
+</style></head><body><div style="height:100vh"><div class="shell" data-wide="true" data-fullscreen="false"><a class="skip-link" href="#icerik">İçeriğe geç</a><aside class="sidebar" data-tauri-drag-region="true"><div class="sidebar-head" data-tauri-drag-region="true"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-mark"><rect x="1.5" y="1.5" width="13" height="13" rx="3.2"></rect><path d="M5.2 5.6h5.6M5.2 8h5.6M5.2 10.4h3.4"></path></svg><span class="sidebar-brand">Yüksekbaş Belge</span></div><nav class="sidebar-nav" aria-label="Çalışma kipleri"><button type="button" class="sidebar-item" data-feature="duzenek" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M9.5 1.8H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V8"></path><path d="M13.9 2.4a1.2 1.2 0 0 0-1.7-1.7L8.6 4.3l-.5 2.2 2.2-.5z"></path></svg><span>Düzenle</span></button><button type="button" class="sidebar-item" data-feature="tavzih"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M2.4 5.6h9.1M9.3 3.4l2.2 2.2-2.2 2.2"></path><path d="M13.6 10.4H4.5m2.2-2.2-2.2 2.2 2.2 2.2"></path></svg><span>Dönüştür</span></button><button type="button" class="sidebar-item" data-feature="degisikis"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><rect x="1.7" y="2.4" width="5.2" height="11.2" rx="1"></rect><rect x="9.1" y="2.4" width="5.2" height="11.2" rx="1"></rect><path d="M3.3 5.6h2M3.3 8h2M10.7 5.6h2M10.7 8h2M10.7 10.4h2"></path></svg><span>Karşılaştır</span></button><button type="button" class="sidebar-item" data-feature="ikincigoz"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M12.6 7.4V2.8a1 1 0 0 0-1-1H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h4"></path><path d="M4.9 4.8h5.2M4.9 7.2h3.4"></path><circle cx="11.1" cy="11.1" r="2.4"></circle><path d="m12.9 12.9 1.4 1.4"></path></svg><span>Denetle</span></button></nav><div class="sidebar-spacer" data-tauri-drag-region="true"></div><div class="sidebar-footer"><button type="button" class="sidebar-item" title="Ayarlar  ⌘,"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5"></path></svg><span>Ayarlar</span></button></div></aside><section class="content"><div class="toolbar" data-empty="true" data-tauri-drag-region="true"><div class="toolbar-context"></div><div class="toolbar-spacer" data-tauri-drag-region="true"></div><div class="toolbar-actions"></div><div class="toolbar-shell"></div></div><main id="icerik" class="content-body" tabindex="-1"><div class="surface home"><div class="dropzone" data-over="false" role="group" aria-label="Karşılaştırmak için iki belge açın"><div class="empty"><div class="empty-icon"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 3.5H8a2 2 0 0 0-2 2v17a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M16.5 3.5V9H22"></path><path d="M10 14h8M10 17.5h8M10 21h5"></path></svg></div><h1 class="empty-primary">Belge açın</h1><p class="empty-hint">Karşılaştırmak için iki PDF, DOCX veya UDF dosyası açın ya da buraya sürükleyin.</p><div class="empty-actions"><button type="button" class="btn btn-primary" title="Belge Aç  ⌘O">Belge Aç</button></div></div></div></div></main><div class="inspector-slot" hidden=""></div></section><div aria-live="polite" aria-atomic="true" class="sr-only" data-testid="announcer"></div></div></div></body></html>

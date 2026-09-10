@@ -155,7 +155,6 @@ export function App() {
         current={route}
         onNavigate={navigate}
         onOpenSettings={() => setShowSettings(true)}
-        openDocuments={[]}
       >
         <div className="surface">
           <Status tone="error">Uygulama başlatılamadı. Lütfen yeniden açmayı deneyin.</Status>
@@ -173,7 +172,6 @@ export function App() {
         current={route}
         onNavigate={navigate}
         onOpenSettings={() => setShowSettings(true)}
-        openDocuments={documents}
         context={barContext}
         actions={
           // Home'da bar boştur: tek birincil eylem boş durumdadır (§6, §22).

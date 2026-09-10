@@ -12,8 +12,6 @@ interface Props {
   current: string;
   onNavigate: (route: string) => void;
   onOpenSettings: () => void;
-  /** Açık belgeler — kenar çubuğunda bağlamı görünür tutar. */
-  openDocuments: string[];
   /** Yardımcı barın sol ucu: belge bağlamı. Belge yokken boş ve sakin. */
   context?: ReactNode;
   /** Kabuğun kendi eylemleri (Kapat, Belge Aç). Kip eylemleri portalla gelir. */
@@ -39,7 +37,6 @@ export function Layout({
   current,
   onNavigate,
   onOpenSettings,
-  openDocuments,
   context,
   actions,
   children,
@@ -94,7 +91,6 @@ export function Layout({
           current={current}
           onNavigate={onNavigate}
           onOpenSettings={onOpenSettings}
-          openDocuments={openDocuments}
         />
         <section className="content">
           <div className="toolbar" data-empty={barEmpty} data-tauri-drag-region>
