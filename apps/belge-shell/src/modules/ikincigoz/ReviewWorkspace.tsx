@@ -3,7 +3,8 @@ import { save } from "@tauri-apps/plugin-dialog";
 import * as api from "./api";
 import type { AnalysisResult, Finding, Fix, Severity } from "./types";
 import { announce } from "../../shared-ui/Announcer";
-import { Button, Section, Status } from "../../shared-ui/primitives";
+import { Button, Status } from "../../shared-ui/primitives";
+import { InspectorPanel, InspectorSection, ToolbarActions } from "../../shell/chrome";
 
 /**
  * Severity'nin metin karşılığı.
@@ -32,8 +33,11 @@ function summary(r: AnalysisResult): string {
  * düzeltme → uygula. Düzeltmeler **kopyaya** yazılır; kaynak belge hiçbir
  * zaman yazmak için açılmaz.
  *
- * Yeni UX icat edilmedi; standalone İkinciGöz'ün akışı kabuğun görsel diline
- * uyarlandı. Parser ve migration ayrıntıları kullanıcıya gösterilmez.
+ * Bulgular satır içi akordeondur ve öyle kalır: kanıt — belgeden alınan
+ * paragraf — bulgunun yanında durmalı, yan panele taşınırsa ikisi ayrılır.
+ * Sağ panel yalnız özeti ve düzeltme seçimini taşır; birincil eylem barda.
+ *
+ * Parser ve migration ayrıntıları kullanıcıya gösterilmez.
  */
 export function ReviewWorkspace({ path }: { path: string }) {
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -134,109 +138,141 @@ export function ReviewWorkspace({ path }: { path: string }) {
 
   if (!result) return null;
 
+  const doc = result.document;
+
   return (
-    <div className="surface">
-      <p className="doc-meta" role="status">
-        {result.document.blockCount} paragraf · {result.document.wordCount} kelime
-        {" — "}
-        {summary(result)}
-        {result.profileName ? ` · ${result.profileName} profiline göre` : ""}
-      </p>
-
-      {result.findings.length === 0 ? (
-        <Status tone="success">Bu belgede bulgu yok.</Status>
-      ) : (
-        <Section title="Bulgular" id="bulgu">
-          <ul className="findings" role="list">
-            {result.findings.map((f) => {
-              const k = key(f);
-              const sev = SEVERITY[f.severity];
-              const isActive = active === k;
-              const text = blockText.get(f.block_id) ?? "";
-              return (
-                <li key={k} className="finding" data-severity={f.severity} data-active={isActive}>
-                  <button
-                    type="button"
-                    className="finding-head"
-                    aria-expanded={isActive}
-                    onClick={() => setActive(isActive ? null : k)}
-                  >
-                    <span className="finding-mark" aria-hidden="true">{sev.mark}</span>
-                    <span className="finding-sev">{sev.label}</span>
-                    <span className="finding-title">{f.title}</span>
-                    <span className="finding-loc">{f.block_id.replace(/^p/, "")}. paragraf</span>
-                  </button>
-                  {isActive ? (
-                    <div className="finding-body">
-                      <p className="finding-message">{f.message}</p>
-                      {/* Belge konumu: bulgu, metnin neresinde olduğunu göstermeli. */}
-                      {f.location.charStart !== null && f.location.charEnd !== null && text ? (
-                        <p className="finding-excerpt selectable">
-                          {[...text].slice(Math.max(0, f.location.charStart - 40), f.location.charStart).join("")}
-                          <mark>{[...text].slice(f.location.charStart, f.location.charEnd).join("")}</mark>
-                          {[...text].slice(f.location.charEnd, f.location.charEnd + 40).join("")}
-                        </p>
-                      ) : null}
-                      <p className="finding-why">{f.explanation}</p>
-                      {f.fix ? (
-                        <label className="finding-fix">
-                          <input
-                            type="checkbox"
-                            checked={selected.has(k)}
-                            onChange={() => toggle(f)}
-                          />
-                          <span>
-                            Önerilen düzeltme: <code>{f.fix.original || "∅"}</code> →{" "}
-                            <code>{f.fix.replacement || "∅"}</code>
-                            <span className="finding-fixnote"> ({f.fix.description})</span>
-                          </span>
-                        </label>
-                      ) : (
-                        <p className="finding-nofix">Bu bulgu için otomatik düzeltme önerilmiyor.</p>
-                      )}
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </Section>
-      )}
-
-      {result.truncatedRules.length > 0 ? (
-        <p className="doc-meta">
-          {result.truncatedRules
-            .map((t) => `${t.ruleId}: ${t.total} bulgunun ${t.shown} tanesi gösteriliyor`)
-            .join(" · ")}
-        </p>
-      ) : null}
-
+    <>
       {fixable.length > 0 ? (
-        <Section title="Düzeltmeler" id="duzeltme">
-          <p className="doc-meta">{selected.size} / {fixable.length} düzeltme seçildi.</p>
-          <div className="row">
-            <Button
-              onClick={() => setSelected(new Set(fixable.map(key)))}
-              disabled={selected.size === fixable.length}
-            >
-              Tümünü seç
-            </Button>
-            <Button onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
-              Seçimi kaldır
-            </Button>
-            <Button variant="primary" onClick={applyChosen} disabled={selected.size === 0}>
-              Kopyaya uygula…
-            </Button>
-          </div>
-          <p className="doc-meta">
-            Düzeltmeler yeni bir kopyaya yazılır. Kaynak belgeniz değiştirilmez.
-          </p>
-        </Section>
+        <ToolbarActions>
+          <Button variant="primary" onClick={applyChosen} disabled={selected.size === 0}>
+            Kopyaya uygula…
+          </Button>
+        </ToolbarActions>
       ) : null}
 
-      {written ? (
-        <Status tone="success">{written}</Status>
-      ) : null}
-    </div>
+      <InspectorPanel title="Denetim özeti">
+        <div className="kv">
+          <span className="kv-key">{SEVERITY.error.label}</span>
+          <span className="kv-value">{result.errorCount}</span>
+        </div>
+        <div className="kv">
+          <span className="kv-key">{SEVERITY.warning.label}</span>
+          <span className="kv-value">{result.warningCount}</span>
+        </div>
+        <div className="kv">
+          <span className="kv-key">{SEVERITY.review.label}</span>
+          <span className="kv-value">{result.reviewCount}</span>
+        </div>
+        <p className="tool-hint">
+          {doc.blockCount} paragraf · {doc.wordCount} kelime
+          {result.profileName ? ` · ${result.profileName} profili` : ""}
+        </p>
+        {result.truncatedRules.length > 0 ? (
+          <p className="tool-hint">
+            {result.truncatedRules
+              .map((t) => `${t.total} bulgunun ${t.shown} tanesi gösteriliyor`)
+              .join(" · ")}
+          </p>
+        ) : null}
+
+        {fixable.length > 0 ? (
+          <InspectorSection title="Düzeltmeler">
+            <p className="tool-count">
+              {selected.size} / {fixable.length} düzeltme seçildi.
+            </p>
+            <div className="row">
+              <Button
+                className="btn-sm"
+                onClick={() => setSelected(new Set(fixable.map(key)))}
+                disabled={selected.size === fixable.length}
+              >
+                Tümünü seç
+              </Button>
+              <Button
+                className="btn-sm"
+                onClick={() => setSelected(new Set())}
+                disabled={selected.size === 0}
+              >
+                Seçimi kaldır
+              </Button>
+            </div>
+            <p className="tool-hint">
+              Düzeltmeler yeni bir kopyaya yazılır. Kaynak belgeniz değiştirilmez.
+            </p>
+          </InspectorSection>
+        ) : null}
+      </InspectorPanel>
+
+      <div className="surface review">
+        {written ? <Status tone="success">{written}</Status> : null}
+
+        {result.findings.length === 0 ? (
+          <Status tone="success">Bu belgede bulgu yok.</Status>
+        ) : (
+          <>
+            <h2 className="section-head" id="bulgu-baslik">
+              Bulgular
+            </h2>
+            <ul className="findings" role="list" aria-labelledby="bulgu-baslik">
+              {result.findings.map((f) => {
+                const k = key(f);
+                const sev = SEVERITY[f.severity];
+                const isActive = active === k;
+                const text = blockText.get(f.block_id) ?? "";
+                const from = f.location.charStart;
+                const to = f.location.charEnd;
+                return (
+                  <li key={k} className="finding" data-severity={f.severity} data-active={isActive}>
+                    <button
+                      type="button"
+                      className="finding-head"
+                      aria-expanded={isActive}
+                      onClick={() => setActive(isActive ? null : k)}
+                    >
+                      <span className="finding-mark" aria-hidden="true">{sev.mark}</span>
+                      <span className="finding-sev">{sev.label}</span>
+                      <span className="finding-title">{f.title}</span>
+                      <span className="finding-loc">{f.block_id.replace(/^p/, "")}. paragraf</span>
+                    </button>
+                    {isActive ? (
+                      <div className="finding-body">
+                        <p className="finding-message">{f.message}</p>
+                        {/* Belgenin kendisi: bulgunun geçtiği paragrafın TAMAMI,
+                            işaretli aralık vurgulu. Kırpılmış ±40 karakterlik
+                            pencere, bulguyu bağlamından koparıyordu. */}
+                        {from !== null && to !== null && text ? (
+                          <p className="finding-excerpt selectable">
+                            {[...text].slice(0, from).join("")}
+                            <mark>{[...text].slice(from, to).join("")}</mark>
+                            {[...text].slice(to).join("")}
+                          </p>
+                        ) : null}
+                        <p className="finding-why">{f.explanation}</p>
+                        {f.fix ? (
+                          <label className="finding-fix">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(k)}
+                              onChange={() => toggle(f)}
+                            />
+                            <span>
+                              Önerilen düzeltme: <code>{f.fix.original || "∅"}</code> →{" "}
+                              <code>{f.fix.replacement || "∅"}</code>
+                              <span className="finding-fixnote"> ({f.fix.description})</span>
+                            </span>
+                          </label>
+                        ) : (
+                          <p className="finding-nofix">Bu bulgu için otomatik düzeltme önerilmiyor.</p>
+                        )}
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </div>
+    </>
   );
 }
