@@ -107,7 +107,7 @@ export function SettingsSheet({ settings, version, onChange, onClose }: Props) {
           <section className="settings-group" aria-labelledby="ayar-hakkinda">
             <h3 id="ayar-hakkinda">Hakkında</h3>
             <p className="settings-about">
-              Yüksekbaş Belge{version ? ` ${version}` : ""} — belge çalışma ortamı.
+              GölgeDosya{version ? ` ${version}` : ""} — belge çalışma ortamı.
               <br />
               © 2026 Raci Çetin Yüksekbaş
             </p>

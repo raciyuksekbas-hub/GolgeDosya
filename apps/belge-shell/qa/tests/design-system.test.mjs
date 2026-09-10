@@ -192,3 +192,80 @@ test("teknik ayrıntı kullanıcı arayüzünde görünmez", () => {
     assert.ok(!textNodes.includes(f), `kullanıcıya görünen metinde "${f}" geçmemeli`);
   }
 });
+
+test("eski ürün adı hiçbir kullanıcı yüzeyinde kalmadı", () => {
+  // Ürün GölgeDosya adını aldı. Eski ad yalnız görünür metinlerde değil,
+  // pencere başlığında, paket adında, açılış ekranında ve varsayılan çıktı
+  // dosyası adında da kalmamalı. Bu test o yüzeylerin hepsini birden tarar.
+  const OLD = "Yüksekbaş Belge";
+  const surfaces = {
+    "index.html": readFileSync("index.html", "utf8"),
+    "package.json": readFileSync("package.json", "utf8"),
+    "tauri.conf.json": readFileSync("src-tauri/tauri.conf.json", "utf8"),
+    "tokens.css": tokens,
+    "shell.css": shell,
+    ...Object.fromEntries(sources.map((p) => [p, readFileSync(p, "utf8")])),
+    ...Object.fromEntries(
+      walk("src")
+        .filter((p) => p.endsWith(".css"))
+        .map((p) => [p, readFileSync(p, "utf8")]),
+    ),
+  };
+  for (const [name, text] of Object.entries(surfaces)) {
+    assert.ok(!text.includes(OLD), `${name} hâlâ eski ürün adını taşıyor`);
+  }
+
+  // Paketleme kimliği ve ürün adı birlikte değişmeli.
+  const conf = JSON.parse(surfaces["tauri.conf.json"]);
+  assert.equal(conf.productName, "GölgeDosya");
+  assert.equal(conf.identifier, "tr.yuksekbas.golgedosya");
+  assert.equal(conf.app.windows[0].title, "GölgeDosya");
+
+  // Kaydedilen kopyanın varsayılan adı kullanıcıya görünür.
+  const pdf = readFileSync("src/modules/duzenek/PdfWorkspace.tsx", "utf8");
+  assert.match(pdf, /copyDestination\(`GolgeDosya-\$\{kind\}`/, "çıktı adı ürün adını taşımalı");
+  assert.ok(!pdf.includes("DuzenEk-"), "çıktı adında eski modül markası kalmamalı");
+});
+
+test("kimlik değişti ama kullanıcı verisi devralınıyor", () => {
+  // Kimlik değişince yapılandırma dizini de değişir. Eski dizin okunur,
+  // ASLA silinmez; yeni ad altında henüz ayar yoksa eskisi devralınır.
+  const paths = readFileSync("src-tauri/src/paths.rs", "utf8");
+  assert.match(paths, /APP_ID: &str = "tr\.yuksekbas\.golgedosya"/);
+  assert.match(paths, /LEGACY_BELGE: &str = "tr\.yuksekbas\.belge"/);
+
+  const legacy = readFileSync("src-tauri/src/legacy.rs", "utf8");
+  assert.match(legacy, /fn migrate_belge/, "önceki birleşik ad bir migration kaynağı olmalı");
+  assert.match(legacy, /LEGACY_BELGE/, "kaynak listesine eklenmiş olmalı");
+  // Devralma yalnız yeni dosya YOKKEN olur: kullanıcının yeni ayarları ezilmez.
+  const fn = legacy.slice(legacy.indexOf("fn migrate_belge"));
+  assert.match(fn.slice(0, 1200), /settings_path\(target_dir\)\.is_file\(\)/);
+  assert.ok(!/remove_dir|remove_file/.test(fn.slice(0, 1200)), "migration hiçbir şey silmemeli");
+});
+
+test("marka varlıkları tek kaynaktan üretiliyor", () => {
+  // src-tauri/icons elle düzenlenmez: brand/appicon.svg'den türetilir.
+  for (const f of ["brand/appicon.svg", "brand/mark.svg", "brand/build-icons.sh", "brand/BRAND.md"]) {
+    assert.ok(statSync(f).isFile(), `${f} bulunmalı`);
+  }
+  const mark = readFileSync("brand/mark.svg", "utf8");
+  const icon = readFileSync("brand/appicon.svg", "utf8");
+  // Aynı geometri oranı: kaldırılmış köşe genişliğin %60'ı, yüksekliğin %50'si.
+  assert.match(mark, /M12 8 H52 V32 L28 56 H12 Z/);
+  assert.match(icon, /M232 176 H792 V512 L456 848 H232 Z/);
+  // Kenar çubuğu işareti aynı yolu çizer.
+  const icons = readFileSync("src/shell/icons.tsx", "utf8");
+  assert.match(icons, /M12 8 H52 V32 L28 56 H12 Z/, "AppMark marka geometrisini taşımalı");
+});
+
+test("açılış ekranı ürünün adını ve sürümü taşır", () => {
+  const splash = readFileSync("src/shell/Splash.tsx", "utf8");
+  assert.match(splash, /GölgeDosya/);
+  assert.match(splash, /__APP_VERSION__/, "sürüm derleme zamanından gelmeli");
+  const vite = readFileSync("vite.config.ts", "utf8");
+  assert.match(vite, /__APP_VERSION__: JSON\.stringify\(version\)/);
+  // Sahte bekleme yok: açılış yalnız gerçek boot sürerken çizilir.
+  const app = readFileSync("src/App.tsx", "utf8");
+  assert.match(app, /features\.length === 0\) return <Splash \/>/);
+  assert.ok(!/setTimeout\([^)]*Splash/.test(app), "açılış ekranı zamanlayıcıyla uzatılmamalı");
+});

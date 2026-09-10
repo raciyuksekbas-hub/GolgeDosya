@@ -1,6 +1,6 @@
 # Üçüncü Taraf Bildirimleri
 
-Yüksekbaş Belge, aşağıdaki üçüncü taraf açık kaynak bileşenleri kullanır. Bu
+GölgeDosya, aşağıdaki üçüncü taraf açık kaynak bileşenleri kullanır. Bu
 bileşenlerin telif hakları ilgili hak sahiplerine aittir ve **lisans
 bildirimleri kaldırılmamıştır**. Tam lisans metinleri her paketin kendi
 dağıtımında ve yerel paket önbelleklerinde (`~/.cargo/registry`,

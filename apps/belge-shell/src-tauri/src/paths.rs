@@ -7,9 +7,14 @@
 use std::path::PathBuf;
 
 /// Birleşik uygulamanın kimliği. `tauri.conf.json` ile aynı olmalıdır.
-pub const APP_ID: &str = "tr.yuksekbas.belge";
+pub const APP_ID: &str = "tr.yuksekbas.golgedosya";
 
 /// Migration kaynağı olan eski uygulama kimlikleri.
+///
+/// `LEGACY_BELGE`, ürünün GölgeDosya adını almadan önceki birleşik kimliğidir.
+/// Aynı şemayı kullandığı için taşıma bir alan eşlemesi değil, ilk açılışta
+/// devralmadır (bkz. `legacy::migrate_belge`). Dizin **silinmez**.
+pub const LEGACY_BELGE: &str = "tr.yuksekbas.belge";
 pub const LEGACY_TAVZIH: &str = "tr.yuksekbas.tavzih";
 pub const LEGACY_IKINCIGOZ: &str = "tr.yuksekbas.ikincigoz";
 pub const LEGACY_DUZENEK: &str = "tr.yuksekbas.duzenek";

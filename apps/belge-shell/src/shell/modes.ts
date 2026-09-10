@@ -1,7 +1,7 @@
 /**
  * Çalışma kipleri.
  *
- * Yüksekbaş Belge dört ayrı uygulama değil, **tek belge çalışma ortamının dört
+ * GölgeDosya dört ayrı uygulama değil, **tek belge çalışma ortamının dört
  * kipidir**. Eski ürün adları (Tavzih, DüzenEk, Değişikİş, İkinciGöz) teknik
  * katmanda `FeatureState.key` olarak yaşar; kullanıcı yalnız eylemi görür.
  *

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Yüksekbaş Belge sürüm kapısı.
+# GölgeDosya sürüm kapısı.
 #
 # İskelet Tavzih'in release-gate.sh'ından alındı: fail-closed, her kapı ayrı
 # raporlanır, atlanan kapı geçmiş sayılmaz. Bu, portföydeki tek olgun sürüm

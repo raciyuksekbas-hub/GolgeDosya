@@ -1,7 +1,7 @@
-# Referans analizi — NöbetçiTakvim → Yüksekbaş Belge
+# Referans analizi — NöbetçiTakvim → GölgeDosya
 
 Phase A. Bu belge, ekli NöbetçiTakvim ekran görüntüsünün ölçümü ve o disiplinin
-Yüksekbaş Belge'ye **tercümesidir**. Kopya değil: iki ürün aynı aileden görünmeli,
+GölgeDosya'ye **tercümesidir**. Kopya değil: iki ürün aynı aileden görünmeli,
 ama biri zamanı, diğeri belgeyi merkezine alır.
 
 ## 1. Ölçüm
@@ -43,10 +43,10 @@ yoğunluğu var ve ilişki bu farktan doğuyor:
 | Workspace | ferah (28–32 pt kenar dolgusu, başlık altı 24, bölümler arası 32) |
 | Sağ panel | orta (12–14 pt dolgu, 64 pt satır) |
 
-Mevcut Yüksekbaş Belge kabuğunda bu ayrım yoktu: her yer aynı 24–32 pt boşluktu
+Mevcut GölgeDosya kabuğunda bu ayrım yoktu: her yer aynı 24–32 pt boşluktu
 ve büyük koyu alan "ma" değil, yalnızca boşluktu.
 
-## 3. Tercüme — Yüksekbaş Belge'ye taşınanlar
+## 3. Tercüme — GölgeDosya'ye taşınanlar
 
 Aile kimliğini taşıyan, **olduğu gibi** alınanlar:
 
@@ -81,7 +81,7 @@ Kural olarak yazılanlar (eleştiri turunda netleşti):
 
 Bilerek **farklılaşanlar** (aynı aile, farklı ürün):
 
-| Konu | NöbetçiTakvim | Yüksekbaş Belge |
+| Konu | NöbetçiTakvim | GölgeDosya |
 |---|---|---|
 | Merkez | zaman (bugün / yarın / yaklaşan) | belge (açık belge / son kullanılanlar / sonuç) |
 | Vurgu | kehribar | mürekkep yeşili (mevcut `--accent`) |
@@ -95,7 +95,7 @@ Bilerek **farklılaşanlar** (aynı aile, farklı ürün):
 
 NöbetçiTakvim'de native başlık çubuğu **gizli/örtüşük**: trafik ışıkları kenar
 çubuğunun üstünde durur, kenar çubuğu pencerenin tepesine kadar çıkar ve tek üst
-bar yardımcı bardır. Yüksekbaş Belge şu an `titleBarStyle: "Visible"` kullanıyor;
+bar yardımcı bardır. GölgeDosya şu an `titleBarStyle: "Visible"` kullanıyor;
 bu, başlık çubuğunun hemen altında ikinci bir bant doğuruyor — reddedilen görünümün
 kök nedeni.
 

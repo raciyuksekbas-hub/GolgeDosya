@@ -413,6 +413,46 @@ fn find_localstorage(root: &Path) -> Option<PathBuf> {
     out
 }
 
+// ------------------------------------------------------- önceki birleşik ad
+
+/// Ürünün GölgeDosya adını almadan önceki birleşik deposu.
+///
+/// Şema aynı olduğu için bu bir alan eşlemesi değil, **devralmadır**: yeni
+/// kimlik altında henüz bir `settings.json` yoksa eskisi olduğu gibi okunur.
+/// Yeni dosya varsa hiçbir şey yapılmaz — kullanıcının yeni ad altında yaptığı
+/// değişiklikler eski dosyayla ezilmez. Eski dizin okunur, **asla silinmez**;
+/// ikinci çalıştırma sonucu değiştirmez.
+fn migrate_belge(old_dir: &Path, target_dir: &Path, s: &mut Settings) -> SourceStatus {
+    let old = old_dir.join(crate::settings::SETTINGS_FILE);
+    if !old.is_file() {
+        return SourceStatus::NotFound;
+    }
+    if crate::settings::settings_path(target_dir).is_file() {
+        // Yeni ad altında zaten ayar var: devralma bitmiş.
+        return SourceStatus::NothingToDo;
+    }
+    let text = match std::fs::read_to_string(&old) {
+        Ok(t) => t,
+        Err(e) => {
+            return SourceStatus::Unreadable {
+                detail: e.to_string(),
+            }
+        }
+    };
+    let inherited: Settings = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            return SourceStatus::Unreadable {
+                detail: e.to_string(),
+            }
+        }
+    };
+    *s = inherited;
+    SourceStatus::Migrated {
+        fields: vec!["settings.json".to_string()],
+    }
+}
+
 // ----------------------------------------------------------------- orchestrator
 
 /// Eski uygulamaların ayarlarını **bir kez** birleşik depoya taşır.
@@ -421,6 +461,16 @@ fn find_localstorage(root: &Path) -> Option<PathBuf> {
 pub fn migrate_into(target_dir: &Path, settings: &mut Settings) -> MigrationReport {
     let before = settings.clone();
     let mut sources = Vec::new();
+
+    // Önce önceki birleşik ad: aynı şema, doğrudan devralma. Diğer kaynaklar
+    // yalnız boş alanları doldurur, bu yüzden sıralama önemlidir.
+    let belge_dir = paths::legacy_config_dir(paths::LEGACY_BELGE);
+    sources.push(SourceReport {
+        app: "Belge".into(),
+        identifier: paths::LEGACY_BELGE.into(),
+        path: belge_dir.display().to_string(),
+        status: migrate_belge(&belge_dir, target_dir, settings),
+    });
 
     let tavzih_dir = paths::legacy_config_dir(paths::LEGACY_TAVZIH);
     sources.push(SourceReport {
@@ -745,7 +795,46 @@ mod tests {
         let mut s = Settings::default();
         let report = migrate_into(&d, &mut s);
         let apps: Vec<_> = report.sources.iter().map(|r| r.app.as_str()).collect();
-        assert_eq!(apps, vec!["Tavzih", "İkinciGöz", "DüzenEk", "Değişikİş"]);
+        // "Belge" = ürünün GölgeDosya adını almadan önceki birleşik deposu.
+        // Aynı şemayı kullandığı için ilk sırada: devralma, diğer kaynakların
+        // boş alan doldurmasından önce gerçekleşmeli.
+        assert_eq!(
+            apps,
+            vec!["Belge", "Tavzih", "İkinciGöz", "DüzenEk", "Değişikİş"]
+        );
         std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// Kimlik değişiminde ayarlar devralınır; ikinci çalıştırma bir şey yapmaz
+    /// ve eski dizin yerinde kalır.
+    #[test]
+    fn previous_unified_store_is_inherited_once_and_never_deleted() {
+        let target = tmp("devralma-hedef");
+        let old_dir = paths::legacy_config_dir(paths::LEGACY_BELGE);
+        std::fs::create_dir_all(&old_dir).unwrap();
+        let previous = Settings {
+            theme: "dark".into(),
+            text_scale: 150,
+            ..Default::default()
+        };
+        crate::settings::save_to(&old_dir, &previous).unwrap();
+
+        let mut s = Settings::default();
+        let first = migrate_into(&target, &mut s);
+        assert_eq!(s.theme, "dark", "önceki ayarlar devralınmalı");
+        assert_eq!(s.text_scale, 150);
+        assert!(first.changed);
+
+        // Devralınan ayarlar kaydedilir; ikinci geçiş artık dokunmaz.
+        crate::settings::save_to(&target, &s).unwrap();
+        s.theme = "light".into();
+        let second = migrate_into(&target, &mut s);
+        assert_eq!(s.theme, "light", "kullanıcının yeni tercihi ezilmemeli");
+        assert!(!second.changed);
+
+        // Eski dizin ve dosyası yerinde.
+        assert!(crate::settings::settings_path(&old_dir).is_file());
+        std::fs::remove_dir_all(&target).ok();
+        std::fs::remove_dir_all(&old_dir).ok();
     }
 }

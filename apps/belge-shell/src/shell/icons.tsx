@@ -87,14 +87,24 @@ export const IconPanel = ({ className }: P) => (
 );
 
 /**
- * Uygulama işareti — tek renkli çizgi glif (Dock simgesindeki belge).
- * Kenar çubuğunda tek vurgu taşıyıcı seçili kipin işaretidir; işaret renkli
- * olsaydı ikinci bir vurgu taşıyıcı olurdu.
+ * Uygulama işareti — markanın "Kat" formu (brand/mark.svg ile aynı geometri).
+ *
+ * Sayfa, sağ alt köşesi kaldırılmış; altındaki pirinç katman görünüyor.
+ * Kaldırılmış köşe markanın vurgu rengini taşır — bu, kenar çubuğundaki
+ * "tek vurgu taşıyıcı" kuralının bilinçli istisnasıdır: kimlik bir kontrol
+ * değildir ve seçili kip işareti hâlâ tek *etkileşimli* vurgudur.
  */
 export const AppMark = ({ className }: P) => (
-  <svg {...base} width={18} height={18} viewBox="0 0 16 16" strokeWidth={1.4} className={className}>
-    <rect x="1.5" y="1.5" width="13" height="13" rx="3.2" />
-    <path d="M5.2 5.6h5.6M5.2 8h5.6M5.2 10.4h3.4" />
+  <svg width={18} height={18} viewBox="0 0 64 64" aria-hidden className={className}>
+    <defs>
+      <clipPath id="gd-sidebar-mark">
+        <rect x="12" y="8" width="40" height="48" rx="7" />
+      </clipPath>
+    </defs>
+    <g clipPath="url(#gd-sidebar-mark)">
+      <rect x="12" y="8" width="40" height="48" fill="var(--accent)" />
+      <path d="M12 8 H52 V32 L28 56 H12 Z" fill="currentColor" />
+    </g>
   </svg>
 );
 

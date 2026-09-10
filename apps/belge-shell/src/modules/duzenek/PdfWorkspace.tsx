@@ -194,7 +194,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
                 setStatus('Görsel paketi kaydedildi: ' + result);
                 return;
             }
-            const outputPath = await copyDestination(`DuzenEk-${kind}`, folderOnly);
+            const outputPath = await copyDestination(`GolgeDosya-${kind}`, folderOnly);
             if (!outputPath)
                 return;
             setBusy(true);

@@ -1,5 +1,5 @@
 /*
- * Yüksekbaş Belge — görsel dil.
+ * GölgeDosya — görsel dil.
  *
  * Apple'ın masaüstü disiplini, Japon tasarımının ölçülülüğü. Taklit değil:
  * Apple'dan hiyerarşi ve native davranış, Japon tasarımından boşluğun bilgi
@@ -12,6 +12,8 @@
  *
  * Yasak: gradient, cam, neon, kalın gölge, kart yığını, renkli rozet çöplüğü,
  * 16-20px radius'lu dev kutular, pazarlama başlıkları.
+ *
+ * Marka: GölgeDosya (brand/BRAND.md). Sumi zemin, kâğıt yüzey, pirinç vurgu.
  *
  * Aile: NöbetçiTakvim ile aynı tasarım ekibinden çıkmış gibi durur — kenar
  * çubuğu yoğunluğu, hairline ayırıcılar, BÜYÜK HARF grup etiketi, içeriden
@@ -45,11 +47,12 @@
   --border-subtle: rgb(0 0 0 / 9%);
   --border-strong: rgb(0 0 0 / 16%);
 
-  /* Tek vurgu: mürekkep yeşili. Mavi "teknoloji" klişesinden uzak, kurumsal,
-     sessiz. Her yerde değil — seçili navigasyon, birincil eylem, aktif durum. */
-  --accent: #2f5d50;
-  --accent-hover: #264d42;
-  --accent-quiet: rgb(47 93 80 / 10%);
+  /* Tek vurgu: eskitilmiş pirinç — markanın "kat" rengi (brand/BRAND.md).
+     Mavi-SaaS tonu değil, petrol yeşili değil. Her yerde değil: seçili
+     navigasyon, birincil eylem, aktif durum, küçük durum işaretleri. */
+  --accent: #8a6a3e;
+  --accent-hover: #75592f;
+  --accent-quiet: rgb(138 106 62 / 10%);
   --on-accent: #ffffff;
 
   /* Semantik. Hiçbir anlam YALNIZ renkle verilmez; işaret ve etiket eşlik eder. */
@@ -135,10 +138,10 @@
   --border-subtle: rgb(255 255 255 / 9%);
   --border-strong: rgb(255 255 255 / 17%);
 
-  --accent: #6fa392;
-  --accent-hover: #82b5a4;
-  --accent-quiet: rgb(111 163 146 / 14%);
-  --on-accent: #10201c;
+  --accent: #c9a472;
+  --accent-hover: #d8b688;
+  --accent-quiet: rgb(201 164 114 / 14%);
+  --on-accent: #1c1610;
 
   --danger: #f08a80;
   --danger-quiet: rgb(240 138 128 / 13%);

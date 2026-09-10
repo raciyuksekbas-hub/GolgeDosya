@@ -278,7 +278,7 @@ PNG'nin tek renk olmadığı piksel kontrolüyle doğrulanır (bkz. §8).
 │ Hareketi azalt             [Sistemle ▾]  │
 │   Geçişleri kaldırır                     │
 │ HAKKINDA                                 │
-│ Yüksekbaş Belge 0.0.1 — belge çalışma    │
+│ GölgeDosya 0.0.1 — belge çalışma    │
 │ ortamı. © 2026                           │
 │                                  [Bitti] │
 └──────────────────────────────────────────┘

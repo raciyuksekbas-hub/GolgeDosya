@@ -1,4 +1,4 @@
-# Yüksekbaş Belge — tasarım dili
+# GölgeDosya — tasarım dili
 
 Apple'ın masaüstü disiplini, Japon tasarımının ölçülülüğü. Taklit değil:
 Apple'dan **hiyerarşi ve native davranış**, Japon tasarımından **boşluğun bilgi
@@ -148,3 +148,26 @@ Aşağıdaki kayıtlı kararlar **bilinçli olarak geçersizleşti**:
   (`allow-start-dragging` artık tüketiliyor). Tam ekranda üst bant 12 px.
   Açılışta ~100 ms açık chrome karesi kabul edildi; tema-başına arka plan için
   yetenek genişletilmez.
+
+## Marka: GölgeDosya (2026-09-10)
+
+Ürünün adı `GölgeDosya`. Kimlik `apps/belge-shell/brand/` altında tek kaynakta
+tutulur (`BRAND.md`, `appicon.svg`, `build-icons.sh`); `src-tauri/icons/`
+tamamen oradan türetilir ve elle düzenlenmez.
+
+İşaret "Kat": sağ alt köşesi kaldırılmış bir sayfa; altında pirinç bir katman.
+Vurgu rengi mürekkep yeşilinden **eskitilmiş pirince** döndü — açık temada
+`#8a6a3e`, koyu temada `#c9a472`. Yüzeyler, tipografi, ölçüler ve yerleşim
+değişmedi.
+
+Geçersizleşen kararlar:
+
+- *"Kenar çubuğunda tek vurgu taşıyıcı seçili kip işaretidir"*: kimlik işareti
+  de markanın pirincini taşır. Kural artık şöyle okunur — seçili kip işareti
+  tek **etkileşimli** vurgudur; kimlik bir kontrol değildir.
+- *"Açılış ekranı yok"* (Faz 5'te bileşen emekliye ayrılmıştı): açılış IPC'si
+  sürerken pencere boş kalıyordu. O an artık `Splash` ile ürünün adını ve
+  sürümünü taşıyor. Zamanlayıcı yok; iş biter bitmez kaybolur.
+- Yapılandırma kimliği `tr.yuksekbas.belge` → `tr.yuksekbas.golgedosya`.
+  Eski dizin bir migration kaynağıdır: yeni ad altında henüz `settings.json`
+  yoksa eskisi devralınır, varsa dokunulmaz. Eski dizin **silinmez**.

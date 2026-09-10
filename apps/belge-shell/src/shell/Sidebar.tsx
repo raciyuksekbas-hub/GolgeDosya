@@ -44,7 +44,7 @@ export function Sidebar({ features, current, onNavigate, onOpenSettings }: Props
     <aside className="sidebar" data-tauri-drag-region>
       <div className="sidebar-head" data-tauri-drag-region>
         <AppMark className="sidebar-mark" />
-        <span className="sidebar-brand" title="Yüksekbaş Belge">Yüksekbaş Belge</span>
+        <span className="sidebar-brand" title="GölgeDosya">GölgeDosya</span>
       </div>
 
       <nav className="sidebar-nav" aria-label="Çalışma kipleri">

@@ -1,4 +1,4 @@
-# Yüksekbaş Belge
+# GölgeDosya
 
 Dört bağımsız masaüstü uygulamasının — **Tavzih**, **DüzenEk**, **Değişikİş**,
 **İkinciGöz** — tek bir yerel belge çalışma ortamında birleştirilmesi.

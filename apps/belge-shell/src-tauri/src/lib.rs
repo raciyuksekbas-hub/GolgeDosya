@@ -1,4 +1,4 @@
-//! Yüksekbaş Belge — birleşik kabuk.
+//! GölgeDosya — birleşik kabuk.
 //!
 //! Phase 2: kabuk boş. Rota sistemi, ortak yerleşim, tema, erişilebilirlik,
 //! ayar deposu, eski ayar migration'ı ve feature flag altyapısı burada; hiçbir
@@ -37,7 +37,7 @@ pub struct AppInfo {
 #[tauri::command]
 fn app_info() -> AppInfo {
     AppInfo {
-        name: "Yüksekbaş Belge",
+        name: "GölgeDosya",
         version: env!("CARGO_PKG_VERSION"),
         name_is_provisional: true,
         config_dir: paths::app_config_dir().display().to_string(),
@@ -350,7 +350,7 @@ pub fn run() {
 
     builder
         .run(tauri::generate_context!())
-        .expect("Yüksekbaş Belge başlatılamadı");
+        .expect("GölgeDosya başlatılamadı");
 }
 
 #[cfg(test)]

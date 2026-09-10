@@ -611,7 +611,7 @@
 }
 
 /*
- * Yüksekbaş Belge — görsel dil.
+ * GölgeDosya — görsel dil.
  *
  * Apple'ın masaüstü disiplini, Japon tasarımının ölçülülüğü. Taklit değil:
  * Apple'dan hiyerarşi ve native davranış, Japon tasarımından boşluğun bilgi
@@ -624,6 +624,8 @@
  *
  * Yasak: gradient, cam, neon, kalın gölge, kart yığını, renkli rozet çöplüğü,
  * 16-20px radius'lu dev kutular, pazarlama başlıkları.
+ *
+ * Marka: GölgeDosya (brand/BRAND.md). Sumi zemin, kâğıt yüzey, pirinç vurgu.
  *
  * Aile: NöbetçiTakvim ile aynı tasarım ekibinden çıkmış gibi durur — kenar
  * çubuğu yoğunluğu, hairline ayırıcılar, BÜYÜK HARF grup etiketi, içeriden
@@ -657,11 +659,12 @@
   --border-subtle: rgb(0 0 0 / 9%);
   --border-strong: rgb(0 0 0 / 16%);
 
-  /* Tek vurgu: mürekkep yeşili. Mavi "teknoloji" klişesinden uzak, kurumsal,
-     sessiz. Her yerde değil — seçili navigasyon, birincil eylem, aktif durum. */
-  --accent: #2f5d50;
-  --accent-hover: #264d42;
-  --accent-quiet: rgb(47 93 80 / 10%);
+  /* Tek vurgu: eskitilmiş pirinç — markanın "kat" rengi (brand/BRAND.md).
+     Mavi-SaaS tonu değil, petrol yeşili değil. Her yerde değil: seçili
+     navigasyon, birincil eylem, aktif durum, küçük durum işaretleri. */
+  --accent: #8a6a3e;
+  --accent-hover: #75592f;
+  --accent-quiet: rgb(138 106 62 / 10%);
   --on-accent: #ffffff;
 
   /* Semantik. Hiçbir anlam YALNIZ renkle verilmez; işaret ve etiket eşlik eder. */
@@ -747,10 +750,10 @@
   --border-subtle: rgb(255 255 255 / 9%);
   --border-strong: rgb(255 255 255 / 17%);
 
-  --accent: #6fa392;
-  --accent-hover: #82b5a4;
-  --accent-quiet: rgb(111 163 146 / 14%);
-  --on-accent: #10201c;
+  --accent: #c9a472;
+  --accent-hover: #d8b688;
+  --accent-quiet: rgb(201 164 114 / 14%);
+  --on-accent: #1c1610;
 
   --danger: #f08a80;
   --danger-quiet: rgb(240 138 128 / 13%);
@@ -829,7 +832,7 @@ body { user-select: none; -webkit-user-select: none; }
 .skip-link:focus { left: 0; }
 
 /*
- * Yüksekbaş Belge — kabuk ve ortak ilkeller.
+ * GölgeDosya — kabuk ve ortak ilkeller.
  *
  * Buradaki her sınıf birden çok kipte kullanılır. Bir kipte tek kullanılan
  * görünüm buraya değil, o kipin kendi dosyasına aittir.
@@ -1151,6 +1154,34 @@ body { user-select: none; -webkit-user-select: none; }
   color: var(--text-secondary);
 }
 .workspace-head-actions { display: flex; flex: none; gap: var(--space-2); }
+
+/* ------------------------------------------------------------------ Splash
+   Açılış: yalnız ürünün adı. Kısa görünür — animasyon ve ilerleme çubuğu yok.
+   Zemin kabuk rengiyle aynı; splash kapanınca yüzey değişmez, yalnız dolar. */
+
+.splash {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--surface-app);
+}
+.splash-mark { width: 44px; height: 44px; color: var(--text-primary); }
+.splash-name {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-title);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.splash-version {
+  position: absolute;
+  bottom: var(--space-7);
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+}
 
 /* ==========================================================================
    İlkeller

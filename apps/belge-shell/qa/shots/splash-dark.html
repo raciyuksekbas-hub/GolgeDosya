@@ -1,3 +1,224 @@
+<!doctype html><html lang="tr" data-theme="dark"><head><meta charset="utf-8"><style>/*
+ * GölgeDosya — görsel dil.
+ *
+ * Apple'ın masaüstü disiplini, Japon tasarımının ölçülülüğü. Taklit değil:
+ * Apple'dan hiyerarşi ve native davranış, Japon tasarımından boşluğun bilgi
+ * taşıması ve süsün yokluğu alınır.
+ *
+ *   Ma      — boşluk bilgi mimarisinin parçası; ne sıkışık ne savruk
+ *   Kanso   — bilgi, eylem veya yön üretmeyen öğe kaldırılır
+ *   Shibui  — sessiz premium; incelik kullandıkça fark edilir
+ *   Seijaku — saatlerce belge işi yapan kişiye sakinlik veren ritim
+ *
+ * Yasak: gradient, cam, neon, kalın gölge, kart yığını, renkli rozet çöplüğü,
+ * 16-20px radius'lu dev kutular, pazarlama başlıkları.
+ *
+ * Marka: GölgeDosya (brand/BRAND.md). Sumi zemin, kâğıt yüzey, pirinç vurgu.
+ *
+ * Aile: NöbetçiTakvim ile aynı tasarım ekibinden çıkmış gibi durur — kenar
+ * çubuğu yoğunluğu, hairline ayırıcılar, BÜYÜK HARF grup etiketi, içeriden
+ * yerleşik sağ panel, kompakt buton, 4/6/8 radius. Ama merkezde zaman değil
+ * belge vardır. Ölçüm ve tercüme: docs/design/01-referans-analizi.md
+ *
+ * Üç tema karakteri (kullanıcıya tema adı olarak GÖSTERİLMEZ; iç referans):
+ *   Kanso — açık yüzeyler      Sumi — koyu mürekkep      Fuji — soğuk nötr
+ */
+
+:root {
+  --text-scale: 1;
+
+  /* ---------------------------------------------------------------- Kanso
+     Saf beyaz değil. Hafif sıcak nötr bir chrome; belge yüzeyi ondan daha
+     açık. Sepia/parşömen değil — modern ve hassas. */
+  --surface-app: #ebeae7;
+  --surface-sidebar: #e6e5e1;
+  --surface-workspace: #f3f2ef;
+  --surface-raised: #fbfbfa;
+  --surface-document: #ffffff;
+  --surface-sunken: #e2e1dd;
+  --surface-hover: rgb(0 0 0 / 4%);
+  --surface-selected: rgb(0 0 0 / 6%);
+
+  /* Sumi tonlu metin — saf siyah değil, mürekkep. */
+  --text-primary: #1c1c1e;
+  --text-secondary: #6b6b70;
+  --text-muted: #929297;
+
+  --border-subtle: rgb(0 0 0 / 9%);
+  --border-strong: rgb(0 0 0 / 16%);
+
+  /* Tek vurgu: eskitilmiş pirinç — markanın "kat" rengi (brand/BRAND.md).
+     Mavi-SaaS tonu değil, petrol yeşili değil. Her yerde değil: seçili
+     navigasyon, birincil eylem, aktif durum, küçük durum işaretleri. */
+  --accent: #8a6a3e;
+  --accent-hover: #75592f;
+  --accent-quiet: rgb(138 106 62 / 10%);
+  --on-accent: #ffffff;
+
+  /* Semantik. Hiçbir anlam YALNIZ renkle verilmez; işaret ve etiket eşlik eder. */
+  --danger: #a8322a;
+  --danger-quiet: rgb(168 50 42 / 9%);
+  --warning: #8a5a12;
+  --warning-quiet: rgb(138 90 18 / 10%);
+  --review: #2c5a86;
+  --review-quiet: rgb(44 90 134 / 9%);
+  --success: #2b6446;
+  --success-quiet: rgb(43 100 70 / 9%);
+
+  --focus: #0a84ff;
+
+  /* ------------------------------------------------------------- Ölçü ritmi
+     4'ün katları. Ma: boşluk keyfî değil, ölçülü. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Küçük radius: masaüstü aleti, yuvarlak kart değil. */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+
+  /* Tipografi — macOS sistem fontu. Yeni font paketlenmez. */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  --text-title: calc(20px * var(--text-scale));
+  --text-heading: calc(15px * var(--text-scale));
+  --text-body: calc(13px * var(--text-scale));
+  --text-meta: calc(12px * var(--text-scale));
+  /* BÜYÜK HARF grup ve panel etiketi — en küçük boy, aralıklı. */
+  --text-label: calc(11px * var(--text-scale));
+  --tracking-label: 0.06em;
+
+  /* Hareket: dikkat istemez, durumu anlatır. Spring/bounce yok. */
+  --motion-fast: 120ms;
+  --motion: 180ms;
+  --ease: cubic-bezier(0.32, 0.08, 0.24, 1);
+
+  /* Kabuk ölçüleri. Dört yüzeyin dört yoğunluğu: kenar çubuğu ve bar kompakt,
+     workspace ferah, panel orta. Referans oranlarından tercüme edildi. */
+  --sidebar-w: 232px;
+  --inspector-w: 300px;
+  --inspector-inset: 12px;
+  --toolbar-h: calc(48px * var(--text-scale));
+  /* Örtüşük başlık çubuğu: trafik ışıklarının kapladığı üst bant. */
+  --titlebar-h: 52px;
+  /* Satır ve kontrol yükseklikleri metin ölçeğiyle büyür; sabit px 28 px'lik
+     kutuya %200 metin sığdırmaya çalışırdı. Hepsi min-height olarak kullanılır. */
+  --row-h: calc(32px * var(--text-scale));
+  --control-h: calc(28px * var(--text-scale));
+
+  /* Okunabilir ölçü — uzun açıklama metni bu genişliği aşmaz. */
+  --measure: 62ch;
+}
+
+/* ------------------------------------------------------------------- Sumi
+   Gerçek siyah değil, çok koyu sumi. Yüzeyler arasında yalnız hafif ton farkı;
+   beyaz yerine yumuşak açık gri metin. Belge yüzeyi beyaz kalır ve chrome'dan
+   net ayrılır. */
+:root[data-theme="dark"] {
+  --surface-app: #1c1c1e;
+  --surface-sidebar: #1f1f21;
+  --surface-workspace: #171719;
+  --surface-raised: #232326;
+  --surface-document: #ffffff;
+  --surface-sunken: #131315;
+  --surface-hover: rgb(255 255 255 / 6%);
+  --surface-selected: rgb(255 255 255 / 9%);
+
+  --text-primary: #ececee;
+  --text-secondary: #9d9da3;
+  --text-muted: #76767c;
+
+  --border-subtle: rgb(255 255 255 / 9%);
+  --border-strong: rgb(255 255 255 / 17%);
+
+  --accent: #c9a472;
+  --accent-hover: #d8b688;
+  --accent-quiet: rgb(201 164 114 / 14%);
+  --on-accent: #1c1610;
+
+  --danger: #f08a80;
+  --danger-quiet: rgb(240 138 128 / 13%);
+  --warning: #e0b070;
+  --warning-quiet: rgb(224 176 112 / 13%);
+  --review: #86b4de;
+  --review-quiet: rgb(134 180 222 / 13%);
+  --success: #7dc09b;
+  --success-quiet: rgb(125 192 155 / 13%);
+
+  --focus: #4a9eff;
+}
+
+/* Yüksek kontrast: sınırlar gerçek renge, ikincil metin ana metne çıkar. */
+:root[data-contrast="more"] {
+  --border-subtle: currentColor;
+  --border-strong: currentColor;
+  --text-secondary: var(--text-primary);
+  --text-muted: var(--text-primary);
+}
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 1ms !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--surface-app);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  cursor: default;
+}
+
+/* Kabuk metni seçilebilir değil — native uygulama hissi. Belge içeriği
+   gösteren yüzeyler bunu kendi içinde geri açar. */
+body { user-select: none; -webkit-user-select: none; }
+.selectable { user-select: text; -webkit-user-select: text; }
+
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 0 0 var(--radius) 0;
+}
+.skip-link:focus { left: 0; }
+
 /*
  * GölgeDosya — kabuk ve ortak ilkeller.
  *
@@ -872,3 +1093,4 @@ input[type="number"] {
   color: var(--text-secondary);
   font-size: var(--text-meta);
 }
+</style></head><body><div style="height:100vh"><div class="splash" role="status" aria-label="GölgeDosya açılıyor"><svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true" class="splash-mark"><defs><clipPath id="gd-sidebar-mark"><rect x="12" y="8" width="40" height="48" rx="7"></rect></clipPath></defs><g clip-path="url(#gd-sidebar-mark)"><rect x="12" y="8" width="40" height="48" fill="var(--accent)"></rect><path d="M12 8 H52 V32 L28 56 H12 Z" fill="currentColor"></path></g></svg><p class="splash-name">GölgeDosya</p><p class="splash-version">Sürüm 0.0.1</p></div></div></body></html>

@@ -21,6 +21,7 @@ case "$(uname -s)" in
 esac
 
 dirs=(
+  "$SUPPORT/tr.yuksekbas.golgedosya"
   "$SUPPORT/tr.yuksekbas.belge"
   "$SUPPORT/tr.yuksekbas.tavzih"
   "$SUPPORT/tr.yuksekbas.ikincigoz"

@@ -38,7 +38,7 @@ const SETTINGS = {
 };
 
 const RESPONSES: Record<string, unknown> = {
-  app_info: { name: "Yüksekbaş Belge", version: "0.0.1", nameIsProvisional: true, configDir: "" },
+  app_info: { name: "GölgeDosya", version: "0.0.1", nameIsProvisional: false, configDir: "" },
   enabled_features: [
     { key: "duzenek", label: "Düzenle", route: "duzenek", compiled: true, enabled: true },
     { key: "tavzih", label: "Dönüştür", route: "tavzih", compiled: true, enabled: true },

@@ -15,6 +15,7 @@ import { Button, Pill, Status } from "./shared-ui/primitives";
 import { IconDocument } from "./shell/icons";
 import { announce } from "./shared-ui/Announcer";
 import { useShortcuts } from "./shared-ui/useShortcuts";
+import { Splash } from "./shell/Splash";
 
 export function App() {
   const [features, setFeatures] = useState<FeatureState[]>([]);
@@ -151,6 +152,10 @@ export function App() {
       </span>
     ));
   }, [documents, active]);
+
+  // Açılış: feature listesi ve ayarlar gelene kadar pencere boş kalıyordu.
+  // O anı marka taşır; iş biter bitmez kaybolur.
+  if (!error && features.length === 0) return <Splash />;
 
   if (error) {
     return (

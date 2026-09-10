@@ -611,7 +611,7 @@
 }
 
 /*
- * Yüksekbaş Belge — görsel dil.
+ * GölgeDosya — görsel dil.
  *
  * Apple'ın masaüstü disiplini, Japon tasarımının ölçülülüğü. Taklit değil:
  * Apple'dan hiyerarşi ve native davranış, Japon tasarımından boşluğun bilgi
@@ -624,6 +624,8 @@
  *
  * Yasak: gradient, cam, neon, kalın gölge, kart yığını, renkli rozet çöplüğü,
  * 16-20px radius'lu dev kutular, pazarlama başlıkları.
+ *
+ * Marka: GölgeDosya (brand/BRAND.md). Sumi zemin, kâğıt yüzey, pirinç vurgu.
  *
  * Aile: NöbetçiTakvim ile aynı tasarım ekibinden çıkmış gibi durur — kenar
  * çubuğu yoğunluğu, hairline ayırıcılar, BÜYÜK HARF grup etiketi, içeriden
@@ -657,11 +659,12 @@
   --border-subtle: rgb(0 0 0 / 9%);
   --border-strong: rgb(0 0 0 / 16%);
 
-  /* Tek vurgu: mürekkep yeşili. Mavi "teknoloji" klişesinden uzak, kurumsal,
-     sessiz. Her yerde değil — seçili navigasyon, birincil eylem, aktif durum. */
-  --accent: #2f5d50;
-  --accent-hover: #264d42;
-  --accent-quiet: rgb(47 93 80 / 10%);
+  /* Tek vurgu: eskitilmiş pirinç — markanın "kat" rengi (brand/BRAND.md).
+     Mavi-SaaS tonu değil, petrol yeşili değil. Her yerde değil: seçili
+     navigasyon, birincil eylem, aktif durum, küçük durum işaretleri. */
+  --accent: #8a6a3e;
+  --accent-hover: #75592f;
+  --accent-quiet: rgb(138 106 62 / 10%);
   --on-accent: #ffffff;
 
   /* Semantik. Hiçbir anlam YALNIZ renkle verilmez; işaret ve etiket eşlik eder. */
@@ -747,10 +750,10 @@
   --border-subtle: rgb(255 255 255 / 9%);
   --border-strong: rgb(255 255 255 / 17%);
 
-  --accent: #6fa392;
-  --accent-hover: #82b5a4;
-  --accent-quiet: rgb(111 163 146 / 14%);
-  --on-accent: #10201c;
+  --accent: #c9a472;
+  --accent-hover: #d8b688;
+  --accent-quiet: rgb(201 164 114 / 14%);
+  --on-accent: #1c1610;
 
   --danger: #f08a80;
   --danger-quiet: rgb(240 138 128 / 13%);
@@ -829,7 +832,7 @@ body { user-select: none; -webkit-user-select: none; }
 .skip-link:focus { left: 0; }
 
 /*
- * Yüksekbaş Belge — kabuk ve ortak ilkeller.
+ * GölgeDosya — kabuk ve ortak ilkeller.
  *
  * Buradaki her sınıf birden çok kipte kullanılır. Bir kipte tek kullanılan
  * görünüm buraya değil, o kipin kendi dosyasına aittir.
@@ -1151,6 +1154,34 @@ body { user-select: none; -webkit-user-select: none; }
   color: var(--text-secondary);
 }
 .workspace-head-actions { display: flex; flex: none; gap: var(--space-2); }
+
+/* ------------------------------------------------------------------ Splash
+   Açılış: yalnız ürünün adı. Kısa görünür — animasyon ve ilerleme çubuğu yok.
+   Zemin kabuk rengiyle aynı; splash kapanınca yüzey değişmez, yalnız dolar. */
+
+.splash {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--surface-app);
+}
+.splash-mark { width: 44px; height: 44px; color: var(--text-primary); }
+.splash-name {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-title);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.splash-version {
+  position: absolute;
+  bottom: var(--space-7);
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+}
 
 /* ==========================================================================
    İlkeller
@@ -1674,4 +1705,4 @@ input[type="number"] {
   color: var(--text-secondary);
   font-size: var(--text-meta);
 }
-</style></head><body><div style="height:100vh"><div class="shell" data-wide="true" data-fullscreen="false"><a class="skip-link" href="#icerik">İçeriğe geç</a><aside class="sidebar" data-tauri-drag-region="true"><div class="sidebar-head" data-tauri-drag-region="true"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-mark"><rect x="1.5" y="1.5" width="13" height="13" rx="3.2"></rect><path d="M5.2 5.6h5.6M5.2 8h5.6M5.2 10.4h3.4"></path></svg><span class="sidebar-brand" title="Yüksekbaş Belge">Yüksekbaş Belge</span></div><nav class="sidebar-nav" aria-label="Çalışma kipleri"><button type="button" class="sidebar-item" data-feature="duzenek" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M9.5 1.8H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V8"></path><path d="M13.9 2.4a1.2 1.2 0 0 0-1.7-1.7L8.6 4.3l-.5 2.2 2.2-.5z"></path></svg><span>Düzenle</span></button><button type="button" class="sidebar-item" data-feature="tavzih"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M2.4 5.6h9.1M9.3 3.4l2.2 2.2-2.2 2.2"></path><path d="M13.6 10.4H4.5m2.2-2.2-2.2 2.2 2.2 2.2"></path></svg><span>Dönüştür</span></button><button type="button" class="sidebar-item" data-feature="degisikis"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><rect x="1.7" y="2.4" width="5.2" height="11.2" rx="1"></rect><rect x="9.1" y="2.4" width="5.2" height="11.2" rx="1"></rect><path d="M3.3 5.6h2M3.3 8h2M10.7 5.6h2M10.7 8h2M10.7 10.4h2"></path></svg><span>Karşılaştır</span></button><button type="button" class="sidebar-item" data-feature="ikincigoz"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M12.6 7.4V2.8a1 1 0 0 0-1-1H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h4"></path><path d="M4.9 4.8h5.2M4.9 7.2h3.4"></path><circle cx="11.1" cy="11.1" r="2.4"></circle><path d="m12.9 12.9 1.4 1.4"></path></svg><span>Denetle</span></button></nav><div class="sidebar-spacer" data-tauri-drag-region="true"></div><div class="sidebar-footer"><button type="button" class="sidebar-item" title="Ayarlar  ⌘,"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5"></path></svg><span>Ayarlar</span></button></div></aside><section class="content"><div class="toolbar" data-empty="true" data-tauri-drag-region="true"><div class="toolbar-context"></div><div class="toolbar-spacer" data-tauri-drag-region="true"></div><div class="toolbar-actions"></div><div class="toolbar-shell"></div></div><main id="icerik" class="content-body" tabindex="-1"><div class="surface home"><div class="dropzone" data-over="false" role="group" aria-label="Karşılaştırmak için iki belge açın"><div class="empty"><div class="empty-icon"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 3.5H8a2 2 0 0 0-2 2v17a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M16.5 3.5V9H22"></path><path d="M10 14h8M10 17.5h8M10 21h5"></path></svg></div><h1 class="empty-primary">Belge açın</h1><p class="empty-hint">Karşılaştırmak için iki PDF, DOCX veya UDF dosyası açın ya da buraya sürükleyin.</p><div class="empty-actions"><button type="button" class="btn btn-primary" title="Belge Aç  ⌘O">Belge Aç</button></div></div></div></div></main><div class="inspector-slot" hidden=""></div></section><div aria-live="polite" aria-atomic="true" class="sr-only" data-testid="announcer"></div></div></div></body></html>
+</style></head><body><div style="height:100vh"><div class="shell" data-wide="true" data-fullscreen="false"><a class="skip-link" href="#icerik">İçeriğe geç</a><aside class="sidebar" data-tauri-drag-region="true"><div class="sidebar-head" data-tauri-drag-region="true"><svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true" class="sidebar-mark"><defs><clipPath id="gd-sidebar-mark"><rect x="12" y="8" width="40" height="48" rx="7"></rect></clipPath></defs><g clip-path="url(#gd-sidebar-mark)"><rect x="12" y="8" width="40" height="48" fill="var(--accent)"></rect><path d="M12 8 H52 V32 L28 56 H12 Z" fill="currentColor"></path></g></svg><span class="sidebar-brand" title="GölgeDosya">GölgeDosya</span></div><nav class="sidebar-nav" aria-label="Çalışma kipleri"><button type="button" class="sidebar-item" data-feature="duzenek" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M9.5 1.8H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V8"></path><path d="M13.9 2.4a1.2 1.2 0 0 0-1.7-1.7L8.6 4.3l-.5 2.2 2.2-.5z"></path></svg><span>Düzenle</span></button><button type="button" class="sidebar-item" data-feature="tavzih"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M2.4 5.6h9.1M9.3 3.4l2.2 2.2-2.2 2.2"></path><path d="M13.6 10.4H4.5m2.2-2.2-2.2 2.2 2.2 2.2"></path></svg><span>Dönüştür</span></button><button type="button" class="sidebar-item" data-feature="degisikis"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><rect x="1.7" y="2.4" width="5.2" height="11.2" rx="1"></rect><rect x="9.1" y="2.4" width="5.2" height="11.2" rx="1"></rect><path d="M3.3 5.6h2M3.3 8h2M10.7 5.6h2M10.7 8h2M10.7 10.4h2"></path></svg><span>Karşılaştır</span></button><button type="button" class="sidebar-item" data-feature="ikincigoz"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M12.6 7.4V2.8a1 1 0 0 0-1-1H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h4"></path><path d="M4.9 4.8h5.2M4.9 7.2h3.4"></path><circle cx="11.1" cy="11.1" r="2.4"></circle><path d="m12.9 12.9 1.4 1.4"></path></svg><span>Denetle</span></button></nav><div class="sidebar-spacer" data-tauri-drag-region="true"></div><div class="sidebar-footer"><button type="button" class="sidebar-item" title="Ayarlar  ⌘,"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5"></path></svg><span>Ayarlar</span></button></div></aside><section class="content"><div class="toolbar" data-empty="true" data-tauri-drag-region="true"><div class="toolbar-context"></div><div class="toolbar-spacer" data-tauri-drag-region="true"></div><div class="toolbar-actions"></div><div class="toolbar-shell"></div></div><main id="icerik" class="content-body" tabindex="-1"><div class="surface home"><div class="dropzone" data-over="false" role="group" aria-label="Karşılaştırmak için iki belge açın"><div class="empty"><div class="empty-icon"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 3.5H8a2 2 0 0 0-2 2v17a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M16.5 3.5V9H22"></path><path d="M10 14h8M10 17.5h8M10 21h5"></path></svg></div><h1 class="empty-primary">Belge açın</h1><p class="empty-hint">Karşılaştırmak için iki PDF, DOCX veya UDF dosyası açın ya da buraya sürükleyin.</p><div class="empty-actions"><button type="button" class="btn btn-primary" title="Belge Aç  ⌘O">Belge Aç</button></div></div></div></div></main><div class="inspector-slot" hidden=""></div></section><div aria-live="polite" aria-atomic="true" class="sr-only" data-testid="announcer"></div></div></div></body></html>
