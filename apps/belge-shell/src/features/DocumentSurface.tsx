@@ -4,8 +4,9 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { FeatureState, RecentDocument } from "../shell/types";
 import { IconDocumentLarge } from "../shell/icons";
 import { announce } from "../shared-ui/Announcer";
-import { Button, EmptyState, Section, Status } from "../shared-ui/primitives";
+import { Button, Pill, Status } from "../shared-ui/primitives";
 import { MODES, extensionOf, fileNameOf, type ContextOutcome } from "../shell/modes";
+import { relativeTime } from "./relativeTime";
 
 interface Props {
   feature: FeatureState;
@@ -18,22 +19,16 @@ interface Props {
   onForget: () => void;
 }
 
-/** "3 dakika önce", "dün", "12 Eyl" — tam zaman damgası değil. */
-function relativeTime(ms: number): string {
-  const diff = Date.now() - ms;
-  const minute = 60_000;
-  if (diff < minute) return "az önce";
-  if (diff < 60 * minute) return `${Math.round(diff / minute)} dk önce`;
-  if (diff < 24 * 60 * minute) return `${Math.round(diff / (60 * minute))} sa önce`;
-  if (diff < 48 * 60 * minute) return "dün";
-  return new Date(ms).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
-}
+/** Aşağı bölgede en fazla bu kadar satır: 900×600'de sütun kaymaz. */
+const RECENT_ROWS = 5;
 
 /**
  * Belge yüzeyi — uygulamanın açılış görüntüsü.
  *
- * Dashboard yok. Merkezde tek net görev: belge aç. Son kullanılanlar kart
- * galerisi değil, liste. Tam dosya yolu varsayılan görünümde gösterilmez.
+ * Mod başlığı yok: kip kenar çubuğunda zaten seçili. Ekranın başlığı boş
+ * durumun kendisidir ("Belge açın"), optik olarak üst-orta bölgede; altında bu
+ * kipin gerçekten açtığı türler. Tek birincil eylem. Son kullanılanlar aşağı
+ * bölgede liste olarak — kart galerisi değil; tam dosya yolu gösterilmez.
  */
 export function DocumentSurface({ feature, recents, outcome, openRequest, onDocuments, onForget }: Props) {
   const mode = MODES[feature.key];
@@ -114,19 +109,19 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
     void browse();
   }, [openRequest, browse]);
 
+  const shown = recents.slice(0, RECENT_ROWS);
+
   return (
-    <div className="surface">
+    <div className="surface home">
       {/* Kip değişiminde belge taşınamadıysa, sebebi sade biçimde söylenir. */}
       {outcome?.kind === "mismatch" ? (
         <Status tone="info">
           {outcome.rejected.map(fileNameOf).join(", ")} bu kipte açılamıyor.{" "}
-          {mode.label} {mode.extensions.slice(0, 4).join(", ").toUpperCase()} belgeleriyle çalışır.
+          {mode.label} {mode.extensions.slice(0, 4).join(", ").toLocaleUpperCase("tr-TR")} belgeleriyle çalışır.
         </Status>
       ) : null}
       {outcome?.kind === "needsMore" ? (
-        <Status tone="info">
-          Karşılaştırmak için bir belge daha açın.
-        </Status>
+        <Status tone="info">Karşılaştırmak için bir belge daha açın.</Status>
       ) : null}
       {refused ? <Status tone="error">{refused}</Status> : null}
 
@@ -137,37 +132,42 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
         role="group"
         aria-label={mode.prompt}
       >
-        <EmptyState
-          icon={<IconDocumentLarge />}
-          primary={mode.prompt}
-          hint="veya buraya sürükleyin"
-          actions={
+        <div className="empty">
+          <div className="empty-icon">
+            <IconDocumentLarge />
+          </div>
+          <h1 className="empty-primary">Belge açın</h1>
+          <p className="empty-hint">{mode.hint}</p>
+          <div className="empty-actions">
             <Button variant="primary" onClick={browse} title="Belge Aç  ⌘O">
               Belge Aç
             </Button>
-          }
-        />
+          </div>
+        </div>
       </div>
 
-      {recents.length > 0 ? (
-        <Section title="Son kullanılanlar" id="son">
+      {shown.length > 0 ? (
+        <section className="recents" aria-labelledby="son-baslik">
+          <h2 className="section-head" id="son-baslik">
+            Son kullanılanlar
+          </h2>
           <ul className="file-list">
-            {recents.map((r) => (
+            {shown.map((r) => (
               <li key={r.path}>
                 <button type="button" className="file-row" onClick={() => accept([r.path])}>
                   <span className="file-name">{fileNameOf(r.path)}</span>
-                  <span className="file-kind">{extensionOf(r.path)}</span>
+                  <Pill>{extensionOf(r.path)}</Pill>
                   <span className="file-time">{relativeTime(r.openedAt)}</span>
                 </button>
               </li>
             ))}
           </ul>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "var(--space-2)" }}>
+          <div className="row-end">
             <Button variant="quiet" onClick={onForget}>
               Listeyi temizle
             </Button>
           </div>
-        </Section>
+        </section>
       ) : null}
     </div>
   );

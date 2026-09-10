@@ -12,9 +12,12 @@
  * en küçük yüzeyi verir; belge açma gibi işler burada çalışmaz.
  */
 
+// Rust gibi Unix SANİYE: ms göndermek, gerçek uygulamadaki zaman kusurunu gizler.
+const nowSec = Math.floor(Date.now() / 1000);
 const RECENTS = [
-  { path: "/Users/örnek/Belgeler/İŞ SÖZLEŞMESİ.docx", openedAt: Date.now() - 9e5 },
-  { path: "/Users/örnek/Belgeler/dilekçe-taslak.udf", openedAt: Date.now() - 7e6 },
+  { path: "/Users/örnek/Belgeler/dava-dilekcesi.docx", openedAt: nowSec - 12 * 60 },
+  { path: "/Users/örnek/Belgeler/ek-3 bilirkişi raporu.pdf", openedAt: nowSec - 30 * 3600 },
+  { path: "/Users/örnek/Belgeler/İŞ SÖZLEŞMESİ.udf", openedAt: nowSec - 3 * 86400 },
 ];
 
 const SETTINGS = {

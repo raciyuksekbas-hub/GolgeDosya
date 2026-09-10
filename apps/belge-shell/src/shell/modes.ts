@@ -19,8 +19,10 @@ export interface Mode {
   purpose: string;
   /** Bu kipin açabildiği uzantılar. */
   extensions: string[];
-  /** Belge yüzeyindeki davet. */
+  /** Belge yüzeyindeki davet (erişilebilir ad; başlık "Belge açın"). */
   prompt: string;
+  /** Boş durumun açıklaması — bu kipin gerçekten açtığı türler (§8). */
+  hint: string;
   /** Dosya seçicide görünecek tür adı. */
   pickerLabel: string;
   /** Kaç belge gerekir: bir kip iki belge isteyebilir (Karşılaştır). */
@@ -33,6 +35,7 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     purpose: "Sayfaları düzenleyin, yeni bir kopya oluşturun",
     extensions: ["pdf", "docx", "doc", "udf", "jpg", "jpeg", "png", "tiff", "heic"],
     prompt: "Düzenlemek istediğiniz belgeyi açın",
+    hint: "PDF, DOCX, UDF veya görsel dosyanızı açın ya da buraya sürükleyin.",
     pickerLabel: "Belge veya görsel",
     needs: 1,
   },
@@ -41,6 +44,7 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     purpose: "Word ve UYAP biçimleri arasında",
     extensions: ["docx", "udf"],
     prompt: "Dönüştürmek istediğiniz belgeyi açın",
+    hint: "DOCX veya UDF dosyanızı açın ya da buraya sürükleyin.",
     pickerLabel: "Word veya UYAP belgesi",
     needs: 1,
   },
@@ -49,6 +53,7 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     purpose: "İki belge arasındaki değişiklikler",
     extensions: ["pdf", "docx", "doc", "udf"],
     prompt: "Karşılaştırmak için iki belge açın",
+    hint: "Karşılaştırmak için iki PDF, DOCX veya UDF dosyası açın ya da buraya sürükleyin.",
     pickerLabel: "Karşılaştırılacak belgeler",
     needs: 2,
   },
@@ -57,6 +62,7 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     purpose: "Göndermeden önce son okuma",
     extensions: ["docx", "udf"],
     prompt: "Denetlemek istediğiniz belgeyi açın",
+    hint: "DOCX veya UDF dosyanızı açın ya da buraya sürükleyin.",
     pickerLabel: "Word veya UYAP belgesi",
     needs: 1,
   },

@@ -468,6 +468,11 @@
 /* ------------------------------------------------------------ EmptyState
    Optik üst-orta: kalan alanın %38'inde. Kart içinde değil. */
 
+/* Home: boş durum kalan alanı alır, son kullanılanlar aşağı bölgede. */
+.home { padding-bottom: var(--space-5); }
+.recents { padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
+.recents .row-end { margin-top: var(--space-2); }
+
 .dropzone {
   display: grid;
   flex: 1;
@@ -497,8 +502,8 @@
 }
 
 .empty-icon { color: var(--text-muted); opacity: 0.7; margin-bottom: var(--space-1); }
-.empty-primary { font-size: var(--text-heading); font-weight: 600; }
-.empty-hint { max-width: 44ch; color: var(--text-secondary); }
+.empty-primary { margin: 0; font-size: var(--text-heading); font-weight: 600; }
+.empty-hint { max-width: 44ch; margin: 0; color: var(--text-secondary); }
 .empty-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
 
 /* --------------------------------------------------------------- FileRow
