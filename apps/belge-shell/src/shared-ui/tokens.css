@@ -13,6 +13,11 @@
  * Yasak: gradient, cam, neon, kalın gölge, kart yığını, renkli rozet çöplüğü,
  * 16-20px radius'lu dev kutular, pazarlama başlıkları.
  *
+ * Aile: NöbetçiTakvim ile aynı tasarım ekibinden çıkmış gibi durur — kenar
+ * çubuğu yoğunluğu, hairline ayırıcılar, BÜYÜK HARF grup etiketi, içeriden
+ * yerleşik sağ panel, kompakt buton, 4/6/8 radius. Ama merkezde zaman değil
+ * belge vardır. Ölçüm ve tercüme: docs/design/01-referans-analizi.md
+ *
  * Üç tema karakteri (kullanıcıya tema adı olarak GÖSTERİLMEZ; iç referans):
  *   Kanso — açık yüzeyler      Sumi — koyu mürekkep      Fuji — soğuk nötr
  */
@@ -23,11 +28,12 @@
   /* ---------------------------------------------------------------- Kanso
      Saf beyaz değil. Hafif sıcak nötr bir chrome; belge yüzeyi ondan daha
      açık. Sepia/parşömen değil — modern ve hassas. */
-  --surface-app: #eeedeb;
-  --surface-sidebar: #e9e8e5;
+  --surface-app: #ebeae7;
+  --surface-sidebar: #e6e5e1;
+  --surface-workspace: #f3f2ef;
   --surface-raised: #fbfbfa;
   --surface-document: #ffffff;
-  --surface-sunken: #f3f2f0;
+  --surface-sunken: #e2e1dd;
   --surface-hover: rgb(0 0 0 / 4%);
   --surface-selected: rgb(0 0 0 / 6%);
 
@@ -78,19 +84,31 @@
     system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 
-  --text-title: calc(19px * var(--text-scale));
+  --text-title: calc(20px * var(--text-scale));
   --text-heading: calc(15px * var(--text-scale));
   --text-body: calc(13px * var(--text-scale));
-  --text-meta: calc(11.5px * var(--text-scale));
+  --text-meta: calc(12px * var(--text-scale));
+  /* BÜYÜK HARF grup ve panel etiketi — en küçük boy, aralıklı. */
+  --text-label: calc(11px * var(--text-scale));
+  --tracking-label: 0.06em;
 
   /* Hareket: dikkat istemez, durumu anlatır. Spring/bounce yok. */
   --motion-fast: 120ms;
   --motion: 180ms;
   --ease: cubic-bezier(0.32, 0.08, 0.24, 1);
 
-  --sidebar-w: 204px;
-  --inspector-w: 288px;
-  --toolbar-h: 44px;
+  /* Kabuk ölçüleri. Dört yüzeyin dört yoğunluğu: kenar çubuğu ve bar kompakt,
+     workspace ferah, panel orta. Referans oranlarından tercüme edildi. */
+  --sidebar-w: 232px;
+  --inspector-w: 300px;
+  --inspector-inset: 12px;
+  --toolbar-h: calc(48px * var(--text-scale));
+  /* Örtüşük başlık çubuğu: trafik ışıklarının kapladığı üst bant. */
+  --titlebar-h: 52px;
+  /* Satır ve kontrol yükseklikleri metin ölçeğiyle büyür; sabit px 28 px'lik
+     kutuya %200 metin sığdırmaya çalışırdı. Hepsi min-height olarak kullanılır. */
+  --row-h: calc(32px * var(--text-scale));
+  --control-h: calc(28px * var(--text-scale));
 
   /* Okunabilir ölçü — uzun açıklama metni bu genişliği aşmaz. */
   --measure: 62ch;
@@ -101,11 +119,12 @@
    beyaz yerine yumuşak açık gri metin. Belge yüzeyi beyaz kalır ve chrome'dan
    net ayrılır. */
 :root[data-theme="dark"] {
-  --surface-app: #1a1a1c;
-  --surface-sidebar: #202022;
-  --surface-raised: #242427;
+  --surface-app: #1c1c1e;
+  --surface-sidebar: #1f1f21;
+  --surface-workspace: #171719;
+  --surface-raised: #232326;
   --surface-document: #ffffff;
-  --surface-sunken: #161618;
+  --surface-sunken: #131315;
   --surface-hover: rgb(255 255 255 / 6%);
   --surface-selected: rgb(255 255 255 / 9%);
 
