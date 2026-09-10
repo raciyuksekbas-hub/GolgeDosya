@@ -15,10 +15,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import postcss from "postcss";
 import { describe, expect, it } from "vitest";
 import { PdfWorkspace } from "./PdfWorkspace";
-import { previewGeometry, rotatePages } from "./pdfWorkspaceState";
+import { previewGeometry, rotatePages, workspaceSurfaces } from "./pdfWorkspaceState";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
+/** Kipe hiç belge verilmemiş hâl. */
 const html = renderToStaticMarkup(<PdfWorkspace />);
+/** Kabuğun verdiği belge henüz taranıyor: yüzeyler daha açılmamıştır. */
+const scanningHtml = renderToStaticMarkup(<PdfWorkspace paths={["/belgeler/dilekce.pdf"]} />);
 const css = postcss.parse(readFileSync(resolve(here, "pdf.css"), "utf8"));
 
 /** Verilen genişlikte yürürlükte olan bildirimler. */
@@ -82,9 +86,8 @@ describe("yerleşim sözleşmesi", () => {
   it("pdf_workspace_page_strip_left_document_right", () => {
     // Sayfa varken: şerit solda, belge sağda. `html` belgesiz çizim olduğu için
     // şeridin varlığı kaynaktan, ölçüsü CSS'ten doğrulanır.
-    const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
     expect(source).toMatch(
-      /data-pages=\{order\.length > 0\}>\s*\{order\.length > 0 && <aside className="thumbnail-list"/,
+      /data-pages=\{surfaces\.strip\}>\s*\{surfaces\.strip && <aside className="thumbnail-list"/,
     );
     for (const width of [1120, 1440]) {
       const rules = declarations('.pdf-root .pdf-workspace-layout[data-pages="true"]', width);
@@ -98,25 +101,12 @@ describe("yerleşim sözleşmesi", () => {
     ).toBe("108px minmax(0, 1fr)");
   });
 
-  it("belge yokken sayfa şeridi çizilmez, belge alanı tam genişlik", () => {
-    // Boş 132 px'lik bant, paketlenmiş uygulamada ölü bir sütun olarak
-    // görünüyordu. Sayfa yoksa şerit yok, ızgara tek sütun.
-    expect(html).not.toContain('class="thumbnail-list"');
-    expect(html).toMatch(/class="pdf-workspace-layout" data-pages="false"/);
-    for (const width of [1000, 1120, 1440]) {
-      const rules = declarations(".pdf-root .pdf-workspace-layout", width);
-      expect(rules.display).toBe("grid");
-      expect(rules["grid-template-columns"]).toBe("minmax(0, 1fr)");
-    }
-  });
-
   it("document_area_is_the_widest_surface", () => {
     // Belge yokken belge alanı ızgaranın tek çocuğudur; sayfa varken şeridin
     // hemen ardından gelir. İkisinde de tek bir önizleme paneli vardır.
     expect(html).toMatch(
       /class="pdf-workspace-layout" data-pages="false"><aside class="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">/,
     );
-    const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
     expect(source).toMatch(/<\/aside>\}\s*\n\s*<aside className="pdf-preview-panel"/);
     expect((html.match(/class="pdf-preview-panel"/g) || []).length).toBe(1);
     expect(html).toMatch(/Belge önizlemesi/);
@@ -128,7 +118,6 @@ describe("yerleşim sözleşmesi", () => {
   });
 
   it("araçlar panelde, kaydetme barda, sonuç workspace'te", () => {
-    const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
     // Araç grupları kabuğun sağ paneline çizilir.
     expect(source).toMatch(/<InspectorPanel title="Araç" scope="pdf-root">/);
     expect(source).toMatch(/<div className="pdf-controls"/);
@@ -144,6 +133,66 @@ describe("yerleşim sözleşmesi", () => {
     expect(source).toMatch(/className="tool-segment" role="group"/);
     // Birleştir ve Görseller → PDF için ikinci belge yolu duruyor.
     expect(source).toContain("Belge ekle…");
+  });
+});
+
+describe("durum sözleşmesi", () => {
+  /**
+   * Düzenle'nin yüzeyleri belgeye bağlıdır, araç seçimine değil.
+   *
+   * Hangi yüzeyin çizileceği saf bir karardır (`workspaceSurfaces`); bileşen o
+   * kararı bağlar, CSS de ızgarayı ona göre kurar. Üç halka da burada
+   * denetlenir: karar, bağlama, yerleşim. 'ready' ve 'failed' hâlleri gerçek
+   * bir tarama gerektirdiği için sunucu tarafı çizimde üretilemez — o yüzden
+   * karar doğrudan, bağlama kaynak üzerinden doğrulanır.
+   */
+  it("işlenebilir PDF yokken ne şerit ne araç paneli çizilir, workspace tam genişlik", () => {
+    for (const state of ["none", "loading", "failed"] as const)
+      expect(workspaceSurfaces(state, 0)).toEqual({ tools: false, strip: false });
+    // Açılamayan belge de sayfa üretmiş olabilir mi? Hayır — ama olsa bile
+    // yüzeyler açılmaz: karar belgenin durumundadır.
+    expect(workspaceSurfaces("failed", 4)).toEqual({ tools: false, strip: false });
+
+    // Belge açılamadığında bu durum gerçekten kurulur.
+    expect(source).toMatch(
+      /catch \(e\) \{\s*\n\s*setStatus\('Belge açılamadı: ' \+ String\(e\)\);[\s\S]{0,400}?setDocState\(previous => previous === 'ready' \? previous : 'failed'\)/,
+    );
+
+    // Çizilen iki hâl: belge hiç yok, ve kabuğun verdiği belge taranıyor.
+    for (const markup of [html, scanningHtml]) {
+      expect(markup).not.toContain('class="thumbnail-list"');
+      expect(markup).not.toContain('class="inspector');
+      expect(markup).not.toContain('class="toolbar-actions"');
+      expect(markup).not.toContain("Seçili araç");
+      expect(markup).toMatch(/class="pdf-workspace-layout" data-pages="false"/);
+    }
+    // Tek sütun: kalan alanı hata/boş durum kullanır.
+    for (const width of [1000, 1120, 1440]) {
+      const rules = declarations(".pdf-root .pdf-workspace-layout", width);
+      expect(rules.display).toBe("grid");
+      expect(rules["grid-template-columns"]).toBe("minmax(0, 1fr)");
+    }
+  });
+
+  it("geçerli PDF ve sayfalar oluştuğunda çalışma yüzeyleri geri gelir", () => {
+    expect(workspaceSurfaces("ready", 3)).toEqual({ tools: true, strip: true });
+    // Kullanıcı yeni girdi bekleyen bir araca geçtiğinde (Görseller → PDF)
+    // oturum sürer: panel kalır ki belge eklenebilsin, yalnız şerit kapanır.
+    expect(workspaceSurfaces("ready", 0)).toEqual({ tools: true, strip: false });
+
+    // Bileşen üç yüzeyi de bu karara bağlar.
+    expect(source).toContain("const surfaces = workspaceSurfaces(docState, order.length);");
+    expect(source).toMatch(/\{surfaces\.tools && <ToolbarActions>/);
+    expect(source).toMatch(/\{surfaces\.tools && <InspectorPanel title="Araç" scope="pdf-root">/);
+    expect(source).toMatch(
+      /data-pages=\{surfaces\.strip\}>\s*\{surfaces\.strip && <aside className="thumbnail-list"/,
+    );
+    // Sayfa varken şerit kendi sütununu alır; belge alanı en geniş yüzey kalır.
+    expect(
+      declarations('.pdf-root .pdf-workspace-layout[data-pages="true"]', 1440)[
+        "grid-template-columns"
+      ],
+    ).toBe("132px minmax(0, 1fr)");
   });
 });
 
@@ -195,7 +244,6 @@ describe("kabuğa bağlanma", () => {
    * denetleniyor.
    */
   it("her yerel komut çağrısı duzenek_ önekli", () => {
-    const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
     const calls = [...source.matchAll(/invoke<[^>]*>\(\s*'([^']+)'/g)].map((m) => m[1]);
     expect(calls.length).toBeGreaterThan(0);
     for (const name of calls) expect(name).toMatch(/^duzenek_/);
@@ -219,16 +267,14 @@ describe("kabuğa bağlanma", () => {
    * çalışan doğrulama ayrı bir kapıdır (native parity).
    */
   it("taşınan yüzeyler duruyor", () => {
-    for (const marker of [
-      'class="pdf-preview-panel"',
-      'class="pdf-controls"',
-      'class="tool-grid"',
-      "Belge önizlemesi",
-    ])
+    // Belge yokken yalnız önizleme yüzeyi ve boş durum çizilir; araç paneli
+    // belgeyle birlikte gelir (bkz. "durum sözleşmesi").
+    for (const marker of ['class="pdf-preview-panel"', "Belge önizlemesi"])
       expect(html).toContain(marker);
 
-    const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
     for (const marker of [
+      'className="pdf-controls"',
+      'className="tool-grid"',
       'className="thumbnail-list"',
       'className="pdf-page-viewport"',
       'aria-label="Kaydırılabilir PDF sayfası"',
@@ -249,12 +295,12 @@ describe("kabuğa bağlanma", () => {
   /** Araçlar eşit ağırlıkta değil: üç gruba ayrılmış ve nadir olanlar katlı. */
   it("araç hiyerarşisi var, on bir araç düz bir yığın değil", () => {
     for (const group of ["Sayfalar", "Belge", "Diğer"]) {
-      expect(html).toContain(group);
+      expect(source).toMatch(new RegExp(`title: '${group}'`));
     }
     // Nadir grup katlı gelir; <details> olmadan hiyerarşi yalnız görsel olurdu.
-    expect(html).toContain("<details");
+    expect(source).toContain("<details");
+    expect(source).toMatch(/keys: \['crop', 'watermark', 'number', 'images'\], collapsed: true/);
     // Ama seçili araç içindeyse açık açılmalı — kullanıcı aracını kaybetmemeli.
-    const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
     expect(source).toContain("open={group.keys.includes(kind)}");
   });
 
@@ -273,6 +319,6 @@ describe("kabuğa bağlanma", () => {
       "Sayfa numarası",
       "PDF → PNG/JPG",
     ])
-      expect(html).toContain(label);
+      expect(source).toContain(label);
   });
 });

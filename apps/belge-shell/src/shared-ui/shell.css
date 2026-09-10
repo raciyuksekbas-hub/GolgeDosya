@@ -830,11 +830,12 @@ input[type="number"] {
 .flow-target { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.012em; }
 .row-end { display: flex; gap: var(--space-2); justify-content: flex-end; }
 
-/* Denetle — bulgu yok. Optik olarak üst-orta bölgede, iki satır. Kutu, kart,
-   ikon ve başarı rengi yok: iyi sonuç kendini bağırmaz. */
+/* Denetle — bulgu yok. Optik olarak üst-orta bölgede: sonuç, tek satır açıklama
+   ve belge künyesi. Kutu, kart, ikon ve başarı rengi yok: iyi sonuç kendini
+   bağırmaz. */
 .review-clear {
   display: grid;
-  grid-template-rows: 38fr auto 62fr;
+  grid-template-rows: 38fr auto auto 62fr;
   flex: 1;
   justify-items: center;
   min-height: 200px;
@@ -851,6 +852,14 @@ input[type="number"] {
   max-width: 44ch;
   margin: var(--space-2) 0 0;
   color: var(--text-secondary);
+}
+/* İncelemenin gerçekten yapıldığını gösteren künye. Tek satır, sessiz. */
+.review-clear-meta {
+  grid-row: 4;
+  align-self: start;
+  margin: var(--space-5) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
 }
 
 /* Belge hakkında ikincil bilgi — sayaçlar, özet, not. */

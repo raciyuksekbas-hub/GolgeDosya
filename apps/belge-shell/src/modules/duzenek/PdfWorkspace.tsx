@@ -17,8 +17,12 @@
  *
  * Kabuk yokken (sunucu tarafı render) bar ve panel içeriği olduğu yerde satır
  * içi çizilir; hiçbir yüzey kaybolmaz.
+ *
+ * Yüzeyler belgenin durumuna bağlıdır (`workspaceSurfaces`): belge açılamadıysa
+ * ya da henüz yoksa ne araç paneli ne de sayfa şeridi çizilir — kullanılamayan
+ * araçları soluk göstermek yerine hata/boş durum tam genişliği alır.
  */
-import { rotatePages, previewGeometry, type PreviewMode } from './pdfWorkspaceState';
+import { rotatePages, previewGeometry, workspaceSurfaces, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { copyDestination } from './copyDestination';
 import React, { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -128,6 +132,9 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
 export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPaths }) => {
     const [kind, setKind] = useState<Kind>('merge'), [sources, setSources] = useState<SourceFile[]>([]), [order, setOrder] = useState<Page[]>([]), [selected, setSelected] = useState<string[]>([]), [current, setCurrent] = useState(''), [zoom, setZoom] = useState<PreviewMode>('fit-page');
     const [rotations, setRotations] = useState<Record<string, number>>({});
+    // "Sayfa yok" ile "belge açılamadı" aynı şey değildir: araç paneli yalnız
+    // açık bir belge oturumunda çizilir, sayfa şeridi ise gerçekten sayfa varken.
+    const [docState, setDocState] = useState<DocumentState>(initialPaths?.length ? 'loading' : 'none');
     const [margin, setMargin] = useState(10), [text, setText] = useState('KOPYA'), [start, setStart] = useState(1), [level, setLevel] = useState('balanced_compression'), [approved, setApproved] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
     const build = (list: SourceFile[]) => { setRotations({}); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
     // Tarama gövdesi, kendi seçicisi ile kabuğun açtığı belgeler arasında ortak.
@@ -135,6 +142,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
         if (!paths.length)
             return;
         setBusy(true);
+        setDocState(previous => previous === 'ready' ? previous : 'loading');
         setStatus('Belgeler inceleniyor…');
         const result = await invoke<ScanBatchResult>('duzenek_scan_source_files', { paths });
         if (result.errors.length)
@@ -143,9 +151,14 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
         build(result.sources);
         setApproved(false);
         setStatus('Belgeler açıldı.');
+        setDocState('ready');
     }
     catch (e) {
         setStatus('Belge açılamadı: ' + String(e));
+        // Açık bir oturum sırasında yapılan ekleme başarısız olursa oturum ayakta
+        // kalır; kullanıcı panelden yeniden deneyebilir. Kabuğun verdiği belge
+        // açılamadıysa oturum hiç kurulmamıştır.
+        setDocState(previous => previous === 'ready' ? previous : 'failed');
     }
     finally {
         setBusy(false);
@@ -221,6 +234,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
         }
     };
     const pageSelection = ['select', 'delete', 'rotate'].includes(kind);
+    const surfaces = workspaceSurfaces(docState, order.length);
     const cannotSave = busy || !sources.length || (sources.some(s => s.is_signed) && !approved) ||
         (['select', 'delete'].includes(kind) && !selected.length) || outputCount === 0 || (kind === 'rotate' && !Object.values(rotations).some(Boolean));
     const pick = (key: Kind) => {
@@ -245,14 +259,14 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
         : null;
 
     return <section className="pdf-root" aria-busy={busy}>
-        <ToolbarActions>
+        {surfaces.tools && <ToolbarActions>
             {kind !== 'raster' && <Button disabled={cannotSave} onClick={() => run(true)}>Klasör seçerek kaydet</Button>}
             <Button variant="primary" disabled={cannotSave} onClick={() => run()}>
                 {busy ? 'PDF hazırlanıyor…' : kind === 'raster' ? 'Görsel paketi kaydet' : 'Yeni PDF kaydet'}
             </Button>
-        </ToolbarActions>
+        </ToolbarActions>}
 
-        <InspectorPanel title="Araç" scope="pdf-root">
+        {surfaces.tools && <InspectorPanel title="Araç" scope="pdf-root">
             <div className="pdf-controls" aria-label="PDF işlem kontrolleri">
                 {TOOL_GROUPS.map(group => {
                     const buttons = group.keys.map(key =>
@@ -296,12 +310,12 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
                     <p className="tool-hint">Yeni bir kopya oluşturulur; kaynak belgeleriniz korunur.</p>
                 </InspectorSection>
             </div>
-        </InspectorPanel>
+        </InspectorPanel>}
 
-        {/* Sayfa şeridi yalnız gösterilecek sayfa varken açılır; belge yokken
-            132 px'lik boş bir bant çizmez ve belge alanı tam genişliği alır. */}
-        <div className="pdf-workspace-layout" data-pages={order.length > 0}>
-            {order.length > 0 && <aside className="thumbnail-list" aria-label="Sayfa önizlemeleri">{order.map((item, index) => <div key={item.key} className={`thumbnail ${item.key === current ? 'current' : ''} ${selected.includes(item.key) ? 'selected' : ''} ${kind === 'delete' && selected.includes(item.key) ? 'removed' : ''}`}>
+        {/* Şerit yalnız gösterilecek sayfa varken açılır; belge yokken 132 px'lik
+            boş bir bant çizmez ve hata/boş durum tam genişliği alır. */}
+        <div className="pdf-workspace-layout" data-pages={surfaces.strip}>
+            {surfaces.strip && <aside className="thumbnail-list" aria-label="Sayfa önizlemeleri">{order.map((item, index) => <div key={item.key} className={`thumbnail ${item.key === current ? 'current' : ''} ${selected.includes(item.key) ? 'selected' : ''} ${kind === 'delete' && selected.includes(item.key) ? 'removed' : ''}`}>
                 <button className="thumbnail-image-button" aria-label={`${item.source.file_name} sayfa ${item.page} görüntüle`} onClick={() => setCurrent(item.key)}><Preview item={item} rotation={rotations[item.key] || 0}/></button>
                 <span className="thumbnail-no">{index + 1}<span className="sr-only">. çıktı sırası · Kaynak s. {item.page}</span></span>
                 {pageSelection && <label className="thumbnail-pick"><input type="checkbox" checked={selected.includes(item.key)} onChange={() => toggle(item.key)}/>{kind === 'delete' ? 'Çıkar' : kind === 'rotate' ? 'Döndür' : 'Dahil et'}</label>}

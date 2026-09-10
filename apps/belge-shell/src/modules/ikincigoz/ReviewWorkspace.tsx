@@ -45,6 +45,108 @@ function markedRange(location: Finding["location"]): [number, number] | null {
 }
 
 /**
+ * Barın eylemi ve sağdaki denetim özeti.
+ *
+ * Yalnız bulgu varken vardır. Sıfır bulguda panel üç kez "0" yazan bir sütuna
+ * dönüyor, boş-başarı durumunu ikiye bölüyordu; kip o durumda üçüncü kolonu
+ * hiç açmaz. Sayı ve ciddiyet anlamları değişmedi — yalnız çizildikleri koşul.
+ */
+export function ReviewChrome({
+  result,
+  fixable,
+  selected,
+  onApply,
+  onSelectAll,
+  onClearSelection,
+}: {
+  result: AnalysisResult;
+  fixable: Finding[];
+  selected: Set<string>;
+  onApply: () => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+}) {
+  if (result.findings.length === 0) return null;
+  const doc = result.document;
+
+  return (
+    <>
+      {fixable.length > 0 ? (
+        <ToolbarActions>
+          <Button variant="primary" onClick={onApply} disabled={selected.size === 0}>
+            Kopyaya uygula…
+          </Button>
+        </ToolbarActions>
+      ) : null}
+
+      <InspectorPanel title="Denetim özeti">
+        <div className="kv">
+          <span className="kv-key">{SEVERITY.error.label}</span>
+          <span className="kv-value">{result.errorCount}</span>
+        </div>
+        <div className="kv">
+          <span className="kv-key">{SEVERITY.warning.label}</span>
+          <span className="kv-value">{result.warningCount}</span>
+        </div>
+        <div className="kv">
+          <span className="kv-key">{SEVERITY.review.label}</span>
+          <span className="kv-value">{result.reviewCount}</span>
+        </div>
+        <p className="tool-hint">
+          {doc.blockCount} paragraf · {doc.wordCount} kelime
+          {result.profileName ? ` · ${result.profileName} profili` : ""}
+        </p>
+        {result.truncatedRules.length > 0 ? (
+          <p className="tool-hint">
+            {result.truncatedRules
+              .map((t) => `${t.total} bulgunun ${t.shown} tanesi gösteriliyor`)
+              .join(" · ")}
+          </p>
+        ) : null}
+
+        {fixable.length > 0 ? (
+          <InspectorSection title="Düzeltmeler">
+            <p className="tool-count">
+              {selected.size} / {fixable.length} düzeltme seçildi.
+            </p>
+            <div className="row">
+              <Button className="btn-sm" onClick={onSelectAll} disabled={selected.size === fixable.length}>
+                Tümünü seç
+              </Button>
+              <Button className="btn-sm" onClick={onClearSelection} disabled={selected.size === 0}>
+                Seçimi kaldır
+              </Button>
+            </div>
+            <p className="tool-hint">
+              Düzeltmeler yeni bir kopyaya yazılır. Kaynak belgeniz değiştirilmez.
+            </p>
+          </InspectorSection>
+        ) : null}
+      </InspectorPanel>
+    </>
+  );
+}
+
+/**
+ * Temiz belge: gösteri değil, sakin bir kapanış.
+ *
+ * Kutu, kart, ikon ya da başarı rengi yok. İncelemenin gerçekten yapıldığını
+ * gösteren belge künyesi tek muted satır olarak burada durur; yalnız bu iki
+ * sayı için sağda bir panel açmak yersizdi.
+ */
+export function ReviewClear({ doc }: { doc: AnalysisResult["document"] }) {
+  return (
+    <div className="review-clear">
+      <p className="review-clear-title">Bulgu bulunmadı</p>
+      <p className="review-clear-note">Bu belge tanımlı kuralların hiçbirine takılmadı.</p>
+      <p className="review-clear-meta">
+        {doc.blockCount} paragraf · {doc.wordCount} kelime incelendi
+      </p>
+    </div>
+  );
+}
+
+/**
  * Denetle — belge incelemesi ve cerrahi düzeltme.
  *
  * Zincir: belge açıldı → incele → bulgular → konum → açıklama → önerilen
@@ -54,6 +156,7 @@ function markedRange(location: Finding["location"]): [number, number] | null {
  * Bulgular satır içi akordeondur ve öyle kalır: kanıt — belgeden alınan
  * paragraf — bulgunun yanında durmalı, yan panele taşınırsa ikisi ayrılır.
  * Sağ panel yalnız özeti ve düzeltme seçimini taşır; birincil eylem barda.
+ * Bulgu yoksa panel de yoktur: gerçek bağlam olmadan üçüncü kolon açılmaz.
  *
  * Parser ve migration ayrıntıları kullanıcıya gösterilmez.
  */
@@ -156,85 +259,22 @@ export function ReviewWorkspace({ path }: { path: string }) {
 
   if (!result) return null;
 
-  const doc = result.document;
-
   return (
     <>
-      {fixable.length > 0 ? (
-        <ToolbarActions>
-          <Button variant="primary" onClick={applyChosen} disabled={selected.size === 0}>
-            Kopyaya uygula…
-          </Button>
-        </ToolbarActions>
-      ) : null}
-
-      <InspectorPanel title="Denetim özeti">
-        <div className="kv">
-          <span className="kv-key">{SEVERITY.error.label}</span>
-          <span className="kv-value">{result.errorCount}</span>
-        </div>
-        <div className="kv">
-          <span className="kv-key">{SEVERITY.warning.label}</span>
-          <span className="kv-value">{result.warningCount}</span>
-        </div>
-        <div className="kv">
-          <span className="kv-key">{SEVERITY.review.label}</span>
-          <span className="kv-value">{result.reviewCount}</span>
-        </div>
-        <p className="tool-hint">
-          {doc.blockCount} paragraf · {doc.wordCount} kelime
-          {result.profileName ? ` · ${result.profileName} profili` : ""}
-        </p>
-        {result.truncatedRules.length > 0 ? (
-          <p className="tool-hint">
-            {result.truncatedRules
-              .map((t) => `${t.total} bulgunun ${t.shown} tanesi gösteriliyor`)
-              .join(" · ")}
-          </p>
-        ) : null}
-
-        {fixable.length > 0 ? (
-          <InspectorSection title="Düzeltmeler">
-            <p className="tool-count">
-              {selected.size} / {fixable.length} düzeltme seçildi.
-            </p>
-            <div className="row">
-              <Button
-                className="btn-sm"
-                onClick={() => setSelected(new Set(fixable.map(key)))}
-                disabled={selected.size === fixable.length}
-              >
-                Tümünü seç
-              </Button>
-              <Button
-                className="btn-sm"
-                onClick={() => setSelected(new Set())}
-                disabled={selected.size === 0}
-              >
-                Seçimi kaldır
-              </Button>
-            </div>
-            <p className="tool-hint">
-              Düzeltmeler yeni bir kopyaya yazılır. Kaynak belgeniz değiştirilmez.
-            </p>
-          </InspectorSection>
-        ) : null}
-      </InspectorPanel>
+      <ReviewChrome
+        result={result}
+        fixable={fixable}
+        selected={selected}
+        onApply={applyChosen}
+        onSelectAll={() => setSelected(new Set(fixable.map(key)))}
+        onClearSelection={() => setSelected(new Set())}
+      />
 
       <div className="surface review">
         {written ? <Status tone="success">{written}</Status> : null}
 
         {result.findings.length === 0 ? (
-          /* Temiz belge, gösteri değil. Büyük yeşil kutu yoktu — küçük olanı da
-             gitti: sonuç zaten iyi haber, vurgulanması gerekmiyor. Sayılar
-             sağdaki özette duruyor; burada tek satır yeter. Ekran okuyucuya
-             sonuç Announcer üzerinden zaten bildiriliyor. */
-          <div className="review-clear">
-            <p className="review-clear-title">Bulgu bulunmadı</p>
-            <p className="review-clear-note">
-              Bu belge tanımlı kuralların hiçbirine takılmadı.
-            </p>
-          </div>
+          <ReviewClear doc={result.document} />
         ) : (
           <>
             <h2 className="section-head" id="bulgu-baslik">
