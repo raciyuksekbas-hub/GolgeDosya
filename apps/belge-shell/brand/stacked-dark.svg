@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 132" width="200" height="132" role="img" aria-label="GölgeDosya">
+  <defs><clipPath id="gd-sd"><rect x="80" y="8" width="40" height="48" rx="7"/></clipPath></defs>
+  <g clip-path="url(#gd-sd)">
+    <rect x="80" y="8" width="40" height="48" fill="#8A6A3E"/>
+    <path d="M80 8 H120 V32 L96 56 H80 Z" fill="#F5F4F1"/>
+  </g>
+  <text x="100" y="97" fill="#F5F4F1" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, &quot;SF Pro Display&quot;, &quot;Segoe UI&quot;, system-ui, sans-serif"
+        font-size="27" font-weight="600" letter-spacing="-0.4">GölgeDosya</text>
+</svg>

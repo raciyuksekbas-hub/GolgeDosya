@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="GölgeDosya">
+  <!-- Koyu zemin için: sayfa kâğıt tonunda, kat pirinç. -->
+  <defs><clipPath id="gd-page-d"><rect x="12" y="8" width="40" height="48" rx="7"/></clipPath></defs>
+  <g clip-path="url(#gd-page-d)">
+    <rect x="12" y="8" width="40" height="48" fill="#8A6A3E"/>
+    <path d="M12 8 H52 V32 L28 56 H12 Z" fill="#F5F4F1"/>
+  </g>
+</svg>

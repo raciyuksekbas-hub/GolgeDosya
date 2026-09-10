@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="GölgeDosya">
+  <!-- Tek renk: kat, aynı mürekkebin yarı örtüklüğüyle okunur. Gravür, damga
+       ve tek renkli baskı için. -->
+  <defs><clipPath id="gd-page-m"><rect x="12" y="8" width="40" height="48" rx="7"/></clipPath></defs>
+  <g clip-path="url(#gd-page-m)" fill="currentColor">
+    <rect x="12" y="8" width="40" height="48" opacity="0.45"/>
+    <path d="M12 8 H52 V32 L28 56 H12 Z"/>
+  </g>
+</svg>
