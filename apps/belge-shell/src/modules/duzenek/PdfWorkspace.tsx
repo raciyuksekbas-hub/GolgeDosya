@@ -298,8 +298,10 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
             </div>
         </InspectorPanel>
 
-        <div className="pdf-workspace-layout">
-            <aside className="thumbnail-list" aria-label="Sayfa önizlemeleri">{order.map((item, index) => <div key={item.key} className={`thumbnail ${item.key === current ? 'current' : ''} ${selected.includes(item.key) ? 'selected' : ''} ${kind === 'delete' && selected.includes(item.key) ? 'removed' : ''}`}>
+        {/* Sayfa şeridi yalnız gösterilecek sayfa varken açılır; belge yokken
+            132 px'lik boş bir bant çizmez ve belge alanı tam genişliği alır. */}
+        <div className="pdf-workspace-layout" data-pages={order.length > 0}>
+            {order.length > 0 && <aside className="thumbnail-list" aria-label="Sayfa önizlemeleri">{order.map((item, index) => <div key={item.key} className={`thumbnail ${item.key === current ? 'current' : ''} ${selected.includes(item.key) ? 'selected' : ''} ${kind === 'delete' && selected.includes(item.key) ? 'removed' : ''}`}>
                 <button className="thumbnail-image-button" aria-label={`${item.source.file_name} sayfa ${item.page} görüntüle`} onClick={() => setCurrent(item.key)}><Preview item={item} rotation={rotations[item.key] || 0}/></button>
                 <span className="thumbnail-no">{index + 1}<span className="sr-only">. çıktı sırası · Kaynak s. {item.page}</span></span>
                 {pageSelection && <label className="thumbnail-pick"><input type="checkbox" checked={selected.includes(item.key)} onChange={() => toggle(item.key)}/>{kind === 'delete' ? 'Çıkar' : kind === 'rotate' ? 'Döndür' : 'Dahil et'}</label>}
@@ -311,7 +313,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
                         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.5V12m-3.5-3.5L8 12l3.5-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </IconButton>
                 </div>}
-            </div>)}</aside>
+            </div>)}</aside>}
 
             <aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">{order.length > 0 && kind !== 'images' ? <>
                 <div className="pdf-strip">

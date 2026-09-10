@@ -80,22 +80,44 @@ describe("yerleşim sözleşmesi", () => {
    * ve panel içeriği satır içi çizilir; hiçbir yüzey kaybolmaz.
    */
   it("pdf_workspace_page_strip_left_document_right", () => {
-    expect(html).toMatch(/class="pdf-workspace-layout"><aside class="thumbnail-list"/);
+    // Sayfa varken: şerit solda, belge sağda. `html` belgesiz çizim olduğu için
+    // şeridin varlığı kaynaktan, ölçüsü CSS'ten doğrulanır.
+    const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
+    expect(source).toMatch(
+      /data-pages=\{order\.length > 0\}>\s*\{order\.length > 0 && <aside className="thumbnail-list"/,
+    );
     for (const width of [1120, 1440]) {
-      const rules = declarations(".pdf-root .pdf-workspace-layout", width);
-      expect(rules.display).toBe("grid");
+      const rules = declarations('.pdf-root .pdf-workspace-layout[data-pages="true"]', width);
       expect(rules["grid-template-columns"]).toBe("132px minmax(0, 1fr)");
     }
     // Dar pencerede şerit daralır ama kaybolmaz: sayfa seçimi Düzenle'nin işi.
-    expect(declarations(".pdf-root .pdf-workspace-layout", 1000)["grid-template-columns"]).toBe(
-      "108px minmax(0, 1fr)",
-    );
+    expect(
+      declarations('.pdf-root .pdf-workspace-layout[data-pages="true"]', 1000)[
+        "grid-template-columns"
+      ],
+    ).toBe("108px minmax(0, 1fr)");
+  });
+
+  it("belge yokken sayfa şeridi çizilmez, belge alanı tam genişlik", () => {
+    // Boş 132 px'lik bant, paketlenmiş uygulamada ölü bir sütun olarak
+    // görünüyordu. Sayfa yoksa şerit yok, ızgara tek sütun.
+    expect(html).not.toContain('class="thumbnail-list"');
+    expect(html).toMatch(/class="pdf-workspace-layout" data-pages="false"/);
+    for (const width of [1000, 1120, 1440]) {
+      const rules = declarations(".pdf-root .pdf-workspace-layout", width);
+      expect(rules.display).toBe("grid");
+      expect(rules["grid-template-columns"]).toBe("minmax(0, 1fr)");
+    }
   });
 
   it("document_area_is_the_widest_surface", () => {
+    // Belge yokken belge alanı ızgaranın tek çocuğudur; sayfa varken şeridin
+    // hemen ardından gelir. İkisinde de tek bir önizleme paneli vardır.
     expect(html).toMatch(
-      /<\/aside><aside class="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">/,
+      /class="pdf-workspace-layout" data-pages="false"><aside class="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">/,
     );
+    const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
+    expect(source).toMatch(/<\/aside>\}\s*\n\s*<aside className="pdf-preview-panel"/);
     expect((html.match(/class="pdf-preview-panel"/g) || []).length).toBe(1);
     expect(html).toMatch(/Belge önizlemesi/);
     for (const width of [1120, 1440]) {

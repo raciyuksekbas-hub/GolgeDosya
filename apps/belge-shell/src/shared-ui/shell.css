@@ -830,6 +830,29 @@ input[type="number"] {
 .flow-target { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.012em; }
 .row-end { display: flex; gap: var(--space-2); justify-content: flex-end; }
 
+/* Denetle — bulgu yok. Optik olarak üst-orta bölgede, iki satır. Kutu, kart,
+   ikon ve başarı rengi yok: iyi sonuç kendini bağırmaz. */
+.review-clear {
+  display: grid;
+  grid-template-rows: 38fr auto 62fr;
+  flex: 1;
+  justify-items: center;
+  min-height: 200px;
+  text-align: center;
+}
+.review-clear-title {
+  grid-row: 2;
+  margin: 0;
+  font-size: var(--text-heading);
+  font-weight: 600;
+}
+.review-clear-note {
+  grid-row: 3;
+  max-width: 44ch;
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+}
+
 /* Belge hakkında ikincil bilgi — sayaçlar, özet, not. */
 .doc-meta {
   max-width: var(--measure);

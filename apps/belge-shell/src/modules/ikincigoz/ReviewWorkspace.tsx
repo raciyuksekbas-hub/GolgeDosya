@@ -225,7 +225,16 @@ export function ReviewWorkspace({ path }: { path: string }) {
         {written ? <Status tone="success">{written}</Status> : null}
 
         {result.findings.length === 0 ? (
-          <Status tone="success">Bu belgede bulgu yok.</Status>
+          /* Temiz belge, gösteri değil. Büyük yeşil kutu yoktu — küçük olanı da
+             gitti: sonuç zaten iyi haber, vurgulanması gerekmiyor. Sayılar
+             sağdaki özette duruyor; burada tek satır yeter. Ekran okuyucuya
+             sonuç Announcer üzerinden zaten bildiriliyor. */
+          <div className="review-clear">
+            <p className="review-clear-title">Bulgu bulunmadı</p>
+            <p className="review-clear-note">
+              Bu belge tanımlı kuralların hiçbirine takılmadı.
+            </p>
+          </div>
         ) : (
           <>
             <h2 className="section-head" id="bulgu-baslik">
