@@ -10,8 +10,9 @@ import { ConvertWorkspace } from "./modules/tavzih/ConvertWorkspace";
 import { ReviewWorkspace } from "./modules/ikincigoz/ReviewWorkspace";
 import { CompareWorkspace } from "./modules/degisikis/CompareWorkspace";
 import { PdfWorkspace } from "./modules/duzenek/PdfWorkspace";
-import { MODES, carryContext, fileNameOf, type ContextOutcome } from "./shell/modes";
-import { Toolbar, ToolbarTitle, ToolbarSpacer, Button, Status } from "./shared-ui/primitives";
+import { carryContext, extensionOf, fileNameOf, type ContextOutcome } from "./shell/modes";
+import { Button, Pill, Status } from "./shared-ui/primitives";
+import { IconDocument } from "./shell/icons";
 import { announce } from "./shared-ui/Announcer";
 import { useShortcuts } from "./shared-ui/useShortcuts";
 
@@ -117,8 +118,6 @@ export function App() {
     ),
   );
 
-  const mode = active ? MODES[active.key] : null;
-
   /** Bu kip, açık belgelerle şu an çalışabiliyor mu? */
   const usable = useMemo(() => {
     if (!active || documents.length === 0) return false;
@@ -126,12 +125,25 @@ export function App() {
     return outcome.kind === "keep";
   }, [active, documents, context]);
 
-  const subtitle = useMemo(() => {
-    if (!mode) return undefined;
-    if (documents.length === 0) return mode.purpose;
-    if (documents.length === 1) return fileNameOf(documents[0]);
-    return documents.map(fileNameOf).join("  ·  ");
-  }, [mode, documents]);
+  /**
+   * Yardımcı barın sol ucu: açık belgenin adı ve türü. Belge yokken boş —
+   * bar sayfa başlığı taşımaz, kip adı kenar çubuğunda zaten seçili.
+   */
+  const barContext = useMemo(() => {
+    if (documents.length === 0) return null;
+    return documents.map((p, i) => (
+      <span key={p} className="doc-chip" title={fileNameOf(p)}>
+        {i > 0 ? (
+          <span className="doc-chip-sep" aria-hidden="true">
+            ↔
+          </span>
+        ) : null}
+        <IconDocument className="sidebar-icon" />
+        <span className="doc-chip-name">{fileNameOf(p)}</span>
+        <Pill>{extensionOf(p)}</Pill>
+      </span>
+    ));
+  }, [documents]);
 
   if (error) {
     return (
@@ -141,11 +153,6 @@ export function App() {
         onNavigate={navigate}
         onOpenSettings={() => setShowSettings(true)}
         openDocuments={[]}
-        toolbar={
-          <Toolbar>
-            <ToolbarTitle title="Yüksekbaş Belge" />
-          </Toolbar>
-        }
       >
         <div className="surface">
           <Status tone="error">Uygulama başlatılamadı. Lütfen yeniden açmayı deneyin.</Status>
@@ -164,16 +171,14 @@ export function App() {
         onNavigate={navigate}
         onOpenSettings={() => setShowSettings(true)}
         openDocuments={documents}
-        toolbar={
-          <Toolbar>
-            <ToolbarTitle title={mode?.label ?? "Yüksekbaş Belge"} subtitle={subtitle} />
-            <ToolbarSpacer />
-            {documents.length > 0 ? (
-              <Button variant="quiet" onClick={closeDocuments}>
-                Kapat
-              </Button>
-            ) : null}
-          </Toolbar>
+        context={barContext}
+        actions={
+          // Home'da bar boştur: tek birincil eylem boş durumdadır (§6, §22).
+          documents.length > 0 ? (
+            <Button variant="quiet" onClick={closeDocuments}>
+              Kapat
+            </Button>
+          ) : null
         }
       >
         {active && settings ? (

@@ -48,7 +48,11 @@ test("anlam hiçbir yerde yalnız renkle verilmez", () => {
 
 test("metin ölçeği kullanıcı ayarına bağlı", () => {
   // Sabit px ile yazılmış gövde metni, metin boyutu ayarını sessizce yok sayar.
-  for (const name of ["--text-title", "--text-heading", "--text-body", "--text-meta"]) {
+  // Satır ve kontrol yükseklikleri de: %200 metni 28px kutuya sığdırmak kırpar.
+  for (const name of [
+    "--text-title", "--text-heading", "--text-body", "--text-meta", "--text-label",
+    "--row-h", "--control-h", "--toolbar-h",
+  ]) {
     const line = tokens.split("\n").find((l) => l.includes(`${name}:`));
     assert.ok(line, `${name} tanımlı olmalı`);
     assert.match(line, /var\(--text-scale\)/, `${name} ölçeğe bağlı olmalı`);

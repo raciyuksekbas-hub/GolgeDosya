@@ -4,9 +4,14 @@
  * Buradaki her sınıf birden çok kipte kullanılır. Bir kipte tek kullanılan
  * görünüm buraya değil, o kipin kendi dosyasına aittir.
  *
+ * Dört yüzey, dört yoğunluk (docs/design/01-referans-analizi.md):
+ *   kenar çubuğu  kompakt   32px satır, 12px dolgu
+ *   yardımcı bar  kompakt   48px, tek satır, sayfa başlığı taşımaz
+ *   workspace     ferah     28–40px dolgu, başlık içeriğin parçası
+ *   sağ panel     orta      içeriden yerleşik, hairline çerçeve, 8px radius
+ *
  * Kanso: bilgi, eylem veya yön üretmeyen öğe yok. Kart yığını yok — yüzeyler
- * düz, ayrımlar ince çizgiyle. Gölge yalnız gerçekten yükselen yüzeyde
- * (sheet, popover) ve o zaman da neredeyse görünmez.
+ * düz, ayrımlar hairline. Gölge yalnız gerçekten yükselen yüzeyde (sheet).
  */
 
 /* ==========================================================================
@@ -20,38 +25,54 @@
   background: var(--surface-app);
 }
 
-.shell[data-sidebar="collapsed"] { grid-template-columns: 0 minmax(0, 1fr); }
+/* Tam ekranda trafik ışıkları çekilir; üst bant küçülür. */
+.shell[data-fullscreen="true"] { --titlebar-h: 12px; }
 
-/* ---------------------------------------------------------------- Sidebar */
+/* ---------------------------------------------------------------- Sidebar
+   Pencerenin tepesine kadar çıkar; trafik ışıkları üst bandında durur. */
 
 .sidebar {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: var(--space-2) 0 var(--space-2);
+  padding: 0 var(--space-3) var(--space-3);
   overflow: hidden;
   background: var(--surface-sidebar);
   border-right: 1px solid var(--border-subtle);
 }
 
-/* Uygulama adı kenar çubuğunda TEKRARLANMAZ: macOS başlık çubuğu onu zaten
-   gösteriyor. Ciddi bir masaüstü aleti adını iki kez yazmaz. Kenar çubuğu
-   pencere düğmelerinin altından başlar. */
-.sidebar { padding-top: var(--space-6); }
+.sidebar-head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--titlebar-h) var(--space-1) var(--space-4);
+}
+
+.sidebar-mark { flex: none; }
+
+.sidebar-brand {
+  overflow: hidden;
+  font-size: var(--text-body);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .sidebar-nav {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 0 var(--space-2);
 }
 
 .sidebar-item {
+  position: relative;
   display: flex;
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-items: center;
   width: 100%;
-  padding: 6px var(--space-2);
+  min-height: var(--row-h);
+  padding: 0 var(--space-2);
   color: var(--text-primary);
   font: inherit;
   text-align: left;
@@ -63,100 +84,127 @@
 }
 
 .sidebar-item:hover:not(:disabled) { background: var(--surface-hover); }
+
+/* Seçili: tonal yüzey + solda 2px vurgu işareti. Vurgu alanı boyamaz. */
 .sidebar-item[aria-current="page"] {
-  color: var(--accent);
   font-weight: 500;
-  background: var(--accent-quiet);
+  background: var(--surface-selected);
+}
+.sidebar-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
 }
 .sidebar-item[aria-current="page"] .sidebar-icon { opacity: 1; }
 .sidebar-item:disabled { color: var(--text-muted); }
-.sidebar-item:disabled .sidebar-icon { opacity: 0.3; }
+.sidebar-item:disabled .sidebar-icon { opacity: 0.35; }
 
 .sidebar-icon {
   flex: none;
   width: 16px;
   height: 16px;
-  opacity: 0.72;
+  opacity: 0.8;
+}
+
+/* Grup: hairline + küçük BÜYÜK HARF etiket. */
+.sidebar-group {
+  padding: var(--space-3) 0 0;
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sidebar-label {
+  padding: 0 var(--space-2) var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.sidebar-doc {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  color: var(--text-secondary);
+}
+.sidebar-doc > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-spacer { flex: 1; }
 
 .sidebar-footer {
-  padding: var(--space-2) var(--space-2) 0;
+  padding-top: var(--space-2);
   border-top: 1px solid var(--border-subtle);
-  margin: 0 var(--space-2);
 }
 
-/* Açık belge — kenar çubuğunun altında, bağlamı görünür tutar. */
-.sidebar-context {
-  padding: var(--space-3) var(--space-4) var(--space-2);
-  overflow: hidden;
-}
-
-.sidebar-context-label {
-  color: var(--text-muted);
-  font-size: var(--text-meta);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.sidebar-context-name {
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-size: var(--text-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ---------------------------------------------------------------- İçerik */
+/* ---------------------------------------------------------------- İçerik
+   Yardımcı bar üstte tek satır; altında workspace ve (varsa) sağ panel. */
 
 .content {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(var(--toolbar-h), auto) minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
-  background: var(--surface-raised);
+  background: var(--surface-workspace);
 }
 
-/* Toolbar: başlık ve bağlamsal eylemler tek satırda. Ayrı bir "sayfa
-   başlığı" bloğu yok — dikey alan belgeye ait. */
 .toolbar {
+  grid-column: 1 / -1;
   display: flex;
-  flex: none;
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-items: center;
-  min-height: var(--toolbar-h);
-  padding: 0 var(--space-4);
-  background: var(--surface-raised);
+  min-width: 0;
+  padding: 0 var(--space-4) 0 var(--space-5);
+  background: var(--surface-app);
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.toolbar-title {
+/* Sol uç: belge bağlamı. Belge yokken boş ve sakin. */
+.toolbar-context {
   display: flex;
-  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
   min-width: 0;
-  gap: 1px;
 }
 
-.toolbar-title h1 {
-  margin: 0;
+.doc-chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.doc-chip .sidebar-icon { opacity: 0.7; }
+.doc-chip-name {
   overflow: hidden;
-  font-size: var(--text-heading);
-  font-weight: 600;
-  letter-spacing: -0.006em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.toolbar-subtitle {
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-size: var(--text-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.doc-chip-sep { color: var(--text-muted); }
 
 .toolbar-spacer { flex: 1; min-width: var(--space-4); }
+
+.toolbar-shell,
+.toolbar-actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  align-items: center;
+}
+.toolbar-actions:empty { display: none; }
 
 .toolbar-group {
   display: flex;
@@ -171,54 +219,164 @@
   background: var(--border-subtle);
 }
 
+/* Eski başlık bloğu: yalnız açılış hatası ekranında (bkz. App.tsx). */
+.toolbar-title { display: flex; flex-direction: column; min-width: 0; }
+.toolbar-title h1 {
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--text-body);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toolbar-subtitle {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .content-body {
-  flex: 1;
+  grid-row: 2;
+  grid-column: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
 }
 
 .content-body:focus { outline: none; }
 
-/* Kip yüzeyi: içeriğin nefes aldığı ölçülü kolon. */
+/* ------------------------------------------------------------- Inspector
+   İçeriden yerleşik panel: yüzeye gömülü değil, üstten/sağdan/alttan
+   --inspector-inset kadar içeride. Yalnız gösterilecek içerik varken var. */
+
+.inspector-slot {
+  grid-row: 2;
+  grid-column: 2;
+  width: calc(var(--inspector-w) + var(--inspector-inset));
+  min-height: 0;
+  padding: var(--inspector-inset) var(--inspector-inset) var(--inspector-inset) 0;
+}
+
+.inspector {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.inspector-head {
+  flex: none;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+}
+
+.inspector-title,
+.inspector-label {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.inspector-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--space-4) var(--space-4);
+  overflow: auto;
+}
+.inspector-body > * + * { margin-top: var(--space-3); }
+
+.inspector-section + .inspector-section {
+  padding-top: var(--space-4);
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.inspector-section > .inspector-label { margin-bottom: var(--space-2); }
+
+/* Panelde anahtar–değer satırı: "Kesin hata   4". */
+.kv {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  justify-content: space-between;
+  min-height: 24px;
+}
+.kv-key { color: var(--text-secondary); }
+.kv-value { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------- Workspace
+   İçeriğin nefes aldığı yüzey. Başlık içeriğin parçası, üstten nefesli. */
+
 .surface {
-  max-width: 780px;
-  padding: var(--space-6) var(--space-5) var(--space-7);
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  max-width: 1040px;
+  padding: var(--space-6) var(--space-7) var(--space-6);
 }
 
 .surface-wide { max-width: none; padding: 0; }
+
+.workspace-head {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+}
+.workspace-head-text { min-width: 0; }
+.workspace-title {
+  margin: 0;
+  font-size: var(--text-title);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.2;
+}
+.workspace-state {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+}
+.workspace-head-actions { display: flex; flex: none; gap: var(--space-2); }
 
 /* ==========================================================================
    İlkeller
    ========================================================================== */
 
-/* ---------------------------------------------------------------- Button */
+/* ---------------------------------------------------------------- Button
+   Kompakt: 28px. Birincil vurgu dolgulu, ikincil tonal + hairline. */
 
 .btn {
   display: inline-flex;
   gap: 6px;
   align-items: center;
   justify-content: center;
-  min-height: 26px;
+  min-height: var(--control-h);
   padding: 0 var(--space-3);
   color: var(--text-primary);
   font: inherit;
+  font-weight: 500;
   white-space: nowrap;
-  background: var(--surface-raised);
-  border: 1px solid var(--border-strong);
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   transition:
     background var(--motion-fast) var(--ease),
     border-color var(--motion-fast) var(--ease);
 }
 
-.btn:hover:not(:disabled) { background: var(--surface-hover); }
+.btn:hover:not(:disabled) { background: var(--surface-selected); border-color: var(--border-strong); }
 .btn:active:not(:disabled) { background: var(--surface-selected); }
 .btn:disabled { color: var(--text-muted); border-color: var(--border-subtle); }
 
 .btn-primary {
   color: var(--on-accent);
-  font-weight: 500;
   background: var(--accent);
   border-color: transparent;
 }
@@ -227,6 +385,7 @@
 
 .btn-quiet {
   color: var(--text-secondary);
+  font-weight: 400;
   background: none;
   border-color: transparent;
 }
@@ -237,6 +396,8 @@
 
 .btn-danger { color: var(--danger); border-color: var(--border-strong); }
 
+.btn-sm { min-height: 24px; padding: 0 var(--space-2); font-size: var(--text-meta); }
+
 /* ------------------------------------------------------------ IconButton */
 
 .icon-btn {
@@ -244,23 +405,41 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 26px;
-  color: var(--text-primary);
+  width: var(--control-h);
+  height: var(--control-h);
+  color: var(--text-secondary);
   background: none;
   border: 1px solid transparent;
   border-radius: var(--radius);
   transition: background var(--motion-fast) var(--ease);
 }
 
-.icon-btn:hover:not(:disabled) { background: var(--surface-hover); }
+.icon-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-hover); }
 .icon-btn:active:not(:disabled) { background: var(--surface-selected); }
 .icon-btn:disabled { color: var(--text-muted); }
 .icon-btn[aria-pressed="true"] {
-  color: var(--accent);
-  background: var(--accent-quiet);
+  color: var(--text-primary);
+  background: var(--surface-selected);
 }
 .icon-btn svg { width: 16px; height: 16px; }
+
+/* ------------------------------------------------------------------ Pill
+   Tür rozeti. Tek renk, hairline; anlam metinle. */
+
+.pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  color: var(--text-secondary);
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
 
 /* --------------------------------------------------------------- Divider */
 
@@ -271,58 +450,59 @@
   margin: var(--space-5) 0;
 }
 
-/* -------------------------------------------------------- Section header */
+/* -------------------------------------------------------- Section header
+   Küçük BÜYÜK HARF etiket; üstünde hairline. */
+
+.section { padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
+.section + .section { margin-top: var(--space-5); }
 
 .section-head {
   margin: 0 0 var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--text-meta);
+  color: var(--text-secondary);
+  font-size: var(--text-label);
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
-.section + .section { margin-top: var(--space-6); }
+/* ------------------------------------------------------------ EmptyState
+   Optik üst-orta: kalan alanın %38'inde. Kart içinde değil. */
 
-/* ------------------------------------------------------------ EmptyState */
-
-.empty {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-7) var(--space-5);
-  text-align: center;
-}
-
-.empty-icon { color: var(--text-muted); opacity: 0.55; }
-.empty-primary { font-size: var(--text-heading); font-weight: 500; }
-.empty-hint { color: var(--text-secondary); }
-.empty-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
-
-/* Sürükle-bırak hedefi: kesikli çerçeve yalnız üzerine gelindiğinde belirir. */
 .dropzone {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-7) var(--space-5);
-  text-align: center;
+  display: grid;
+  flex: 1;
+  grid-template-rows: 38fr auto 62fr;
+  min-height: 220px;
   border: 1px dashed transparent;
   border-radius: var(--radius-lg);
   transition:
     background var(--motion) var(--ease),
     border-color var(--motion) var(--ease);
 }
+.dropzone > .empty { grid-row: 2; }
 
 .dropzone[data-over="true"] {
   background: var(--accent-quiet);
   border-color: var(--accent);
 }
 
-/* --------------------------------------------------------------- FileRow */
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  text-align: center;
+}
+
+.empty-icon { color: var(--text-muted); opacity: 0.7; margin-bottom: var(--space-1); }
+.empty-primary { font-size: var(--text-heading); font-weight: 600; }
+.empty-hint { max-width: 44ch; color: var(--text-secondary); }
+.empty-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+
+/* --------------------------------------------------------------- FileRow
+   Liste: hairline ayırıcı, sağda tür rozeti ve soluk zaman. Kart değil. */
 
 .file-list { padding: 0; margin: 0; list-style: none; }
 .file-list li + li { border-top: 1px solid var(--border-subtle); }
@@ -330,9 +510,10 @@
 .file-row {
   display: flex;
   gap: var(--space-3);
-  align-items: baseline;
+  align-items: center;
   width: 100%;
-  padding: 7px var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-2);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -354,16 +535,16 @@ button.file-row:hover { background: var(--surface-hover); }
 
 .file-kind {
   flex: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: var(--text-meta);
-  text-transform: uppercase;
 }
 
 .file-time {
   flex: none;
-  min-width: 8ch;
-  color: var(--text-muted);
+  min-width: 9ch;
+  color: var(--text-secondary);
   font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
@@ -375,6 +556,7 @@ button.file-row:hover { background: var(--surface-hover); }
   gap: var(--space-2);
   align-items: baseline;
   padding: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-4);
   color: var(--text-secondary);
   background: var(--surface-sunken);
   border-radius: var(--radius);
@@ -418,50 +600,6 @@ button.file-row:hover { background: var(--surface-hover); }
   transition: width var(--motion) var(--ease);
 }
 
-/* ------------------------------------------------------------- Inspector
-   Yalnız gösterilecek içerik varken görünür. Boşsa hiç yok. */
-
-.workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  height: 100%;
-  min-height: 0;
-}
-
-.workspace[data-inspector="true"] {
-  grid-template-columns: minmax(0, 1fr) var(--inspector-w);
-}
-
-.inspector {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: auto;
-  background: var(--surface-raised);
-  border-left: 1px solid var(--border-subtle);
-}
-
-.inspector-head {
-  display: flex;
-  flex: none;
-  gap: var(--space-2);
-  align-items: center;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.inspector-title {
-  flex: 1;
-  font-size: var(--text-meta);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.inspector-body { padding: var(--space-4); }
-.inspector-body > * + * { margin-top: var(--space-3); }
-
 /* ----------------------------------------------------------- Dialog/Sheet
    macOS sheet: üstten iner, pencereye bağlıdır. */
 
@@ -494,11 +632,14 @@ button.file-row:hover { background: var(--surface-hover); }
 .sheet-head {
   padding: var(--space-5) var(--space-5) var(--space-3);
 }
-.sheet-head h2 {
+.sheet-head h2,
+.sheet > h2 {
   margin: 0;
   font-size: var(--text-heading);
   font-weight: 600;
 }
+.sheet > h2 { padding: var(--space-5) var(--space-5) var(--space-3); }
+.sheet > .selectable, .sheet > p { padding: 0 var(--space-5); }
 .sheet-body { padding: 0 var(--space-5) var(--space-4); }
 .sheet-actions {
   display: flex;
@@ -514,7 +655,8 @@ button.file-row:hover { background: var(--surface-hover); }
   gap: var(--space-4);
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-2) 0;
+  min-height: 36px;
+  padding: var(--space-1) 0;
 }
 
 .field + .field { border-top: 1px solid var(--border-subtle); }
@@ -528,7 +670,7 @@ button.file-row:hover { background: var(--surface-hover); }
 select,
 input[type="text"],
 input[type="number"] {
-  min-height: 24px;
+  min-height: 26px;
   padding: 2px var(--space-2);
   color: var(--text-primary);
   font: inherit;
@@ -562,6 +704,7 @@ input[type="number"] {
   gap: var(--space-3);
   align-items: baseline;
   width: 100%;
+  min-height: 36px;
   padding: var(--space-2) var(--space-2);
   color: inherit;
   font: inherit;
@@ -583,15 +726,15 @@ input[type="number"] {
   text-align: center;
 }
 
-/* Metin etiketi — "Hata", "Uyarı", "İnceleme". */
+/* Metin etiketi — "Kesin hata", "Uyarı", "İncele". */
 .finding-sev {
   flex: none;
-  /* En uzun etiket "İNCELEME" (8 karakter). Dar bırakılırsa o satırın başlığı
-     diğerlerinden sağa kayar ve liste hizasını kaybeder. */
-  min-width: 9ch;
-  font-size: var(--text-meta);
+  /* En uzun etiket "KESİN HATA" (10 karakter). Dar bırakılırsa o satırın
+     başlığı diğerlerinden sağa kayar ve liste hizasını kaybeder. */
+  min-width: 11ch;
+  font-size: var(--text-label);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
@@ -599,7 +742,7 @@ input[type="number"] {
 
 .finding-loc {
   flex: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
 }
@@ -612,7 +755,7 @@ input[type="number"] {
 .finding[data-severity="review"] .finding-sev { color: var(--review); }
 
 .finding-body {
-  padding: 0 var(--space-2) var(--space-4) calc(1.1em + 9ch + var(--space-3) * 2);
+  padding: 0 var(--space-2) var(--space-4) calc(1.1em + 11ch + var(--space-3) * 2);
 }
 .finding-body > * + * { margin-top: var(--space-2); }
 .finding-message { margin: 0; max-width: var(--measure); }
@@ -698,10 +841,10 @@ input[type="number"] {
 .settings-group + .settings-group { margin-top: var(--space-5); }
 .settings-group > h3 {
   margin: 0 0 var(--space-1);
-  color: var(--text-muted);
-  font-size: var(--text-meta);
+  color: var(--text-secondary);
+  font-size: var(--text-label);
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 .settings-about {

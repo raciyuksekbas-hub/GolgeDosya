@@ -53,19 +53,48 @@ export const IconReview = ({ className }: P) => (
   </svg>
 );
 
-/** Belge yüzeyi boş durumu. */
+/** Belge yüzeyi boş durumu — küçük, dekoratif değil. */
 export const IconDocumentLarge = ({ className }: P) => (
   <svg
     {...base}
-    width={44}
-    height={44}
-    viewBox="0 0 44 44"
-    strokeWidth={1.1}
+    width={28}
+    height={28}
+    viewBox="0 0 28 28"
+    strokeWidth={1.2}
     className={className}
   >
-    <path d="M26.5 4.5H12a3 3 0 0 0-3 3v29a3 3 0 0 0 3 3h20a3 3 0 0 0 3-3V13z" />
-    <path d="M26.5 4.5V13H35" />
-    <path d="M15 21h14M15 26.5h14M15 32h9" />
+    <path d="M16.5 3.5H8a2 2 0 0 0-2 2v17a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+    <path d="M16.5 3.5V9H22" />
+    <path d="M10 14h8M10 17.5h8M10 21h5" />
+  </svg>
+);
+
+/** Tek belge — kenar çubuğu bağlamı ve bar çipi. */
+export const IconDocument = ({ className }: P) => (
+  <svg {...base} className={className}>
+    <path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z" />
+    <path d="M9.4 1.8v3h3" />
+    <path d="M5.8 8h4.4M5.8 10.4h3" />
+  </svg>
+);
+
+/** Sağ panel — göster/gizle. */
+export const IconPanel = ({ className }: P) => (
+  <svg {...base} className={className}>
+    <rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.2" />
+    <path d="M9.6 2.8v10.4" />
+  </svg>
+);
+
+/**
+ * Uygulama işareti — tek renkli çizgi glif (Dock simgesindeki belge).
+ * Kenar çubuğunda tek vurgu taşıyıcı seçili kipin işaretidir; işaret renkli
+ * olsaydı ikinci bir vurgu taşıyıcı olurdu.
+ */
+export const AppMark = ({ className }: P) => (
+  <svg {...base} width={18} height={18} viewBox="0 0 16 16" strokeWidth={1.4} className={className}>
+    <rect x="1.5" y="1.5" width="13" height="13" rx="3.2" />
+    <path d="M5.2 5.6h5.6M5.2 8h5.6M5.2 10.4h3.4" />
   </svg>
 );
 

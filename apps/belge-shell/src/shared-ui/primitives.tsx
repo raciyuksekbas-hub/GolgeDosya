@@ -155,32 +155,34 @@ export function Status({
   );
 }
 
-/* -------------------------------------------------------------- Inspector
-   İçerik yoksa hiç çizilmez — boş bir üçüncü kolon açılmaz. */
+/* ------------------------------------------------------------------- Pill
+   Tür rozeti: hairline çerçeve, tek renk, BÜYÜK HARF. Renkli rozet değil. */
 
-export function Inspector({
+export function Pill({ children, className }: { children: ReactNode; className?: string }) {
+  return <span className={`pill${className ? ` ${className}` : ""}`}>{children}</span>;
+}
+
+/* --------------------------------------------------------- WorkspaceHead
+   Workspace başlığı içeriğin parçasıdır: üstten nefesli, altında DURUM
+   satırı. Chrome bandı değil. */
+
+export function WorkspaceHead({
   title,
+  state,
   children,
-  onClose,
 }: {
   title: string;
-  children: ReactNode;
-  onClose?: () => void;
+  state?: ReactNode;
+  children?: ReactNode;
 }) {
   return (
-    <aside className="inspector" aria-label={title}>
-      <div className="inspector-head">
-        <span className="inspector-title">{title}</span>
-        {onClose ? (
-          <IconButton label="Paneli kapat" onClick={onClose}>
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-          </IconButton>
-        ) : null}
+    <div className="workspace-head">
+      <div className="workspace-head-text">
+        <h1 className="workspace-title">{title}</h1>
+        {state ? <p className="workspace-state">{state}</p> : null}
       </div>
-      <div className="inspector-body">{children}</div>
-    </aside>
+      {children ? <div className="workspace-head-actions">{children}</div> : null}
+    </div>
   );
 }
 

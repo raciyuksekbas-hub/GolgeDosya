@@ -109,3 +109,42 @@ Spacer) · Section · Divider · EmptyState · Status · Inspector · Field.
 `aria-label` olur. Tooltip tek başına ekran okuyucuya yetmez.
 
 `Status` her tonu bir işaretle eşler; renk tek taşıyıcı değildir.
+
+## Görsel yeniden kompozisyon (2026-09-10)
+
+Tasarım turu sonundaki kabuk sahibi tarafından reddedildi: başlık çubuğunun
+altında ikinci bir bant, yönsüz boş çalışma alanı, ortada küçük bir CTA. Yeni
+referans NöbetçiTakvim ürün ailesi. Ölçüm ve tercüme
+`docs/design/01-referans-analizi.md`, yerleşim `docs/design/02-yerlesim-haritasi.md`.
+
+Aşağıdaki kayıtlı kararlar **bilinçli olarak geçersizleşti**:
+
+- *"Uygulama adı kenar çubuğunda tekrarlanmaz"* (4c12917 / 4c12689): pencere
+  başlığı artık gizli (`titleBarStyle: Overlay`, `hiddenTitle`), dolayısıyla ad
+  yalnız kenar çubuğunun kimlik bloğunda yaşar — tek renkli işaret + ad, slogan
+  yok.
+- *"Düzenle ve Karşılaştır migration dondurması"* (`PdfWorkspace.tsx`,
+  `pdf.css`, `compare.css` başlık yorumları): yerleşim ve panel sunumu yeniden
+  kompoze edilir. Dondurulmuş olan yalnız **motor ve davranış**tır: `duzenek_*`
+  komut kümesi, `rotatePages/previewGeometry`, `compare.css`'in belge satırı /
+  fragment / ray kuralları (`:243-334` eski numaralandırma), satır eşitleme DOM
+  sözleşmesi. Bu davranışlar için testler korunur; yerleşim testleri aynı
+  commit'te yeni kompozisyonu tarif edecek biçimde yenilenir.
+- Token sayıları: 19/15/13/11.5 → 20/15/13/12 + 11 etiket; 204/288/44 →
+  232/300/48; yükseklikler metin ölçeğine bağlı.
+- Inspector: kabuk artık gerçekten çiziyor (`src/shell/chrome.tsx`,
+  `InspectorPanel`), içeriden yerleşik panel olarak. Home'da hiçbir kipte panel
+  yok. `Inspector` ilkeli kaldırıldı.
+- Odak rengi sistem mavisi kalır (şartname §16'daki "focus" kaleminden bilinçli
+  sapma): vurgu dolgulu birincil düğme üzerinde de görünür.
+- `compare.css`'in bağımsız uygulamadan kalan 159 ölü/kapsamsız kuralı silindi
+  (kabuk, kenar çubuğu, topbar, hakkında, güncelleme, toast, açılış animasyonu,
+  küresel `button`/`::selection`/kaydırma çubuğu/odak/hareket kuralları). Kabuğun
+  `.sidebar`'ına `gap: 2px` sızdırıyor ve temanın "OS azalt dese de göster"
+  tercihini eziyordu.
+- Pencere: 1280×800 varsayılan (kabul edilen tam kompozisyon ilk açılış olsun),
+  minHeight 600 (şartnamedeki 900×600 ulaşılabilir olsun). Örtüşük başlık
+  çubuğu bir pencere görünümü ayarıdır; yetenek listesi değişmedi
+  (`allow-start-dragging` artık tüketiliyor). Tam ekranda üst bant 12 px.
+  Açılışta ~100 ms açık chrome karesi kabul edildi; tema-başına arka plan için
+  yetenek genişletilmez.
