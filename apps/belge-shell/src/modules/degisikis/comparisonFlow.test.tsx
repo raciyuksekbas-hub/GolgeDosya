@@ -69,7 +69,6 @@ describe("karşılaştırma akışı: motordan raya, panele ve rapora", () => {
         filteredChanges={changes}
         selectedChange={selected}
         onSelect={() => undefined}
-        onClose={() => undefined}
       />,
     );
     expect(markup).toContain("TEMEL SÜRÜM");
@@ -77,7 +76,10 @@ describe("karşılaştırma akışı: motordan raya, panele ve rapora", () => {
     expect(markup).toContain(selected.sectionLabel);
     expect(markup).toContain(selected.displayIndex);
     expect(markup).toContain(`%${summary.addedPct}`);
-    expect(markup).toContain("donut");
+    // Oran halkası kaldırıldı: 300 px'lik panelde üç sayı ve üç yüzde daha
+    // hızlı okunur. Sayılar view model'den; panel kendi grafiğini çizmez.
+    expect(markup).not.toContain("<svg");
+    expect(markup).toContain(`>${summary.added}<`);
   });
 
   it("seçim yokken panel seçim çağrısı yapar, ayrıntı yerine yönlendirme gösterir", () => {
@@ -86,7 +88,7 @@ describe("karşılaştırma akışı: motordan raya, panele ve rapora", () => {
       <ChangeInspector
         summary={summary} changes={changes} filter="all"
         onFilterChange={() => undefined} filteredChanges={changes}
-        selectedChange={undefined} onSelect={() => undefined} onClose={() => undefined}
+        selectedChange={undefined} onSelect={() => undefined}
       />,
     );
     expect(markup).toContain("Rayda ya da listede bir fark seçin.");
@@ -99,7 +101,7 @@ describe("karşılaştırma akışı: motordan raya, panele ve rapora", () => {
       <ChangeInspector
         summary={summary} changes={changes} filter="added"
         onFilterChange={() => undefined} filteredChanges={added}
-        selectedChange={undefined} onSelect={() => undefined} onClose={() => undefined}
+        selectedChange={undefined} onSelect={() => undefined}
       />,
     );
     expect(markup).toContain(`${added.length} / ${summary.total} gösteriliyor`);

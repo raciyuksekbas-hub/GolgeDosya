@@ -10,6 +10,7 @@ import { ChangeInspector } from "./ChangeInspector";
 import { useRowHeightSync } from "./useRowHeightSync";
 import { announce } from "../../shared-ui/Announcer";
 import { Status } from "../../shared-ui/primitives";
+import { InspectorPanel } from "../../shell/chrome";
 import "./compare.css";
 
 function baseName(path: string): string {
@@ -35,9 +36,13 @@ type Loaded = { path: string; doc: LocalDocument };
  * Karşılaştır — iki belge arasındaki değişiklikler.
  *
  * Motor değiştirilmedi: `extractDocument` (mammoth / pdfjs / fflate) ve
- * `compareDocuments` bağımsız uygulamadaki hâlleriyle çalışıyor. Bu bileşen
- * yalnız kabuğun belge akışını o motora bağlar ve sonucu taşınan
- * DocumentPane / ChangeRail / ChangeInspector bileşenleriyle çizer.
+ * `compareDocuments` bağımsız uygulamadaki hâlleriyle çalışıyor. Satır
+ * hizalama, fark rayı ve diff işaretleme de aynı.
+ *
+ * Değişen: kendi araç çubuğu kalktı. Belge adları yardımcı barın bağlamında
+ * (kabuk çiziyor), özet ve filtre kabuğun sağ panelinde. Her kontrolün tek bir
+ * evi var: sürüm değiştirme rayın başında, filtre panelde, paneli gizleme
+ * bardaki "Ayrıntılar" düğmesinde.
  */
 export function CompareWorkspace({ paths }: { paths: string[] }) {
   const [docs, setDocs] = useState<[Loaded, Loaded] | null>(null);
@@ -45,7 +50,6 @@ export function CompareWorkspace({ paths }: { paths: string[] }) {
   const [failure, setFailure] = useState<string | null>(null);
   const [filter, setFilter] = useState<ChangeFilter>("all");
   const [selected, setSelected] = useState<string | undefined>(undefined);
-  const [showSummary, setShowSummary] = useState(false);
 
   const basePane = useRef<HTMLDivElement | null>(null);
   const revisedPane = useRef<HTMLDivElement | null>(null);
@@ -148,24 +152,24 @@ export function CompareWorkspace({ paths }: { paths: string[] }) {
 
   return (
     <div className="compare-root">
-      <div className="compare-toolbar">
-        <span className="compare-names">
-          {baseName(docs[0].path)} <span aria-hidden="true">↔</span> {baseName(docs[1].path)}
-        </span>
-        <span className="compare-summary" role="status">
-          {model.summary.total === 0
-            ? "Fark bulunamadı."
-            : `${model.summary.added} ekleme · ${model.summary.removed} silme · ${model.summary.modified} değişiklik`}
-        </span>
-        <button
-          type="button"
-          className="btn"
-          aria-expanded={showSummary}
-          onClick={() => setShowSummary((v) => !v)}
-        >
-          Fark Özeti
-        </button>
-      </div>
+      <InspectorPanel title="Farklar" scope="compare-root">
+        <ChangeInspector
+          summary={model.summary}
+          changes={model.changes}
+          filter={filter}
+          onFilterChange={setFilter}
+          filteredChanges={visible}
+          selectedChange={selectedChange}
+          onSelect={(c) => setSelected(c.id)}
+        />
+      </InspectorPanel>
+
+      {/* Ekran okuyucu için özet: panel kapalıyken de duyurulur. */}
+      <p className="sr-only" role="status">
+        {model.summary.total === 0
+          ? "Fark bulunamadı."
+          : `${model.summary.added} ekleme · ${model.summary.removed} silme · ${model.summary.modified} değişiklik`}
+      </p>
 
       <div className="compare-panes">
         <DocumentPane
@@ -199,18 +203,6 @@ export function CompareWorkspace({ paths }: { paths: string[] }) {
           rowRefs={revisedRows}
           onScroll={() => scrollFrom("revised")}
         />
-        {showSummary ? (
-          <ChangeInspector
-            summary={model.summary}
-            changes={model.changes}
-            filter={filter}
-            onFilterChange={setFilter}
-            filteredChanges={visible}
-            selectedChange={selectedChange}
-            onSelect={(c) => setSelected(c.id)}
-            onClose={() => setShowSummary(false)}
-          />
-        ) : null}
       </div>
     </div>
   );

@@ -10,6 +10,8 @@
 // Test gövdeleri değiştirilmedi.
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { ChangeInspector } from "./ChangeInspector";
 import { compareDocuments } from "./core/compare";
 import { makeBlocks } from "./core/normalize";
@@ -62,16 +64,31 @@ describe("sürüm değiştirme semantiği", () => {
   });
 });
 
-describe("Fark Özeti erişilebilirliği", () => {
-  it("özet paneli kapatma düğmesi etiketlidir", () => {
+describe("Fark paneli erişilebilirliği", () => {
+  /**
+   * Panel artık kendi başlığını ve kapatma düğmesini çizmiyor: çerçeveyi kabuk
+   * sahipleniyor ve gizleme düğmesi yardımcı barda. Sözleşme aynı kaldı —
+   * paneli gizleyen kontrolün erişilebilir bir adı olmalı — yalnız evi değişti.
+   */
+  it("paneli gizleyen kontrol etiketlidir", () => {
+    const layout = readFileSync(
+      resolve(import.meta.dirname, "../../shell/Layout.tsx"),
+      "utf8",
+    );
+    expect(layout).toContain('label={inspectorOpen ? "Ayrıntıları gizle" : "Ayrıntıları göster"}');
+    expect(layout).toContain("pressed={inspectorOpen}");
+  });
+
+  it("panel kendi başlığını ve kapatma düğmesini çizmez", () => {
     const changes = model(BASE, REVISED).changes;
     const markup = renderToStaticMarkup(
       <ChangeInspector
         summary={summarize(changes)} changes={changes} filter="all"
         onFilterChange={() => undefined} filteredChanges={changes}
-        selectedChange={undefined} onSelect={() => undefined} onClose={() => undefined}
+        selectedChange={undefined} onSelect={() => undefined}
       />,
     );
-    expect(markup).toContain('aria-label="Özet panelini kapat"');
+    expect(markup).not.toContain("<aside");
+    expect(markup).not.toContain("inspector-close");
   });
 });

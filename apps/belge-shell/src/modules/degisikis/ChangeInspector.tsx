@@ -1,4 +1,3 @@
-import { Icon } from "./Icon";
 import type { ChangeFilter, ComparisonChange, ComparisonSummary } from "./viewModels/comparisonViewModel";
 
 export const FILTER_LABELS: Record<ChangeFilter, string> = {
@@ -13,44 +12,6 @@ const KIND_LABEL: Record<ComparisonChange["kind"], string> = {
   removed: "Silinen",
   modified: "Değiştirilen",
 };
-
-/**
- * Üç dilimli oran halkası. Ek bağımlılık kullanmaz: tek bir SVG çemberi
- * üzerinde stroke-dasharray ile dilimlenir. Yüzdeler view model'den gelir,
- * burada yeniden hesaplanmaz.
- */
-function Donut({ summary }: { summary: ComparisonSummary }) {
-  const radius = 30;
-  const circumference = 2 * Math.PI * radius;
-  const segments: Array<{ kind: ComparisonChange["kind"]; pct: number }> = [
-    { kind: "added", pct: summary.addedPct },
-    { kind: "removed", pct: summary.removedPct },
-    { kind: "modified", pct: summary.modifiedPct },
-  ];
-  let consumed = 0;
-  return (
-    <svg className="donut" viewBox="0 0 80 80" role="img" aria-label={`Toplam ${summary.total} fark`}>
-      <circle className="donut-track" cx="40" cy="40" r={radius} />
-      {segments.map((segment) => {
-        const length = (segment.pct / 100) * circumference;
-        const offset = -(consumed / 100) * circumference;
-        consumed += segment.pct;
-        if (length <= 0) return null;
-        return (
-          <circle
-            key={segment.kind}
-            className={`donut-segment ${segment.kind}`}
-            cx="40" cy="40" r={radius}
-            strokeDasharray={`${length.toFixed(2)} ${(circumference - length).toFixed(2)}`}
-            strokeDashoffset={offset.toFixed(2)}
-          />
-        );
-      })}
-      <text className="donut-value" x="40" y="39">{summary.total}</text>
-      <text className="donut-label" x="40" y="51">TOPLAM</text>
-    </svg>
-  );
-}
 
 function ChangeListRow({ change, active, onClick }: { change: ComparisonChange; active: boolean; onClick: () => void }) {
   return (
@@ -100,7 +61,19 @@ function SelectedDetail({ change }: { change: ComparisonChange }) {
   );
 }
 
-export function ChangeInspector({ summary, changes, filter, onFilterChange, filteredChanges, selectedChange, onSelect, onClose }: {
+/**
+ * Fark paneli — kabuğun sağ panelinin İÇERİĞİ.
+ *
+ * Kendi `<aside>`'ı, başlığı ve kapatma düğmesi yoktur: panelin çerçevesini,
+ * başlığını ve göster/gizle düğmesini kabuk sahiplenir (`shell/chrome.tsx`,
+ * yardımcı bardaki "Ayrıntılar"). İki kapatma düğmesi ve iki başlık, aynı işi
+ * iki kez çizmekti.
+ *
+ * Oran halkası kaldırıldı: 300 px'lik bir panelde üç sayı ve üç yüzde, bir
+ * grafikten daha hızlı okunur ve ürünün geri kalanıyla aynı dili konuşur.
+ * Sayılar view model'den gelir; burada yeniden hesaplanmaz.
+ */
+export function ChangeInspector({ summary, changes, filter, onFilterChange, filteredChanges, selectedChange, onSelect }: {
   summary?: ComparisonSummary;
   changes: ComparisonChange[];
   filter: ChangeFilter;
@@ -108,23 +81,13 @@ export function ChangeInspector({ summary, changes, filter, onFilterChange, filt
   filteredChanges: ComparisonChange[];
   selectedChange?: ComparisonChange;
   onSelect: (change: ComparisonChange) => void;
-  onClose: () => void;
 }) {
-  const closeButton = (
-    <button className="inspector-close" onClick={onClose} aria-label="Özet panelini kapat" title="Özet panelini kapat">
-      <Icon name="x" size={14} />
-    </button>
-  );
   if (!summary) {
     return (
-      <aside className="inspector">
-        <header className="inspector-head"><h2>ÖZET</h2>{closeButton}</header>
-        <div className="inspector-empty">
-          <div className="empty-lines" aria-hidden="true"><span /><span /><span /></div>
-          <strong>Değişiklikler burada listelenir</strong>
-          <p>Karşılaştırmak için iki belge ekleyin.</p>
-        </div>
-      </aside>
+      <div className="inspector-empty">
+        <strong>Değişiklikler burada listelenir</strong>
+        <p>Karşılaştırmak için iki belge açın.</p>
+      </div>
     );
   }
 
@@ -135,29 +98,23 @@ export function ChangeInspector({ summary, changes, filter, onFilterChange, filt
   ];
 
   return (
-    <aside className="inspector">
-      <header className="inspector-head">
-        <h2>ÖZET</h2>
-        <span className="inspector-total"><strong>{summary.total}</strong> toplam fark</span>
-        {closeButton}
-      </header>
-
-      <div className="inspector-summary">
-        <Donut summary={summary} />
-        <ul className="summary-legend">
-          {rows.map((row) => (
-            <li key={row.kind} className={row.kind}>
-              <i aria-hidden="true" />
-              <span className="legend-label">{KIND_LABEL[row.kind]}</span>
-              <span className="legend-count">{row.count}</span>
-              <span className="legend-pct">%{row.pct}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+    <>
+      <p className="inspector-total">
+        <strong>{summary.total}</strong> değişiklik
+      </p>
+      <ul className="summary-legend">
+        {rows.map((row) => (
+          <li key={row.kind} className={row.kind}>
+            <i aria-hidden="true" />
+            <span className="legend-label">{KIND_LABEL[row.kind]}</span>
+            <span className="legend-count">{row.count}</span>
+            <span className="legend-pct">%{row.pct}</span>
+          </li>
+        ))}
+      </ul>
 
       <div className="inspector-section-head">
-        <h3>SEÇİLİ FARK</h3>
+        <h3 className="inspector-label">Seçili fark</h3>
         {filter !== "all" && <span className="filter-note">{filteredChanges.length} / {summary.total} gösteriliyor</span>}
       </div>
 
@@ -181,9 +138,9 @@ export function ChangeInspector({ summary, changes, filter, onFilterChange, filt
           : <div className="filter-empty">Bu filtrede değişiklik yok.</div>}
       </div>
 
-      <footer className="inspector-hint">
-        <kbd>↑</kbd><kbd>↓</kbd><span>{changes.length} fark arasında gezin</span>
-      </footer>
-    </aside>
+      <p className="inspector-hint">
+        <kbd>↑</kbd><kbd>↓</kbd> <span>{changes.length} fark arasında gezin</span>
+      </p>
+    </>
   );
 }
