@@ -124,13 +124,23 @@
 .content {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: minmax(var(--toolbar-h), auto) minmax(0, 1fr);
+  grid-template-rows: var(--titlebar-h) minmax(var(--toolbar-h), auto) minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
   background: var(--surface-workspace);
 }
 
+/* Trafik ışıklarının satırı. İçerik sütununda da ayrılır ki yardımcı bar
+   kimlik bloğuyla aynı yükseklikten başlasın. Sürükleme alanı. */
+.titlebar-band {
+  grid-row: 1;
+  grid-column: 1 / -1;
+  background: var(--surface-app);
+}
+.shell[data-fullscreen="true"] .titlebar-band { display: none; }
+
 .toolbar {
+  grid-row: 2;
   grid-column: 1 / -1;
   display: flex;
   gap: var(--space-2);
@@ -147,6 +157,7 @@
   background: var(--surface-workspace);
   border-bottom-color: transparent;
 }
+.shell:has(.toolbar[data-empty="true"]) .titlebar-band { background: var(--surface-workspace); }
 
 /* Sol uç: belge bağlamı. Belge yokken boş ve sakin. */
 .toolbar-context {
@@ -215,7 +226,7 @@
 }
 
 .content-body {
-  grid-row: 2;
+  grid-row: 3;
   grid-column: 1;
   min-width: 0;
   min-height: 0;
@@ -229,7 +240,7 @@
    --inspector-inset kadar içeride. Yalnız gösterilecek içerik varken var. */
 
 .inspector-slot {
-  grid-row: 2;
+  grid-row: 3;
   grid-column: 2;
   width: calc(var(--inspector-w) + var(--inspector-inset));
   min-height: 0;
@@ -447,9 +458,24 @@
 
 /* Home: son kullanılanlar yüzeyin ASIL içeriğidir ve yukarıdan başlar.
    Boş durum yalnız hiç kayıt yokken çizilir ve kalan alanı alır. */
-.recents { display: flex; flex-direction: column; min-height: 0; }
+.home { display: flex; flex-direction: column; }
+.recents { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .recents .file-list { min-height: 0; overflow: auto; }
-.recents .row-end { flex: none; margin-top: var(--space-3); }
+
+/* Yüzeyin alt kenarı: sürükle-bırak ipucu ve listeyi temizleme. Liste kısa
+   kalsa da yüzey üstten ve alttan çerçevelenir; ortadaki boşluk listenin
+   büyüme alanıdır, ölü alan değil. */
+.home-foot {
+  display: flex;
+  flex: none;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-3);
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.home-foot > p { margin: 0; color: var(--text-secondary); font-size: var(--text-meta); }
 
 /* Sürükle-bırak hedefi tüm yüzey. Kesikli çerçeve yalnız sürükleme sırasında. */
 .home {

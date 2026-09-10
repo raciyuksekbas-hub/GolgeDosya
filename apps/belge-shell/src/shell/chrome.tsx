@@ -28,6 +28,8 @@ export interface Chrome {
   inspectorSlot: HTMLElement | null;
   /** Panelde içerik var mı? `InspectorPanel` bağlanınca/ayrılınca bildirir. */
   setHasInspector: (has: boolean) => void;
+  /** Barda kipe ait eylem var mı? Portalla geldiği için kabuk kendi göremez. */
+  setHasActions: (has: boolean) => void;
 }
 
 const ChromeContext = createContext<Chrome | null>(null);
@@ -36,6 +38,13 @@ export const ChromeProvider = ChromeContext.Provider;
 /** Yardımcı barın sağ ucu: kipin birincil ve ikincil eylemleri. */
 export function ToolbarActions({ children }: { children: ReactNode }) {
   const chrome = useContext(ChromeContext);
+  useIsomorphicLayoutEffect(() => {
+    if (!chrome) return;
+    // Bar, portalla gelen içeriği kendi göremez; boş mu dolu mu olduğunu
+    // buradan öğrenir. Boş bar bir bant değildir (çizgisiz, kendi rengi yok).
+    chrome.setHasActions(true);
+    return () => chrome.setHasActions(false);
+  }, [chrome]);
   if (!chrome) return <div className="toolbar-actions">{children}</div>;
   if (!chrome.toolbarSlot) return null;
   return createPortal(children, chrome.toolbarSlot);

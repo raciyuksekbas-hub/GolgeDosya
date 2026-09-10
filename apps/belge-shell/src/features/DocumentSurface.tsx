@@ -157,11 +157,6 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
               </li>
             ))}
           </ul>
-          <div className="row-end">
-            <Button variant="quiet" onClick={onForget}>
-              Listeyi temizle
-            </Button>
-          </div>
         </section>
       ) : (
         <div className="dropzone" onDoubleClick={browse} role="group" aria-label={mode.prompt}>
@@ -179,6 +174,15 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
           </div>
         </div>
       )}
+
+      {shown.length > 0 ? (
+        <div className="home-foot">
+          <p>veya belgeyi buraya sürükleyin</p>
+          <Button variant="quiet" onClick={onForget}>
+            Listeyi temizle
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

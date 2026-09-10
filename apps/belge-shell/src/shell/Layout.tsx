@@ -44,6 +44,7 @@ export function Layout({
   const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null);
   const [inspectorSlot, setInspectorSlot] = useState<HTMLElement | null>(null);
   const [hasInspector, setHasInspector] = useState(false);
+  const [hasActions, setHasActions] = useState(false);
   const [wide, setWide] = useState(() =>
     typeof window === "undefined" ? true : window.matchMedia(WIDE).matches,
   );
@@ -64,7 +65,7 @@ export function Layout({
   }, []);
 
   const chrome = useMemo(
-    () => ({ toolbarSlot, inspectorSlot, setHasInspector }),
+    () => ({ toolbarSlot, inspectorSlot, setHasInspector, setHasActions }),
     [toolbarSlot, inspectorSlot],
   );
 
@@ -78,7 +79,7 @@ export function Layout({
    * değil, workspace'in üst boşluğudur: çizgi yok, kendi rengi yok. Trafik
    * ışıklarının yüksekliği ve sürükleme alanı korunur.
    */
-  const barEmpty = !context && !actions && !hasInspector;
+  const barEmpty = !context && !actions && !hasInspector && !hasActions;
 
   return (
     <ChromeProvider value={chrome}>
@@ -93,6 +94,10 @@ export function Layout({
           onOpenSettings={onOpenSettings}
         />
         <section className="content">
+          {/* Başlık çubuğu bandı: trafik ışıklarının satırı pencerenin
+              tamamında ayrılır, yalnız kenar çubuğunda değil. Yardımcı bar
+              onun altında başlar ve kimlik bloğuyla hizalanır. */}
+          <div className="titlebar-band" data-tauri-drag-region />
           <div className="toolbar" data-empty={barEmpty} data-tauri-drag-region>
             <div className="toolbar-context">{context}</div>
             <div className="toolbar-spacer" data-tauri-drag-region />
