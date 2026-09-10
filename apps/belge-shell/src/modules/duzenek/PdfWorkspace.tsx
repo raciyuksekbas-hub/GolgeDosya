@@ -1,18 +1,22 @@
 /**
  * Düzenle — PDF çalışma alanı.
  *
- * Bağımsız DüzenEk'in `src/components/PdfToolsWorkspace.tsx` dosyasından
- * taşındı. Yerleşim, araç listesi, seçim/sıralama/döndürme davranışı, önizleme
- * kuyruğu ve durum metinleri DEĞİŞTİRİLMEDİ. Bu bir migration'dır; arayüz
- * tasarımı bilinçli olarak ertelenmiştir.
+ * Bağımsız DüzenEk'ten taşındı. **Davranış** değişmedi: komut adları, seçim /
+ * sıralama / döndürme mantığı, önizleme kuyruğu, imza onayı ve durum metinleri
+ * aynı. Değişen, bu davranışların çizildiği yerdir — migration dondurması
+ * görsel yeniden kompozisyon turunda kalktı (bkz. docs/DESIGN.md).
  *
- * Yapılan tek uyarlama, kabuğa bağlanmak için gerekli olan asgari şeydir:
- *   1. Komut adları `duzenek_` önekli (birleşik binary'de dört modülün
- *      komutları tek isim uzayını paylaşıyor).
- *   2. `paths` özelliği: kabuk belgeyi kendi belge yüzeyinde açtırıyor, bu
- *      bileşen açılışta o yolları tarıyor. Kendi "Belge seç" düğmesi duruyor.
- *   3. İçe aktarma yolları ve kapsayıcı sınıf (`pdf-root`) — stiller kabuğun
- *      geri kalanına sızmasın diye.
+ * Öncelik sırası: PDF > sayfalar > araçlar > ayarlar.
+ *   - Belge alanı ortada ve en geniş; solunda sayfa şeridi.
+ *   - Günlük iş olan SAYFALAR araçları belgenin üstündeki şeritte, segment
+ *     olarak; döndürme ve yakınlaştırma da orada.
+ *   - BELGE ve katlı DİĞER grupları, seçili aracın ayarı ve kaynak listesi
+ *     sağ panelde.
+ *   - Kaydetme eylemleri yardımcı barda; sonuç metni workspace'te kalır ki
+ *     panel kapalıyken de görünsün.
+ *
+ * Kabuk yokken (sunucu tarafı render) bar ve panel içeriği olduğu yerde satır
+ * içi çizilir; hiçbir yüzey kaybolmaz.
  */
 import { rotatePages, previewGeometry, type PreviewMode } from './pdfWorkspaceState';
 import { copyDestination } from './copyDestination';
@@ -20,6 +24,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { ScanBatchResult, SourceFile } from './types';
+import { InspectorPanel, InspectorSection, ToolbarActions } from '../../shell/chrome';
+import { Button, IconButton, Status } from '../../shared-ui/primitives';
 import './pdf.css';
 const tools = {
     merge: ['Birleştir', 'Birden fazla PDF’yi seçtiğiniz sırayla tek dosyada birleştirir.'],
@@ -36,6 +42,13 @@ const tools = {
 };
 
 type Kind = keyof typeof tools;
+
+/** Şerit dar: segment etiketleri kısadır, tam ad ipucunda ve panelde durur. */
+const SHORT: Record<Kind, string> = {
+    merge: 'Birleştir', select: 'Seç', reorder: 'Sırala', delete: 'Sil', rotate: 'Döndür',
+    compress: 'Sıkıştır', images: 'Görseller', crop: 'Kırp', watermark: 'Filigran',
+    number: 'Numara', raster: 'Görsele',
+};
 
 /**
  * Araç hiyerarşisi.
@@ -210,42 +223,118 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
     const pageSelection = ['select', 'delete', 'rotate'].includes(kind);
     const cannotSave = busy || !sources.length || (sources.some(s => s.is_signed) && !approved) ||
         (['select', 'delete'].includes(kind) && !selected.length) || outputCount === 0 || (kind === 'rotate' && !Object.values(rotations).some(Boolean));
-    return <section className="pdf-root utility-workspace pdf-tools" aria-busy={busy}><h2>PDF Araçları</h2><p>Sayfaları görerek yeni bir kopya oluşturun. Kaynak belgeleriniz korunur.</p>
- <div className="pdf-workspace-layout"><aside className="pdf-controls" aria-label="PDF işlem kontrolleri">{TOOL_GROUPS.map(group => {
-     const buttons = group.keys.map(key => <button key={key} className={`btn ${kind === key ? 'btn-primary' : ''}`} title={tools[key][1]} aria-pressed={kind === key} disabled={busy} onClick={() => { setKind(key); const kept = key === 'images' || kind === 'images' ? [] : (key === 'merge' ? sources : sources.slice(0, 1)); setSources(kept); build(kept); setStatus(''); setApproved(false); }}>{tools[key][0]}</button>);
-     // Nadir araçlar katlı gelir ama içinde seçili bir araç varsa açık açılır:
-     // kullanıcı seçtiği aracı kaybolmuş sanmamalı.
-     if (group.collapsed) {
-       return <details key={group.title} className="tool-group" open={group.keys.includes(kind)}>
-         <summary>{group.title}</summary>
-         <div className="tool-grid">{buttons}</div>
-       </details>;
-     }
-     return <div key={group.title} className="tool-group">
-       <h3 className="section-head">{group.title}</h3>
-       <div className="tool-grid">{buttons}</div>
-     </div>;
-   })}
- <div className="card"><h3>{tools[kind][0]}</h3><p>{tools[kind][1]}</p><button className="btn" onClick={choose} disabled={busy}>Belge seç</button>
- {sources.length > 0 && <ol className="file-list">{sources.map((s, i) => <li key={s.path}>{i + 1}. {s.file_name} · {s.page_count} sayfa {sources.length > 1 && <button className="btn btn-sm" disabled={busy || i === 0} aria-label={`${i + 1}. belgeyi yukarı taşı`} onClick={() => moveSource(i)}>↑</button>}</li>)}</ol>}
- {kind === 'rotate' && <div className="rotation-actions"><button className="btn" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, -90))}>↶ Sola 90°</button><button className="btn" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, 90))}>↷ Sağa 90°</button><p>İşaretli sayfalara uygulanır. Her tıklama mevcut dönüşe eklenir.</p></div>}
- {kind === 'compress' && <label>Görsel kalitesi<select value={level} onChange={e => setLevel(e.target.value)}><option value="gentle_compression">Nazik — 2400 px / kalite 80</option><option value="balanced_compression">Dengeli — 2000 px / kalite 72</option><option value="aggressive_compression">Güçlü — 1600 px / kalite 65</option></select></label>}
- {kind === 'crop' && <label>Her kenardan kırpılacak mesafe (mm)<input type="number" min={0} value={margin} onChange={e => setMargin(Number(e.target.value))}/></label>}
- {kind === 'watermark' && <label>Filigran (temel Latin karakterleri, en fazla 60)<input maxLength={60} value={text} onChange={e => setText(e.target.value)}/></label>}
- {kind === 'raster' && <label>Görsel biçimi (150 DPI)<select value={text === 'jpg' ? 'jpg' : 'png'} onChange={e => setText(e.target.value)}><option value="png">PNG</option><option value="jpg">JPG</option></select></label>}
- {kind === 'number' && <label>İlk sayfa numarası<input type="number" min={1} value={start} onChange={e => setStart(Number(e.target.value))}/></label>}
- {order.length > 0 && <div className="selection-controls"><p>{order.length} kaynak sayfası · {selected.length} işaretli · Çıktı: {outputCount} sayfa</p>{pageSelection && <><button className="btn btn-sm" disabled={busy} onClick={() => setSelected(order.map(p => p.key))}>Tümünü işaretle</button><button className="btn btn-sm" disabled={busy} onClick={() => setSelected([])}>Seçimi temizle</button></>}</div>}
+    const pick = (key: Kind) => {
+        setKind(key);
+        const kept = key === 'images' || kind === 'images' ? [] : (key === 'merge' ? sources : sources.slice(0, 1));
+        setSources(kept);
+        build(kept);
+        setStatus('');
+        setApproved(false);
+    };
+    const PAGE_TOOLS: Kind[] = ['select', 'reorder', 'delete', 'rotate'];
+    const settingField = kind === 'compress'
+        ? <label>Görsel kalitesi<select value={level} onChange={e => setLevel(e.target.value)}><option value="gentle_compression">Nazik — 2400 px / kalite 80</option><option value="balanced_compression">Dengeli — 2000 px / kalite 72</option><option value="aggressive_compression">Güçlü — 1600 px / kalite 65</option></select></label>
+        : kind === 'crop'
+        ? <label>Her kenardan kırpılacak mesafe (mm)<input type="number" min={0} value={margin} onChange={e => setMargin(Number(e.target.value))}/></label>
+        : kind === 'watermark'
+        ? <label>Filigran (temel Latin karakterleri, en fazla 60)<input maxLength={60} value={text} onChange={e => setText(e.target.value)}/></label>
+        : kind === 'raster'
+        ? <label>Görsel biçimi (150 DPI)<select value={text === 'jpg' ? 'jpg' : 'png'} onChange={e => setText(e.target.value)}><option value="png">PNG</option><option value="jpg">JPG</option></select></label>
+        : kind === 'number'
+        ? <label>İlk sayfa numarası<input type="number" min={1} value={start} onChange={e => setStart(Number(e.target.value))}/></label>
+        : null;
 
- {sources.some(s => s.is_signed) && <label className="approval"><input type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)}/>İmza işareti bulundu. Türetilmiş PDF kaynak elektronik imzanın doğrulanabilirliğini taşımaz; onaylıyorum.</label>}
- <button className="btn btn-primary" disabled={cannotSave} onClick={() => run()}>{busy ? 'PDF hazırlanıyor…' : kind === 'raster' ? 'Görsel paketi kaydet' : 'Yeni PDF kaydet'}</button>
- {kind !== 'raster' && <button className="btn" style={{ marginLeft: 8 }} disabled={cannotSave} onClick={() => run(true)}>Klasör seçerek kaydet</button>}
- <p className="preview-note">Klasör seçerek kaydet, yeni kopyaya otomatik ve benzersiz bir dosya adı verir.</p>
- </div><p role="status" aria-live="polite" className="operation-status">{status}</p></aside><aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">{order.length > 0 && kind !== 'images' ? <>
- <div className="preview-toolbar"><label>Yakınlaştır<select value={zoom} onChange={e => setZoom(e.target.value.startsWith('fit-') ? e.target.value as PreviewMode : Number(e.target.value))}><option value="fit-page">Sayfaya sığdır</option><option value="fit-width">Genişliğe sığdır</option>{[75, 100, 125, 150, 200].map(z => <option key={z} value={z}>{z}%</option>)}</select></label></div>
- <div className="pdf-workbench"><aside className="thumbnail-list" aria-label="Sayfa önizlemeleri">{order.map((item, index) => <div key={item.key} className={`thumbnail ${item.key === current ? 'current' : ''} ${selected.includes(item.key) ? 'selected' : ''} ${kind === 'delete' && selected.includes(item.key) ? 'removed' : ''}`}>
- <button className="thumbnail-image-button" aria-label={`${item.source.file_name} sayfa ${item.page} görüntüle`} onClick={() => setCurrent(item.key)}><Preview item={item} rotation={rotations[item.key] || 0}/></button>
- <span>{index + 1}. çıktı sırası · Kaynak s. {item.page}</span>{pageSelection && <label><input type="checkbox" checked={selected.includes(item.key)} onChange={() => toggle(item.key)}/>{kind === 'delete' ? 'Çıkar' : kind === 'rotate' ? 'Döndür' : 'Dahil et'}</label>}
- {kind === 'reorder' && <div><button className="btn btn-sm" aria-label={`${item.page}. sayfayı yukarı taşı`} disabled={index === 0 || busy} onClick={() => shiftPage(index, -1)}>↑</button><button className="btn btn-sm" aria-label={`${item.page}. sayfayı aşağı taşı`} disabled={index === order.length - 1 || busy} onClick={() => shiftPage(index, 1)}>↓</button></div>}
- </div>)}</aside><div className="pdf-canvas"><p>{active?.source.file_name} · Kaynak sayfa {active?.page} / {active?.source.page_count}{kind === 'delete' && selected.includes(active?.key) ? ' — Çıktıdan çıkarılacak' : ''}{kind === 'rotate' ? ` · Dönüş: ${rotations[active?.key] || 0}°` : ''}{selected.includes(active?.key) ? ' · İşaretli' : ''}</p><div className="pdf-page-viewport" tabIndex={0} role="region" aria-label="Kaydırılabilir PDF sayfası">{active && <Preview key={active.key} item={active} large mode={zoom} rotation={rotations[active.key] || 0}/>}</div></div></div>
- <p className="preview-note">Kaynak sayfanın önizlemesi. Seçimler ve sıra yukarıdaki çıktı özetine uygulanır. Yeni PDF’nin her sayfasına içerik dışında sağ alt logo payı eklenir. Açıklama/form görünümleri bu önizlemede eksik olabilir; son kopyayı ayrıca inceleyin.</p></> : <div className="preview-empty"><h3>Belge önizlemesi</h3><p>PDF seçtiğinizde sayfaları burada göreceksiniz.</p></div>}</aside></div></section>;
+    return <section className="pdf-root" aria-busy={busy}>
+        <ToolbarActions>
+            {kind !== 'raster' && <Button disabled={cannotSave} onClick={() => run(true)}>Klasör seçerek kaydet</Button>}
+            <Button variant="primary" disabled={cannotSave} onClick={() => run()}>
+                {busy ? 'PDF hazırlanıyor…' : kind === 'raster' ? 'Görsel paketi kaydet' : 'Yeni PDF kaydet'}
+            </Button>
+        </ToolbarActions>
+
+        <InspectorPanel title="Araç" scope="pdf-root">
+            <div className="pdf-controls" aria-label="PDF işlem kontrolleri">
+                {TOOL_GROUPS.map(group => {
+                    const buttons = group.keys.map(key =>
+                        <button key={key} className={`btn tool ${kind === key ? 'is-current' : ''}`} title={tools[key][1]} aria-pressed={kind === key} disabled={busy} onClick={() => pick(key)}>{tools[key][0]}</button>);
+                    // Nadir araçlar katlı gelir ama içinde seçili bir araç varsa açık açılır:
+                    // kullanıcı seçtiği aracı kaybolmuş sanmamalı.
+                    if (group.collapsed) {
+                        return <details key={group.title} className="tool-group" open={group.keys.includes(kind)}>
+                            <summary>{group.title}</summary>
+                            <div className="tool-grid">{buttons}</div>
+                        </details>;
+                    }
+                    // Sayfalar grubu belgenin üstündeki şeritte de var; burada
+                    // eksiksiz liste durur (klavye ve panel kullanıcısı için).
+                    return <div key={group.title} className="tool-group">
+                        <h3 className="inspector-label">{group.title}</h3>
+                        <div className="tool-grid">{buttons}</div>
+                    </div>;
+                })}
+
+                <InspectorSection title="Seçili araç">
+                    <p className="tool-name">{tools[kind][0]}</p>
+                    <p className="tool-hint">{tools[kind][1]}</p>
+                    {settingField}
+                    {(kind === 'merge' || kind === 'images') &&
+                        <Button onClick={choose} disabled={busy}>Belge ekle…</Button>}
+                    {sources.length > 0 && <ol className="source-list">{sources.map((s, i) => <li key={s.path}>
+                        <span>{s.file_name} · {s.page_count} sayfa</span>
+                        {sources.length > 1 && <IconButton label={`${i + 1}. belgeyi yukarı taşı`} disabled={busy || i === 0} onClick={() => moveSource(i)}>
+                            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </IconButton>}
+                    </li>)}</ol>}
+                    {order.length > 0 && <>
+                        <p className="tool-count">{order.length} kaynak sayfası · {selected.length} işaretli · Çıktı: {outputCount} sayfa</p>
+                        {pageSelection && <div className="row">
+                            <Button className="btn-sm" disabled={busy} onClick={() => setSelected(order.map(p => p.key))}>Tümünü işaretle</Button>
+                            <Button className="btn-sm" disabled={busy} onClick={() => setSelected([])}>Seçimi temizle</Button>
+                        </div>}
+                    </>}
+                    {sources.some(s => s.is_signed) && <label className="approval"><input type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)}/>İmza işareti bulundu. Türetilmiş PDF kaynak elektronik imzanın doğrulanabilirliğini taşımaz; onaylıyorum.</label>}
+                    <p className="tool-hint">Yeni bir kopya oluşturulur; kaynak belgeleriniz korunur.</p>
+                </InspectorSection>
+            </div>
+        </InspectorPanel>
+
+        <div className="pdf-workspace-layout">
+            <aside className="thumbnail-list" aria-label="Sayfa önizlemeleri">{order.map((item, index) => <div key={item.key} className={`thumbnail ${item.key === current ? 'current' : ''} ${selected.includes(item.key) ? 'selected' : ''} ${kind === 'delete' && selected.includes(item.key) ? 'removed' : ''}`}>
+                <button className="thumbnail-image-button" aria-label={`${item.source.file_name} sayfa ${item.page} görüntüle`} onClick={() => setCurrent(item.key)}><Preview item={item} rotation={rotations[item.key] || 0}/></button>
+                <span className="thumbnail-no">{index + 1}<span className="sr-only">. çıktı sırası · Kaynak s. {item.page}</span></span>
+                {pageSelection && <label className="thumbnail-pick"><input type="checkbox" checked={selected.includes(item.key)} onChange={() => toggle(item.key)}/>{kind === 'delete' ? 'Çıkar' : kind === 'rotate' ? 'Döndür' : 'Dahil et'}</label>}
+                {kind === 'reorder' && <div className="thumbnail-move">
+                    <IconButton label={`${item.page}. sayfayı yukarı taşı`} disabled={index === 0 || busy} onClick={() => shiftPage(index, -1)}>
+                        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </IconButton>
+                    <IconButton label={`${item.page}. sayfayı aşağı taşı`} disabled={index === order.length - 1 || busy} onClick={() => shiftPage(index, 1)}>
+                        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.5V12m-3.5-3.5L8 12l3.5-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </IconButton>
+                </div>}
+            </div>)}</aside>
+
+            <aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">{order.length > 0 && kind !== 'images' ? <>
+                <div className="pdf-strip">
+                    <div className="tool-segment" role="group" aria-label="Sayfa araçları">
+                        {PAGE_TOOLS.map(key => <button key={key} type="button" className={`segment ${kind === key ? 'is-current' : ''}`} title={tools[key][1]} aria-pressed={kind === key} disabled={busy} onClick={() => pick(key)}>{SHORT[key]}</button>)}
+                    </div>
+                    {kind === 'rotate' && <div className="row">
+                        <Button className="btn-sm" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, -90))}>↶ Sola 90°</Button>
+                        <Button className="btn-sm" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, 90))}>↷ Sağa 90°</Button>
+                    </div>}
+                    <div className="toolbar-spacer"/>
+                    <label className="zoom">Yakınlaştır<select value={zoom} onChange={e => setZoom(e.target.value.startsWith('fit-') ? e.target.value as PreviewMode : Number(e.target.value))}><option value="fit-page">Sayfaya sığdır</option><option value="fit-width">Genişliğe sığdır</option>{[75, 100, 125, 150, 200].map(z => <option key={z} value={z}>{z}%</option>)}</select></label>
+                </div>
+                {status && <Status tone={status.includes('tamamlanamadı') || status.includes('açılamadı') ? 'error' : 'success'}>{status}</Status>}
+                <div className="pdf-canvas">
+                    <p className="page-line">{active?.source.file_name} · Kaynak sayfa {active?.page} / {active?.source.page_count}{kind === 'delete' && selected.includes(active?.key) ? ' — Çıktıdan çıkarılacak' : ''}{kind === 'rotate' ? ` · Dönüş: ${rotations[active?.key] || 0}°` : ''}{selected.includes(active?.key) ? ' · İşaretli' : ''}</p>
+                    <div className="pdf-page-viewport" tabIndex={0} role="region" aria-label="Kaydırılabilir PDF sayfası">{active && <Preview key={active.key} item={active} large mode={zoom} rotation={rotations[active.key] || 0}/>}</div>
+                    <p className="preview-note">Kaynak sayfanın önizlemesi. Yeni PDF’nin her sayfasına içerik dışında sağ alt logo payı eklenir. Açıklama/form görünümleri bu önizlemede eksik olabilir; son kopyayı ayrıca inceleyin.</p>
+                </div>
+            </> : <>
+                {status && <Status tone={status.includes('tamamlanamadı') || status.includes('açılamadı') ? 'error' : 'success'}>{status}</Status>}
+                <div className="preview-empty"><h3>Belge önizlemesi</h3><p>PDF seçtiğinizde sayfaları burada göreceksiniz.</p></div>
+            </>}</aside>
+        </div>
+    </section>;
 };

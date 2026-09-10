@@ -171,6 +171,13 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
+/* İçeriği olmayan bar bant değildir: çizgisi ve kendi rengi kalkar, workspace'in
+   üst boşluğuna dönüşür. Yükseklik korunur — trafik ışıkları oraya oturuyor. */
+.toolbar[data-empty="true"] {
+  background: var(--surface-workspace);
+  border-bottom-color: transparent;
+}
+
 /* Sol uç: belge bağlamı. Belge yokken boş ve sakin. */
 .toolbar-context {
   display: flex;

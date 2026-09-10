@@ -72,6 +72,16 @@ export function Layout({
   );
 
   const showInspector = hasInspector && inspectorOpen;
+  /**
+   * Bar gerçekten boş mu?
+   *
+   * Home'da bağlam da eylem de yoktur (§6: "boşsa sakin bırak"). Ama boş bir
+   * bandı yine de çizip altına çizgi koymak, reddedilen "ikinci başlık şeridi"
+   * hissini geri getiriyordu — gerçek pencerede görüldü. Boşken bar bir bant
+   * değil, workspace'in üst boşluğudur: çizgi yok, kendi rengi yok. Trafik
+   * ışıklarının yüksekliği ve sürükleme alanı korunur.
+   */
+  const barEmpty = !context && !actions && !hasInspector;
 
   return (
     <ChromeProvider value={chrome}>
@@ -87,7 +97,7 @@ export function Layout({
           openDocuments={openDocuments}
         />
         <section className="content">
-          <div className="toolbar" data-tauri-drag-region>
+          <div className="toolbar" data-empty={barEmpty} data-tauri-drag-region>
             <div className="toolbar-context">{context}</div>
             <div className="toolbar-spacer" data-tauri-drag-region />
             <div className="toolbar-actions" ref={setToolbarSlot} />

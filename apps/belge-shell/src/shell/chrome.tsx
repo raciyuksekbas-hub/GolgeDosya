@@ -14,10 +14,14 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+
+/** Sunucu tarafı render'da `useLayoutEffect` uyarı basar; orada etki zaten yok. */
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export interface Chrome {
   toolbarSlot: HTMLElement | null;
@@ -41,16 +45,26 @@ export function ToolbarActions({ children }: { children: ReactNode }) {
  * Sağ panel. Yalnız gösterecek gerçek içerik varken var olur: kip bu bileşeni
  * çizmiyorsa üçüncü kolon hiç açılmaz.
  */
-export function InspectorPanel({ title, children }: { title: string; children: ReactNode }) {
+export function InspectorPanel({
+  title,
+  scope,
+  children,
+}: {
+  title: string;
+  /** Modülün kapsam sınıfı (`pdf-root`, `compare-root`): portal dışında da
+      modülün kendi CSS'i geçerli kalsın diye panel sarmalayıcısına eklenir. */
+  scope?: string;
+  children: ReactNode;
+}) {
   const chrome = useContext(ChromeContext);
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!chrome) return;
     chrome.setHasInspector(true);
     return () => chrome.setHasInspector(false);
   }, [chrome]);
 
   const panel = (
-    <aside className="inspector" aria-label={title}>
+    <aside className={`inspector${scope ? ` ${scope}` : ""}`} aria-label={title}>
       <div className="inspector-head">
         <h2 className="inspector-title">{title}</h2>
       </div>

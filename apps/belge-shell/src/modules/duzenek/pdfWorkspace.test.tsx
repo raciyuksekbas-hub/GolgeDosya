@@ -70,28 +70,58 @@ describe("döndürme durumu", () => {
 });
 
 describe("yerleşim sözleşmesi", () => {
-  it("pdf_workspace_two_column_layout", () => {
-    expect(html).toMatch(/class="pdf-workspace-layout"><aside class="pdf-controls"/);
-    for (const width of [850, 1120, 1440]) {
+  /**
+   * Yerleşim, görsel yeniden kompozisyon turunda değişti (docs/DESIGN.md):
+   * belge alanı ortada ve en geniş, solunda sayfa şeridi; araçlar kabuğun sağ
+   * panelinde, kaydetme yardımcı barda. Buradaki iddialar o kompozisyonu
+   * tarif eder — eski iki sütunlu "kontroller solda" düzenini değil.
+   *
+   * Kabuk sağlayıcısı olmadan render edildiğinde (bu testte olduğu gibi) bar
+   * ve panel içeriği satır içi çizilir; hiçbir yüzey kaybolmaz.
+   */
+  it("pdf_workspace_page_strip_left_document_right", () => {
+    expect(html).toMatch(/class="pdf-workspace-layout"><aside class="thumbnail-list"/);
+    for (const width of [1120, 1440]) {
       const rules = declarations(".pdf-root .pdf-workspace-layout", width);
       expect(rules.display).toBe("grid");
-      expect(rules["grid-template-columns"]).toBe("minmax(260px, 310px) minmax(0, 1fr)");
+      expect(rules["grid-template-columns"]).toBe("132px minmax(0, 1fr)");
     }
-    expect(declarations(".pdf-root .pdf-workspace-layout", 760)["grid-template-columns"]).toBe(
-      "minmax(0, 1fr)",
+    // Dar pencerede şerit daralır ama kaybolmaz: sayfa seçimi Düzenle'nin işi.
+    expect(declarations(".pdf-root .pdf-workspace-layout", 1000)["grid-template-columns"]).toBe(
+      "108px minmax(0, 1fr)",
     );
   });
 
-  it("preview_panel_right_side_desktop", () => {
+  it("document_area_is_the_widest_surface", () => {
     expect(html).toMatch(
-      /<aside class="pdf-controls"[\s\S]*<\/aside><aside class="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">/,
+      /<\/aside><aside class="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">/,
     );
     expect((html.match(/class="pdf-preview-panel"/g) || []).length).toBe(1);
     expect(html).toMatch(/Belge önizlemesi/);
-    for (const width of [850, 1120, 1440]) {
-      expect(declarations(".pdf-root .pdf-preview-panel", width).position).toBe("sticky");
-      expect(declarations(".pdf-root .pdf-preview-panel", width)["min-width"]).toBe("0");
+    for (const width of [1120, 1440]) {
+      const rules = declarations(".pdf-root .pdf-preview-panel", width);
+      expect(rules["min-width"]).toBe("0");
+      expect(rules.display).toBe("flex");
     }
+  });
+
+  it("araçlar panelde, kaydetme barda, sonuç workspace'te", () => {
+    const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
+    // Araç grupları kabuğun sağ paneline çizilir.
+    expect(source).toMatch(/<InspectorPanel title="Araç" scope="pdf-root">/);
+    expect(source).toMatch(/<div className="pdf-controls"/);
+    // Kaydetme eylemleri yardımcı barda.
+    const bar = source.slice(source.indexOf("<ToolbarActions>"), source.indexOf("</ToolbarActions>"));
+    expect(bar).toContain("Yeni PDF kaydet");
+    expect(bar).toContain("Klasör seçerek kaydet");
+    // Sonuç metni panelde DEĞİL: panel kapalıyken de görünmeli.
+    const workspace = source.slice(source.indexOf('className="pdf-workspace-layout"'));
+    expect(workspace).toMatch(/<Status tone=/);
+    // Günlük sayfa araçları belgenin üstündeki şeritte segment olarak.
+    expect(source).toMatch(/PAGE_TOOLS: Kind\[\] = \['select', 'reorder', 'delete', 'rotate'\]/);
+    expect(source).toMatch(/className="tool-segment" role="group"/);
+    // Birleştir ve Görseller → PDF için ikinci belge yolu duruyor.
+    expect(source).toContain("Belge ekle…");
   });
 });
 
