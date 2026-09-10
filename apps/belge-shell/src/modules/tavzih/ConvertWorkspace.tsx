@@ -174,7 +174,7 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
                 </div>
                 <div className="flow-step">
                   <h2 className="section-head">Hedef</h2>
-                  <p className="flow-target">{target === "UDF" ? "UYAP UDF" : "Word DOCX"}</p>
+                  <p className="flow-target">{target}</p>
                 </div>
               </>
             ) : null}

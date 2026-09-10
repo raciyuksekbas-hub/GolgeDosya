@@ -10,7 +10,7 @@ import { ConvertWorkspace } from "./modules/tavzih/ConvertWorkspace";
 import { ReviewWorkspace } from "./modules/ikincigoz/ReviewWorkspace";
 import { CompareWorkspace } from "./modules/degisikis/CompareWorkspace";
 import { PdfWorkspace } from "./modules/duzenek/PdfWorkspace";
-import { carryContext, extensionOf, fileNameOf, type ContextOutcome } from "./shell/modes";
+import { MODES, carryContext, extensionOf, fileNameOf, type ContextOutcome } from "./shell/modes";
 import { Button, Pill, Status } from "./shared-ui/primitives";
 import { IconDocument } from "./shell/icons";
 import { announce } from "./shared-ui/Announcer";
@@ -134,7 +134,11 @@ export function App() {
    */
   const barContext = useMemo(() => {
     if (documents.length === 0) return null;
-    return documents.map((p, i) => (
+    // Yalnız bu kipin GERÇEKTEN kullandığı belgeler. Seçici çoklu seçime izin
+    // veriyor; yedi dosya seçilince bar yedi kırpılmış çipe dönüşüyordu.
+    // Fazlalıklar atılmaz — kullanıcı geri döndüğünde yine oradalar.
+    const shown = documents.slice(0, active ? MODES[active.key].needs : 1);
+    return shown.map((p, i) => (
       <span key={p} className="doc-chip" title={fileNameOf(p)}>
         {i > 0 ? (
           <span className="doc-chip-sep" aria-hidden="true">
@@ -146,7 +150,7 @@ export function App() {
         <Pill>{extensionOf(p)}</Pill>
       </span>
     ));
-  }, [documents]);
+  }, [documents, active]);
 
   if (error) {
     return (

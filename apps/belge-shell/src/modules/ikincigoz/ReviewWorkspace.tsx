@@ -27,6 +27,24 @@ function summary(r: AnalysisResult): string {
 }
 
 /**
+ * Bulgunun işaretli aralığı.
+ *
+ * Motor `SourceLocation`'ı snake_case seri hâle getiriyor (`char_start`),
+ * arayüz tipi ise camelCase yazıyor. Bu yüzden ofsetler pratikte `undefined`
+ * geliyordu ve `slice(0, undefined)` üç kez tüm paragrafı döndürüyordu:
+ * paketlenmiş uygulamada alıntı aynı cümleyi üç kez yazıyordu. Burada iki
+ * yazım da okunur ve yalnız gerçek sayı çifti işaretlenir; ofset yoksa
+ * paragraf işaretsiz gösterilir. Motor sözleşmesine dokunulmadı.
+ */
+function markedRange(location: Finding["location"]): [number, number] | null {
+  const raw = location as unknown as Record<string, unknown>;
+  const from = typeof raw.charStart === "number" ? raw.charStart : raw.char_start;
+  const to = typeof raw.charEnd === "number" ? raw.charEnd : raw.char_end;
+  if (typeof from !== "number" || typeof to !== "number") return null;
+  return to > from ? [from, to] : null;
+}
+
+/**
  * Denetle — belge incelemesi ve cerrahi düzeltme.
  *
  * Zincir: belge açıldı → incele → bulgular → konum → açıklama → önerilen
@@ -219,8 +237,7 @@ export function ReviewWorkspace({ path }: { path: string }) {
                 const sev = SEVERITY[f.severity];
                 const isActive = active === k;
                 const text = blockText.get(f.block_id) ?? "";
-                const from = f.location.charStart;
-                const to = f.location.charEnd;
+                const range = markedRange(f.location);
                 return (
                   <li key={k} className="finding" data-severity={f.severity} data-active={isActive}>
                     <button
@@ -240,11 +257,17 @@ export function ReviewWorkspace({ path }: { path: string }) {
                         {/* Belgenin kendisi: bulgunun geçtiği paragrafın TAMAMI,
                             işaretli aralık vurgulu. Kırpılmış ±40 karakterlik
                             pencere, bulguyu bağlamından koparıyordu. */}
-                        {from !== null && to !== null && text ? (
+                        {text ? (
                           <p className="finding-excerpt selectable">
-                            {[...text].slice(0, from).join("")}
-                            <mark>{[...text].slice(from, to).join("")}</mark>
-                            {[...text].slice(to).join("")}
+                            {range ? (
+                              <>
+                                {[...text].slice(0, range[0]).join("")}
+                                <mark>{[...text].slice(range[0], range[1]).join("")}</mark>
+                                {[...text].slice(range[1]).join("")}
+                              </>
+                            ) : (
+                              text
+                            )}
                           </p>
                         ) : null}
                         <p className="finding-why">{f.explanation}</p>
