@@ -194,7 +194,9 @@ export function App() {
           ) : usable && active.key === "degisikis" ? (
             <CompareWorkspace paths={documents} />
           ) : usable && active.key === "duzenek" ? (
-            <PdfWorkspace paths={documents} />
+            // Açılamayan belgeden kurtulma yolu kabuktan geçer: bardaki ad, son
+            // kullanılanlar ve çalışma alanı aynı belgeyi göstersin.
+            <PdfWorkspace paths={documents} onOpenDocument={openDocuments} />
           ) : (
             <DocumentSurface
               feature={active}

@@ -24,6 +24,7 @@
  */
 import { rotatePages, previewGeometry, workspaceSurfaces, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { copyDestination } from './copyDestination';
+import { describeOpenFailure, plainMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from './openFailure';
 import React, { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -129,12 +130,35 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
         {bitmap && error && <p role="status">{error}</p>}
     </div>;
 }
-export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPaths }) => {
+/**
+ * Belge yüzeyi yerine çizilen üç DIŞLAYICI durum.
+ *
+ * Eskiden hata, genel boş durum davetinin üstüne ekleniyordu: kullanıcı hem
+ * "açılamadı" hem "PDF seçtiğinizde sayfaları burada göreceksiniz" okuyordu.
+ * Artık her durumun tek karşılığı var ve hata durumu kendi kurtarma eylemini
+ * taşıyor. Kart, dev panel, çizim ve teknik ayrıntı alanı yok.
+ */
+export function PreviewPlaceholder({ state, detail, onOpenAnother }: {
+    state: DocumentState; detail: string; onOpenAnother: () => void;
+}) {
+    if (state === 'failed') {
+        return <div className="preview-failed" role="alert">
+            <h3>{OPEN_FAILURE_TITLE}</h3>
+            <p>{detail || OPEN_FAILURE_FALLBACK}</p>
+            <Button onClick={onOpenAnother}>Başka Belge Aç</Button>
+        </div>;
+    }
+    if (state === 'loading') return <Status tone="busy">Belgeler inceleniyor…</Status>;
+    return <div className="preview-empty"><h3>Belge önizlemesi</h3><p>PDF seçtiğinizde sayfaları burada göreceksiniz.</p></div>;
+}
+
+export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths: string[]) => void }> = ({ paths: initialPaths, onOpenDocument }) => {
     const [kind, setKind] = useState<Kind>('merge'), [sources, setSources] = useState<SourceFile[]>([]), [order, setOrder] = useState<Page[]>([]), [selected, setSelected] = useState<string[]>([]), [current, setCurrent] = useState(''), [zoom, setZoom] = useState<PreviewMode>('fit-page');
     const [rotations, setRotations] = useState<Record<string, number>>({});
     // "Sayfa yok" ile "belge açılamadı" aynı şey değildir: araç paneli yalnız
     // açık bir belge oturumunda çizilir, sayfa şeridi ise gerçekten sayfa varken.
     const [docState, setDocState] = useState<DocumentState>(initialPaths?.length ? 'loading' : 'none');
+    const [failure, setFailure] = useState('');
     const [margin, setMargin] = useState(10), [text, setText] = useState('KOPYA'), [start, setStart] = useState(1), [level, setLevel] = useState('balanced_compression'), [approved, setApproved] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
     const build = (list: SourceFile[]) => { setRotations({}); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
     // Tarama gövdesi, kendi seçicisi ile kabuğun açtığı belgeler arasında ortak.
@@ -143,6 +167,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
             return;
         setBusy(true);
         setDocState(previous => previous === 'ready' ? previous : 'loading');
+        setFailure('');
         setStatus('Belgeler inceleniyor…');
         const result = await invoke<ScanBatchResult>('duzenek_scan_source_files', { paths });
         if (result.errors.length)
@@ -154,7 +179,11 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
         setDocState('ready');
     }
     catch (e) {
-        setStatus('Belge açılamadı: ' + String(e));
+        // Teknik metin yalnız burada kalır; kullanıcıya kategorisinin tek cümlesi gider.
+        console.debug('[belge] duzenek open failure', e);
+        const detail = describeOpenFailure(e);
+        setFailure(detail);
+        setStatus(`${OPEN_FAILURE_TITLE}. ${detail}`);
         // Açık bir oturum sırasında yapılan ekleme başarısız olursa oturum ayakta
         // kalır; kullanıcı panelden yeniden deneyebilir. Kabuğun verdiği belge
         // açılamadıysa oturum hiç kurulmamıştır.
@@ -168,6 +197,18 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
         if (!paths)
             return;
         await load(Array.isArray(paths) ? paths : [paths]);
+    };
+    // Açma başarısız olduğunda tek kurtarma yolu. Seçim kabuğa bildirilir ki
+    // bardaki belge adı, son kullanılanlar ve çalışma alanı aynı belgeyi
+    // göstersin; kabuk yoksa belge burada açılır.
+    const openAnother = async () => {
+        const picked = await open({ multiple: false, filters: [{ name: 'PDF', extensions: ['pdf'] }] }).catch(() => null);
+        if (typeof picked !== 'string')
+            return;
+        if (onOpenDocument)
+            onOpenDocument([picked]);
+        else
+            await load([picked]);
     };
     // Kabuk belgeyi belge yüzeyinde açtırdı; aynı yolları burada tara.
     const opened = initialPaths?.join('\u0000') ?? '';
@@ -227,7 +268,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
             setStatus(`PDF kaydedildi ve yeniden açılarak doğrulandı: ${outputPath}\n${receipt.sources[0].page_count} sayfa · ${(size / 1024).toFixed(1)} KB` + (kind === 'compress' ? `\n${(before / 1024).toFixed(1)} KB → ${(size / 1024).toFixed(1)} KB · %${((1 - size / before) * 100).toFixed(1)} küçültüldü.\n${metrics}` : ''));
         }
         catch (e) {
-            setStatus((kind === 'compress' ? 'Sıkıştırma tamamlanamadı.\n' : 'İşlem tamamlanamadı: ') + String(e));
+            setStatus((kind === 'compress' ? 'Sıkıştırma tamamlanamadı.\n' : 'İşlem tamamlanamadı: ') + plainMessage(e));
         }
         finally {
             setBusy(false);
@@ -329,7 +370,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
                 </div>}
             </div>)}</aside>}
 
-            <aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">{order.length > 0 && kind !== 'images' ? <>
+            <aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">{surfaces.strip && kind !== 'images' ? <>
                 <div className="pdf-strip">
                     <div className="tool-segment" role="group" aria-label="Sayfa araçları">
                         {PAGE_TOOLS.map(key => <button key={key} type="button" className={`segment ${kind === key ? 'is-current' : ''}`} title={tools[key][1]} aria-pressed={kind === key} disabled={busy} onClick={() => pick(key)}>{SHORT[key]}</button>)}
@@ -347,10 +388,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[] }> = ({ paths: initialPat
                     <div className="pdf-page-viewport" tabIndex={0} role="region" aria-label="Kaydırılabilir PDF sayfası">{active && <Preview key={active.key} item={active} large mode={zoom} rotation={rotations[active.key] || 0}/>}</div>
                     <p className="preview-note">Kaynak sayfanın önizlemesi. Yeni PDF’nin her sayfasına içerik dışında sağ alt logo payı eklenir. Açıklama/form görünümleri bu önizlemede eksik olabilir; son kopyayı ayrıca inceleyin.</p>
                 </div>
-            </> : <>
-                {status && <Status tone={status.includes('tamamlanamadı') || status.includes('açılamadı') ? 'error' : 'success'}>{status}</Status>}
-                <div className="preview-empty"><h3>Belge önizlemesi</h3><p>PDF seçtiğinizde sayfaları burada göreceksiniz.</p></div>
-            </>}</aside>
+            </> : <PreviewPlaceholder state={docState} detail={failure} onOpenAnother={openAnother}/>}</aside>
         </div>
     </section>;
 };

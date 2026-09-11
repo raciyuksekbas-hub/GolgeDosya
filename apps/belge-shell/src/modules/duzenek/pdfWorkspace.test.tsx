@@ -16,6 +16,8 @@ import postcss from "postcss";
 import { describe, expect, it } from "vitest";
 import { PdfWorkspace } from "./PdfWorkspace";
 import { previewGeometry, rotatePages, workspaceSurfaces } from "./pdfWorkspaceState";
+import { PreviewPlaceholder } from "./PdfWorkspace";
+import { describeOpenFailure, plainMessage, OPEN_FAILURE_FALLBACK } from "./openFailure";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
@@ -155,7 +157,7 @@ describe("durum sözleşmesi", () => {
 
     // Belge açılamadığında bu durum gerçekten kurulur.
     expect(source).toMatch(
-      /catch \(e\) \{\s*\n\s*setStatus\('Belge açılamadı: ' \+ String\(e\)\);[\s\S]{0,400}?setDocState\(previous => previous === 'ready' \? previous : 'failed'\)/,
+      /catch \(e\) \{[\s\S]{0,500}?setDocState\(previous => previous === 'ready' \? previous : 'failed'\)/,
     );
 
     // Çizilen iki hâl: belge hiç yok, ve kabuğun verdiği belge taranıyor.
@@ -193,6 +195,118 @@ describe("durum sözleşmesi", () => {
         "grid-template-columns"
       ],
     ).toBe("132px minmax(0, 1fr)");
+  });
+});
+
+describe("açma hatası sunumu", () => {
+  /**
+   * Motorun gerçek hata metinleri. Rust kaynağından birebir alındı
+   * (`ekler-core/src/scanner.rs`, `pdf-core/src/error.rs`); sözleşme
+   * değişirse bu liste de değişmeli.
+   */
+  const ENGINE_MESSAGES = [
+    "Error: Doğrulama hatası (Validation Failed): PDF dönüşümü için LibreOffice bulunamadı. LibreOffice'i bu bilgisayara kurup yeniden deneyin. Microsoft Word gerekli değildir.",
+    "Error: 'dilekce.pdf' okunamadı: Bozuk veya geçersiz PDF dosyası: xref tablosu okunamadı.",
+    "Error: 'dilekce.udf' okunamadı: geçersiz UDF yapısı (content.xml yok).",
+    "Error: 'tarama.tif' okunamadı: Bozuk veya geçersiz görsel dosyası: desteklenmeyen sıkıştırma.",
+    "Error: 'rapor.key' için desteklenmeyen dosya biçimi (.key).",
+    "Error: 'dilekce.pdf' dosyası bulunamadı veya erişilemez.",
+    "Error: 'Belgeler' bir klasördür, lütfen dosya seçin.",
+    "Error: 'dilekce.pdf' sağlama toplamı hesaplanamadı: Permission denied (os error 13).",
+    "Error: Belge tarama sırasında değişti; yeniden ekleyin",
+    "Error: Doğrulama hatası (Validation Failed): Sayfa sayısı beklenenden farklı.",
+    "TypeError: Cannot read properties of undefined (reading 'sources')",
+    "command duzenek_scan_source_files not found",
+  ];
+
+  /** Kullanıcı metninde asla bulunmayacak izler. */
+  const LEAKS = [
+    "Error:",
+    "Validation Failed",
+    "Doğrulama hatası",
+    "TypeError",
+    "os error",
+    "duzenek_",
+    "invoke",
+    ".rs",
+    "/Users/",
+    "command",
+    "undefined",
+  ];
+
+  it("failed — kullanıcı metninde teknik önek, sınıf adı ya da yol yok", () => {
+    for (const raw of ENGINE_MESSAGES) {
+      const detail = describeOpenFailure(raw);
+      for (const leak of LEAKS) expect(detail).not.toContain(leak);
+      // Kısa ve eyleme dönük: tek cümlelik bir yönlendirme.
+      expect(detail.length).toBeGreaterThan(20);
+      expect(detail.length).toBeLessThan(140);
+    }
+    // Tanınmayan hata sessizce kaybolmaz, güvenli yedeğe düşer.
+    expect(describeOpenFailure(new Error("¿?"))).toBe(OPEN_FAILURE_FALLBACK);
+    expect(describeOpenFailure(null)).toBe(OPEN_FAILURE_FALLBACK);
+    // Bilinen kategoriler gerçekten tanınır; hepsi yedeğe düşseydi bu test boş olurdu.
+    const mapped = ENGINE_MESSAGES.map(describeOpenFailure).filter((d) => d !== OPEN_FAILURE_FALLBACK);
+    expect(mapped.length).toBe(ENGINE_MESSAGES.length - 2);
+    expect(new Set(mapped).size).toBe(ENGINE_MESSAGES.length - 2);
+  });
+
+  it("teknik metin düşer ama motorun kendi cümlesi korunur", () => {
+    // Kaydetme sonucu gibi motorun cümlesinin taşındığı yerlerde yalnız sınıf
+    // adı ve sarmalayıcı etiket düşer; bilgi kaybolmaz.
+    expect(plainMessage(new Error("Hedef dosya boyutu sınırı aşıldı: 9 bayt > 8 bayt sınırı"))).toBe(
+      "Hedef dosya boyutu sınırı aşıldı: 9 bayt > 8 bayt sınırı",
+    );
+    expect(plainMessage("Doğrulama hatası (Validation Failed): Kaynak değişti")).toBe("Kaynak değişti");
+    expect(plainMessage("TypeError: x")).toBe("x");
+  });
+
+  it("failed — yalnız hata durumu çizilir, boş durum daveti çizilmez", () => {
+    const failed = renderToStaticMarkup(
+      <PreviewPlaceholder state="failed" detail={describeOpenFailure(ENGINE_MESSAGES[0])} onOpenAnother={() => undefined} />,
+    );
+    expect(failed).toContain("Belge açılamadı");
+    expect(failed).toContain("dönüştürücü");
+    // Normal boş durum metni burada YOK: durumlar dışlayıcıdır.
+    expect(failed).not.toContain("Belge önizlemesi");
+    expect(failed).not.toContain("PDF seçtiğinizde");
+    expect(failed).not.toContain("inceleniyor");
+    for (const leak of LEAKS) expect(failed).not.toContain(leak);
+    // Kart, dev panel ya da teknik ayrıntı alanı yok: iki satır ve bir eylem.
+    expect(failed).not.toContain("<svg");
+    expect(failed).not.toContain("<details");
+    expect((failed.match(/<p/g) ?? []).length).toBe(1);
+    // Ekran okuyucuya bildirilir.
+    expect(failed).toContain('role="alert"');
+  });
+
+  it("failed — en az bir kurtarma eylemi sunulur", () => {
+    const failed = renderToStaticMarkup(
+      <PreviewPlaceholder state="failed" detail="" onOpenAnother={() => undefined} />,
+    );
+    expect(failed).toMatch(/<button[^>]*>Başka Belge Aç<\/button>/);
+    // Açıklama boş kalırsa güvenli yedek cümle yazılır.
+    expect(failed).toContain(OPEN_FAILURE_FALLBACK);
+    // Eylem gerçek bir seçiciyi açar ve seçimi kabuğa bildirir.
+    expect(source).toMatch(/const openAnother = async \(\) => \{[\s\S]{0,400}?onOpenDocument\(\[picked\]\)/);
+    expect(source).toContain("onOpenAnother={openAnother}");
+  });
+
+  it("durumlar birbirini dışlar", () => {
+    const none = renderToStaticMarkup(<PreviewPlaceholder state="none" detail="" onOpenAnother={() => undefined} />);
+    const loading = renderToStaticMarkup(<PreviewPlaceholder state="loading" detail="" onOpenAnother={() => undefined} />);
+    expect(none).toContain("Belge önizlemesi");
+    expect(none).not.toContain("Belge açılamadı");
+    expect(none).not.toContain("inceleniyor");
+    expect(loading).toContain("Belgeler inceleniyor…");
+    expect(loading).not.toContain("Belge önizlemesi");
+    expect(loading).not.toContain("Belge açılamadı");
+    // Kabuğun verdiği belge taranırken çizilen gerçek biçimlendirme de öyle.
+    expect(scanningHtml).toContain("Belgeler inceleniyor…");
+    expect(scanningHtml).not.toContain("Belge önizlemesi");
+    // Belge hiç yokken davet durur.
+    expect(html).toContain("Belge önizlemesi");
+    expect(html).not.toContain("Belge açılamadı");
   });
 });
 
