@@ -92,9 +92,8 @@ export function ChangeInspector({ summary, filter, onFilterChange, filteredChang
 
   return (
     <>
-      <p className="inspector-total">
-        <strong>{summary.total}</strong> değişiklik
-      </p>
+      {/* Toplam ayrıca yazılmaz: üç sayının kendisi zaten toplamı veriyor ve
+          rayın altındaki konum göstergesi ("2/4") toplamı da taşıyor. */}
       <ul className="summary-legend">
         {rows.map((row) => (
           <li key={row.kind} className={row.kind}>
