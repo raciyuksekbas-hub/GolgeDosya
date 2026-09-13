@@ -158,6 +158,102 @@ export function ReviewClear({ doc }: { doc: AnalysisResult["document"] }) {
   );
 }
 
+/** Bulgunun kimliği — akordeon ve düzeltme seçimi bunu paylaşır. */
+export const findingKey = (f: Finding) =>
+  `${f.rule_id}:${f.block_id}:${f.location.charStart ?? -1}`;
+
+/**
+ * Bulgu listesi — satır içi akordeon.
+ *
+ * Kanıt bulgunun yanında durur: paragrafın tamamı, işaretli aralık vurgulu.
+ * Saf sunum; durumu ve seçimi çağıran tutar.
+ */
+export function FindingList({
+  findings,
+  blockText,
+  activeKey,
+  selectedKeys,
+  onSetActive,
+  onToggleFix,
+}: {
+  findings: Finding[];
+  blockText: Map<string, string>;
+  activeKey: string | null;
+  selectedKeys: Set<string>;
+  onSetActive: (key: string | null) => void;
+  onToggleFix: (finding: Finding) => void;
+}) {
+  return (
+    <>
+      <h2 className="section-head" id="bulgu-baslik">
+        Bulgular
+      </h2>
+      <ul className="findings" role="list" aria-labelledby="bulgu-baslik">
+        {findings.map((f) => {
+          const k = findingKey(f);
+          const sev = SEVERITY[f.severity];
+          const isActive = activeKey === k;
+          const text = blockText.get(f.block_id) ?? "";
+          const range = markedRange(f.location);
+          return (
+            <li key={k} className="finding" data-severity={f.severity} data-active={isActive}>
+              <button
+                type="button"
+                className="finding-head"
+                aria-expanded={isActive}
+                onClick={() => onSetActive(isActive ? null : k)}
+              >
+                <span className="finding-mark" aria-hidden="true">{sev.mark}</span>
+                <span className="finding-sev">{sev.label}</span>
+                <span className="finding-title">{f.title}</span>
+                <span className="finding-loc">{f.block_id.replace(/^p/, "")}. paragraf</span>
+              </button>
+              {isActive ? (
+                <div className="finding-body">
+                  <p className="finding-message">{f.message}</p>
+                  {/* Belgenin kendisi: bulgunun geçtiği paragrafın TAMAMI,
+                      işaretli aralık vurgulu. Kırpılmış ±40 karakterlik
+                      pencere, bulguyu bağlamından koparıyordu. */}
+                  {text ? (
+                    <p className="finding-excerpt selectable">
+                      {range ? (
+                        <>
+                          {[...text].slice(0, range[0]).join("")}
+                          <mark>{[...text].slice(range[0], range[1]).join("")}</mark>
+                          {[...text].slice(range[1]).join("")}
+                        </>
+                      ) : (
+                        text
+                      )}
+                    </p>
+                  ) : null}
+                  <p className="finding-why">{f.explanation}</p>
+                  {f.fix ? (
+                    <label className="finding-fix">
+                      <input
+                        type="checkbox"
+                        checked={selectedKeys.has(k)}
+                        onChange={() => onToggleFix(f)}
+                      />
+                      <span>
+                        Önerilen düzeltme: <code>{visibleText(f.fix.original)}</code> →{" "}
+                        <code>{visibleText(f.fix.replacement)}</code>
+                        <span className="finding-fixnote"> ({f.fix.description})</span>
+                      </span>
+                    </label>
+                  ) : (
+                    <p className="finding-nofix">Bu bulgu için otomatik düzeltme önerilmiyor.</p>
+                  )}
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
 /**
  * Denetle — belge incelemesi ve cerrahi düzeltme.
  *
@@ -180,7 +276,7 @@ export function ReviewWorkspace({ path }: { path: string }) {
   const [active, setActive] = useState<string | null>(null);
   const [written, setWritten] = useState<string | null>(null);
 
-  const key = (f: Finding) => `${f.rule_id}:${f.block_id}:${f.location.charStart ?? -1}`;
+  const key = findingKey;
 
   useEffect(() => {
     let cancelled = false;
@@ -228,7 +324,7 @@ export function ReviewWorkspace({ path }: { path: string }) {
   const toggle = useCallback((f: Finding) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      const k = `${f.rule_id}:${f.block_id}:${f.location.charStart ?? -1}`;
+      const k = findingKey(f);
       if (next.has(k)) next.delete(k);
       else next.add(k);
       return next;
@@ -295,73 +391,14 @@ export function ReviewWorkspace({ path }: { path: string }) {
         {result.findings.length === 0 ? (
           <ReviewClear doc={result.document} />
         ) : (
-          <>
-            <h2 className="section-head" id="bulgu-baslik">
-              Bulgular
-            </h2>
-            <ul className="findings" role="list" aria-labelledby="bulgu-baslik">
-              {result.findings.map((f) => {
-                const k = key(f);
-                const sev = SEVERITY[f.severity];
-                const isActive = active === k;
-                const text = blockText.get(f.block_id) ?? "";
-                const range = markedRange(f.location);
-                return (
-                  <li key={k} className="finding" data-severity={f.severity} data-active={isActive}>
-                    <button
-                      type="button"
-                      className="finding-head"
-                      aria-expanded={isActive}
-                      onClick={() => setActive(isActive ? null : k)}
-                    >
-                      <span className="finding-mark" aria-hidden="true">{sev.mark}</span>
-                      <span className="finding-sev">{sev.label}</span>
-                      <span className="finding-title">{f.title}</span>
-                      <span className="finding-loc">{f.block_id.replace(/^p/, "")}. paragraf</span>
-                    </button>
-                    {isActive ? (
-                      <div className="finding-body">
-                        <p className="finding-message">{f.message}</p>
-                        {/* Belgenin kendisi: bulgunun geçtiği paragrafın TAMAMI,
-                            işaretli aralık vurgulu. Kırpılmış ±40 karakterlik
-                            pencere, bulguyu bağlamından koparıyordu. */}
-                        {text ? (
-                          <p className="finding-excerpt selectable">
-                            {range ? (
-                              <>
-                                {[...text].slice(0, range[0]).join("")}
-                                <mark>{[...text].slice(range[0], range[1]).join("")}</mark>
-                                {[...text].slice(range[1]).join("")}
-                              </>
-                            ) : (
-                              text
-                            )}
-                          </p>
-                        ) : null}
-                        <p className="finding-why">{f.explanation}</p>
-                        {f.fix ? (
-                          <label className="finding-fix">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(k)}
-                              onChange={() => toggle(f)}
-                            />
-                            <span>
-                              Önerilen düzeltme: <code>{visibleText(f.fix.original)}</code> →{" "}
-                              <code>{visibleText(f.fix.replacement)}</code>
-                              <span className="finding-fixnote"> ({f.fix.description})</span>
-                            </span>
-                          </label>
-                        ) : (
-                          <p className="finding-nofix">Bu bulgu için otomatik düzeltme önerilmiyor.</p>
-                        )}
-                      </div>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          </>
+          <FindingList
+            findings={result.findings}
+            blockText={blockText}
+            activeKey={active}
+            selectedKeys={selected}
+            onSetActive={setActive}
+            onToggleFix={toggle}
+          />
         )}
       </div>
     </>

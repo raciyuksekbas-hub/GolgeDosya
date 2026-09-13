@@ -134,6 +134,32 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
     </div>;
 }
 /**
+ * Araç grupları — panelin görsel kütlesi.
+ *
+ * Saf sunum: hangi aracın seçili olduğunu ve tıklamayı çağıran tutar.
+ */
+export function ToolGroups({ kind, busy, onPick }: {
+    kind: Kind; busy?: boolean; onPick: (key: Kind) => void;
+}) {
+    return <>{TOOL_GROUPS.map(group => {
+        const buttons = group.keys.map(key =>
+            <button key={key} className={`btn tool ${kind === key ? 'is-current' : ''}`} title={tools[key][1]} aria-pressed={kind === key} disabled={busy} onClick={() => onPick(key)}>{tools[key][0]}</button>);
+        // Nadir araçlar katlı gelir ama içinde seçili bir araç varsa açık açılır:
+        // kullanıcı seçtiği aracı kaybolmuş sanmamalı.
+        if (group.collapsed) {
+            return <details key={group.title} className="tool-group" open={group.keys.includes(kind)}>
+                <summary>{group.title}</summary>
+                <div className="tool-grid">{buttons}</div>
+            </details>;
+        }
+        return <div key={group.title} className="tool-group">
+            <h3 className="inspector-label">{group.title}</h3>
+            <div className="tool-grid">{buttons}</div>
+        </div>;
+    })}</>;
+}
+
+/**
  * Belge yüzeyi yerine çizilen üç DIŞLAYICI durum.
  *
  * Eskiden hata, genel boş durum davetinin üstüne ekleniyordu: kullanıcı hem
@@ -322,22 +348,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
 
         {surfaces.tools && <InspectorPanel title="Araç" scope="pdf-root">
             <div className="pdf-controls" aria-label="PDF işlem kontrolleri">
-                {TOOL_GROUPS.map(group => {
-                    const buttons = group.keys.map(key =>
-                        <button key={key} className={`btn tool ${kind === key ? 'is-current' : ''}`} title={tools[key][1]} aria-pressed={kind === key} disabled={busy} onClick={() => pick(key)}>{tools[key][0]}</button>);
-                    // Nadir araçlar katlı gelir ama içinde seçili bir araç varsa açık açılır:
-                    // kullanıcı seçtiği aracı kaybolmuş sanmamalı.
-                    if (group.collapsed) {
-                        return <details key={group.title} className="tool-group" open={group.keys.includes(kind)}>
-                            <summary>{group.title}</summary>
-                            <div className="tool-grid">{buttons}</div>
-                        </details>;
-                    }
-                    return <div key={group.title} className="tool-group">
-                        <h3 className="inspector-label">{group.title}</h3>
-                        <div className="tool-grid">{buttons}</div>
-                    </div>;
-                })}
+                <ToolGroups kind={kind} busy={busy} onPick={pick}/>
 
                 <InspectorSection title="Seçili araç">
                     <p className="tool-name">{tools[kind][0]}</p>

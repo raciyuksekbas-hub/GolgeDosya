@@ -34,36 +34,35 @@
    * artık ürünün kendi token'larına bağlanması. Karşılaştır artık ürüne ait.
    */
 
+  /* Kendine atıf yapan bildirimler (`--surface-raised: var(--surface-raised)`)
+     CSS'te döngüdür: değişken geçersiz olur ve onu okuyan her özellik sessizce
+     düşer. Karşılaştır'ın sağ paneli bu yüzden diğer iki panelin aksine
+     çerçevesiz ve zeminsiz çiziliyordu. Kabuk token'ı zaten miras alınıyor;
+     yeniden bildirmeye gerek yok. */
+
   /* -- Yüzeyler ---------------------------------------------------------- */
   --surface-window: var(--surface-app);
+  /* Belge yüzeyi kabuğun zeminidir. Koyu temada beyaz kâğıt hem okunmaz hem
+     saatlerce metin okuyan kişiyi yorar; iki temada da chrome ile aynı aileden
+     kalır. */
+  --surface-document: var(--surface-app);
   --surface-shell: var(--surface-raised);
-  --surface-sidebar: var(--surface-sidebar);
   --surface-panel: var(--surface-raised);
-  --surface-raised: var(--surface-raised);
-  --surface-hover: var(--surface-hover);
-  --surface-document: var(--surface-document);
   --surface-pane-head: var(--surface-raised);
   --surface-inset: var(--surface-sunken);
-  --surface-selected: var(--surface-selected);
   --surface-veil: rgb(0 0 0 / 22%);
   --surface-scrim: rgb(0 0 0 / 30%);
   --surface-translucent: var(--surface-hover);
 
   /* -- Çizgiler ---------------------------------------------------------- */
   --border-hairline: var(--border-subtle);
-  --border-subtle: var(--border-subtle);
-  --border-strong: var(--border-strong);
   --border-hover: var(--border-strong);
 
   /* -- Metin ------------------------------------------------------------- */
-  --text-primary: var(--text-primary);
-  --text-secondary: var(--text-secondary);
-  --text-muted: var(--text-muted);
   --text-faint: var(--text-muted);
   --text-on-accent: var(--on-accent);
 
   /* -- Vurgu: ürünün tek mürekkep yeşili -------------------------------- */
-  --accent: var(--accent);
   --accent-strong: var(--accent-hover);
   --accent-wash: var(--accent-quiet);
   --accent-line: var(--accent);
@@ -100,9 +99,7 @@
 
   /* -- Ölçü -------------------------------------------------------------- */
   --radius-xs: 3px;
-  --radius-sm: var(--radius-sm);
   --radius-md: var(--radius);
-  --radius-lg: var(--radius-lg);
   --radius-pill: 999px;
 
   --sidebar-w: 232px;
@@ -111,15 +108,12 @@
 
   /* -- Tipografi: sistem fontu. Manrope paketlenmiyordu zaten; adı yalnız
         yedek listesindeydi ve ürünün geri kalanıyla çelişiyordu. ---------- */
-  --font-ui: var(--font-ui);
   --font-document: var(--font-ui);
-  --font-mono: var(--font-mono);
 
   /* -- Yükselti: neredeyse görünmez ------------------------------------- */
   --shadow-toast: 0 4px 16px rgb(0 0 0 / 12%);
   --shadow-dialog: 0 8px 28px rgb(0 0 0 / 14%);
 
-  --ease: var(--ease);
   --fast: var(--motion-fast);
 }
 
@@ -156,8 +150,7 @@
 .document-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .paper { min-height: 100%; padding: 4px 0 72px; color: var(--text-primary); background: var(--surface-document); font-family: var(--font-document); font-size: 12.5px; line-height: 1.75; }
 
-.document-row { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: start; padding: 9px 18px 9px 0; border-left: 2px solid transparent; border-bottom: 1px solid var(--border-hairline); scroll-margin: 80px 0; transition: background var(--fast), border-color var(--fast); }
-.document-row:last-child { border-bottom: 0; }
+.document-row { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: start; padding: 9px 18px 9px 0; border-left: 2px solid transparent; scroll-margin: 80px 0; transition: background var(--fast), border-color var(--fast); }
 .document-row.kind-added { border-left-color: var(--diff-added-rest); }
 .document-row.kind-removed { border-left-color: var(--diff-removed-rest); }
 .document-row.kind-modified { border-left-color: var(--diff-modified-rest); }
@@ -277,21 +270,21 @@
 .compare-root .detail-block p { margin: 0; color: var(--text-primary); }
 .compare-root .detail-block.removed p { color: var(--diff-removed-text); }
 .compare-root .detail-block.added p { color: var(--diff-added-text); }
-.compare-root .detail-note,
-.compare-root .detail-summary,
-.compare-root .detail-summary { display: grid; gap: 2px; }
+.compare-root .detail-note { display: grid; gap: 2px; }
 
 .compare-root .filters { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .compare-root .filters button {
   min-height: 24px;
-  padding: 0 var(--space-2);
+  padding: 0 6px;
   color: var(--text-secondary);
+  font-size: var(--text-meta);
   font: inherit;
-  background: var(--surface-hover);
-  border: 1px solid var(--border-subtle);
+  background: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
 }
-.compare-root .filters button.is-active { color: var(--text-primary); font-weight: 500; background: var(--surface-selected); border-color: var(--border-strong); }
+.compare-root .filters button:hover { color: var(--text-primary); background: var(--surface-hover); }
+.compare-root .filters button.is-active { color: var(--text-primary); font-weight: 500; background: var(--surface-selected); }
 
 .compare-root .change-list { display: grid; gap: 1px; }
 .compare-root .change-row {
@@ -530,13 +523,40 @@
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
-.pdf-root .tool-grid { display: grid; gap: var(--space-1); }
-.pdf-root .tool { justify-content: flex-start; text-align: left; white-space: normal; }
+/* Katlı grup kapalıyken hemen altındaki bölüm etiketine yapışıyordu. */
+.pdf-root details.tool-group { margin-bottom: var(--space-4); }
+.pdf-root .tool-grid { display: grid; gap: 1px; }
+/* Araç satırı, dolgulu bir düğme değil sakin bir liste satırıdır: üç tanesi
+   yan yana durduğunda panelin en ağır öğesi olmamalı. Kenar çubuğundaki kip
+   satırıyla aynı dil — tonal seçim, solda ince vurgu işareti. */
+.pdf-root .tool {
+  position: relative;
+  justify-content: flex-start;
+  min-height: var(--row-h);
+  padding: 0 var(--space-2);
+  color: var(--text-secondary);
+  font-weight: 400;
+  text-align: left;
+  white-space: normal;
+  background: none;
+  border-color: transparent;
+}
+.pdf-root .tool:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-hover); border-color: transparent; }
 .pdf-root .tool.is-current {
   color: var(--text-primary);
   font-weight: 500;
   background: var(--surface-selected);
-  border-color: var(--border-strong);
+  border-color: transparent;
+}
+.pdf-root .tool.is-current::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
 }
 .pdf-root .tool-name { margin: 0; font-weight: 500; }
 .pdf-root .tool-hint { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
@@ -1115,7 +1135,14 @@ body { user-select: none; -webkit-user-select: none; }
   border-color: transparent;
 }
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-primary:disabled { color: var(--on-accent); background: var(--text-muted); }
+/* Etkisiz bir eylem öne çıkmaz: dolgulu gri, koyu temada çevresindeki her
+   şeyden açıktı ve devre dışı düğme ekranın en ağır öğesi oluyordu (gerçek
+   pencerede görüldü — Denetle, seçim yokken "Kopyaya uygula…"). */
+.btn-primary:disabled {
+  color: var(--text-muted);
+  background: var(--surface-hover);
+  border-color: var(--border-subtle);
+}
 
 .btn-quiet {
   color: var(--text-secondary);
@@ -1277,13 +1304,16 @@ body { user-select: none; -webkit-user-select: none; }
 
 button.file-row:hover { background: var(--surface-hover); }
 
+/* Ad ve tür birlikte okunur; zaman satırın sağ ucunda kalır. Ad tek başına
+   sola, rozet ve zaman birlikte sağa itildiğinde göz bin piksel yol alıyordu. */
 .file-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.file-row .pill { margin-right: auto; }
 
 .file-kind {
   flex: none;

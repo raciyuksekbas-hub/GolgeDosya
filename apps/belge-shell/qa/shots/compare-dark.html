@@ -34,36 +34,35 @@
    * artık ürünün kendi token'larına bağlanması. Karşılaştır artık ürüne ait.
    */
 
+  /* Kendine atıf yapan bildirimler (`--surface-raised: var(--surface-raised)`)
+     CSS'te döngüdür: değişken geçersiz olur ve onu okuyan her özellik sessizce
+     düşer. Karşılaştır'ın sağ paneli bu yüzden diğer iki panelin aksine
+     çerçevesiz ve zeminsiz çiziliyordu. Kabuk token'ı zaten miras alınıyor;
+     yeniden bildirmeye gerek yok. */
+
   /* -- Yüzeyler ---------------------------------------------------------- */
   --surface-window: var(--surface-app);
+  /* Belge yüzeyi kabuğun zeminidir. Koyu temada beyaz kâğıt hem okunmaz hem
+     saatlerce metin okuyan kişiyi yorar; iki temada da chrome ile aynı aileden
+     kalır. */
+  --surface-document: var(--surface-app);
   --surface-shell: var(--surface-raised);
-  --surface-sidebar: var(--surface-sidebar);
   --surface-panel: var(--surface-raised);
-  --surface-raised: var(--surface-raised);
-  --surface-hover: var(--surface-hover);
-  --surface-document: var(--surface-document);
   --surface-pane-head: var(--surface-raised);
   --surface-inset: var(--surface-sunken);
-  --surface-selected: var(--surface-selected);
   --surface-veil: rgb(0 0 0 / 22%);
   --surface-scrim: rgb(0 0 0 / 30%);
   --surface-translucent: var(--surface-hover);
 
   /* -- Çizgiler ---------------------------------------------------------- */
   --border-hairline: var(--border-subtle);
-  --border-subtle: var(--border-subtle);
-  --border-strong: var(--border-strong);
   --border-hover: var(--border-strong);
 
   /* -- Metin ------------------------------------------------------------- */
-  --text-primary: var(--text-primary);
-  --text-secondary: var(--text-secondary);
-  --text-muted: var(--text-muted);
   --text-faint: var(--text-muted);
   --text-on-accent: var(--on-accent);
 
   /* -- Vurgu: ürünün tek mürekkep yeşili -------------------------------- */
-  --accent: var(--accent);
   --accent-strong: var(--accent-hover);
   --accent-wash: var(--accent-quiet);
   --accent-line: var(--accent);
@@ -100,9 +99,7 @@
 
   /* -- Ölçü -------------------------------------------------------------- */
   --radius-xs: 3px;
-  --radius-sm: var(--radius-sm);
   --radius-md: var(--radius);
-  --radius-lg: var(--radius-lg);
   --radius-pill: 999px;
 
   --sidebar-w: 232px;
@@ -111,15 +108,12 @@
 
   /* -- Tipografi: sistem fontu. Manrope paketlenmiyordu zaten; adı yalnız
         yedek listesindeydi ve ürünün geri kalanıyla çelişiyordu. ---------- */
-  --font-ui: var(--font-ui);
   --font-document: var(--font-ui);
-  --font-mono: var(--font-mono);
 
   /* -- Yükselti: neredeyse görünmez ------------------------------------- */
   --shadow-toast: 0 4px 16px rgb(0 0 0 / 12%);
   --shadow-dialog: 0 8px 28px rgb(0 0 0 / 14%);
 
-  --ease: var(--ease);
   --fast: var(--motion-fast);
 }
 
@@ -156,8 +150,7 @@
 .document-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .paper { min-height: 100%; padding: 4px 0 72px; color: var(--text-primary); background: var(--surface-document); font-family: var(--font-document); font-size: 12.5px; line-height: 1.75; }
 
-.document-row { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: start; padding: 9px 18px 9px 0; border-left: 2px solid transparent; border-bottom: 1px solid var(--border-hairline); scroll-margin: 80px 0; transition: background var(--fast), border-color var(--fast); }
-.document-row:last-child { border-bottom: 0; }
+.document-row { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: start; padding: 9px 18px 9px 0; border-left: 2px solid transparent; scroll-margin: 80px 0; transition: background var(--fast), border-color var(--fast); }
 .document-row.kind-added { border-left-color: var(--diff-added-rest); }
 .document-row.kind-removed { border-left-color: var(--diff-removed-rest); }
 .document-row.kind-modified { border-left-color: var(--diff-modified-rest); }
@@ -277,21 +270,21 @@
 .compare-root .detail-block p { margin: 0; color: var(--text-primary); }
 .compare-root .detail-block.removed p { color: var(--diff-removed-text); }
 .compare-root .detail-block.added p { color: var(--diff-added-text); }
-.compare-root .detail-note,
-.compare-root .detail-summary,
-.compare-root .detail-summary { display: grid; gap: 2px; }
+.compare-root .detail-note { display: grid; gap: 2px; }
 
 .compare-root .filters { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .compare-root .filters button {
   min-height: 24px;
-  padding: 0 var(--space-2);
+  padding: 0 6px;
   color: var(--text-secondary);
+  font-size: var(--text-meta);
   font: inherit;
-  background: var(--surface-hover);
-  border: 1px solid var(--border-subtle);
+  background: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
 }
-.compare-root .filters button.is-active { color: var(--text-primary); font-weight: 500; background: var(--surface-selected); border-color: var(--border-strong); }
+.compare-root .filters button:hover { color: var(--text-primary); background: var(--surface-hover); }
+.compare-root .filters button.is-active { color: var(--text-primary); font-weight: 500; background: var(--surface-selected); }
 
 .compare-root .change-list { display: grid; gap: 1px; }
 .compare-root .change-row {
@@ -530,13 +523,40 @@
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
-.pdf-root .tool-grid { display: grid; gap: var(--space-1); }
-.pdf-root .tool { justify-content: flex-start; text-align: left; white-space: normal; }
+/* Katlı grup kapalıyken hemen altındaki bölüm etiketine yapışıyordu. */
+.pdf-root details.tool-group { margin-bottom: var(--space-4); }
+.pdf-root .tool-grid { display: grid; gap: 1px; }
+/* Araç satırı, dolgulu bir düğme değil sakin bir liste satırıdır: üç tanesi
+   yan yana durduğunda panelin en ağır öğesi olmamalı. Kenar çubuğundaki kip
+   satırıyla aynı dil — tonal seçim, solda ince vurgu işareti. */
+.pdf-root .tool {
+  position: relative;
+  justify-content: flex-start;
+  min-height: var(--row-h);
+  padding: 0 var(--space-2);
+  color: var(--text-secondary);
+  font-weight: 400;
+  text-align: left;
+  white-space: normal;
+  background: none;
+  border-color: transparent;
+}
+.pdf-root .tool:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-hover); border-color: transparent; }
 .pdf-root .tool.is-current {
   color: var(--text-primary);
   font-weight: 500;
   background: var(--surface-selected);
-  border-color: var(--border-strong);
+  border-color: transparent;
+}
+.pdf-root .tool.is-current::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
 }
 .pdf-root .tool-name { margin: 0; font-weight: 500; }
 .pdf-root .tool-hint { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
@@ -1115,7 +1135,14 @@ body { user-select: none; -webkit-user-select: none; }
   border-color: transparent;
 }
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-primary:disabled { color: var(--on-accent); background: var(--text-muted); }
+/* Etkisiz bir eylem öne çıkmaz: dolgulu gri, koyu temada çevresindeki her
+   şeyden açıktı ve devre dışı düğme ekranın en ağır öğesi oluyordu (gerçek
+   pencerede görüldü — Denetle, seçim yokken "Kopyaya uygula…"). */
+.btn-primary:disabled {
+  color: var(--text-muted);
+  background: var(--surface-hover);
+  border-color: var(--border-subtle);
+}
 
 .btn-quiet {
   color: var(--text-secondary);
@@ -1277,13 +1304,16 @@ body { user-select: none; -webkit-user-select: none; }
 
 button.file-row:hover { background: var(--surface-hover); }
 
+/* Ad ve tür birlikte okunur; zaman satırın sağ ucunda kalır. Ad tek başına
+   sola, rozet ve zaman birlikte sağa itildiğinde göz bin piksel yol alıyordu. */
 .file-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.file-row .pill { margin-right: auto; }
 
 .file-kind {
   flex: none;
@@ -1599,4 +1629,4 @@ input[type="number"] {
   color: var(--text-secondary);
   font-size: var(--text-meta);
 }
-</style></head><body><div style="height:100vh"><div class="shell" data-wide="true" data-fullscreen="false"><a class="skip-link" href="#icerik">İçeriğe geç</a><aside class="sidebar" data-tauri-drag-region="true"><div class="sidebar-head" data-tauri-drag-region="true"><svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true" class="sidebar-mark"><defs><clipPath id="gd-sidebar-mark"><rect x="12" y="8" width="40" height="48" rx="7"></rect></clipPath></defs><g clip-path="url(#gd-sidebar-mark)"><rect x="12" y="8" width="40" height="48" fill="var(--accent)"></rect><path d="M12 8 H52 V32 L28 56 H12 Z" fill="currentColor"></path></g></svg><span class="sidebar-brand" title="GölgeDosya">GölgeDosya</span></div><nav class="sidebar-nav" aria-label="Çalışma kipleri"><button type="button" class="sidebar-item" data-feature="duzenek"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M9.5 1.8H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V8"></path><path d="M13.9 2.4a1.2 1.2 0 0 0-1.7-1.7L8.6 4.3l-.5 2.2 2.2-.5z"></path></svg><span>Düzenle</span></button><button type="button" class="sidebar-item" data-feature="tavzih"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M2.4 5.6h9.1M9.3 3.4l2.2 2.2-2.2 2.2"></path><path d="M13.6 10.4H4.5m2.2-2.2-2.2 2.2 2.2 2.2"></path></svg><span>Dönüştür</span></button><button type="button" class="sidebar-item" data-feature="degisikis" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><rect x="1.7" y="2.4" width="5.2" height="11.2" rx="1"></rect><rect x="9.1" y="2.4" width="5.2" height="11.2" rx="1"></rect><path d="M3.3 5.6h2M3.3 8h2M10.7 5.6h2M10.7 8h2M10.7 10.4h2"></path></svg><span>Karşılaştır</span></button><button type="button" class="sidebar-item" data-feature="ikincigoz"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M12.6 7.4V2.8a1 1 0 0 0-1-1H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h4"></path><path d="M4.9 4.8h5.2M4.9 7.2h3.4"></path><circle cx="11.1" cy="11.1" r="2.4"></circle><path d="m12.9 12.9 1.4 1.4"></path></svg><span>Denetle</span></button></nav><div class="sidebar-spacer" data-tauri-drag-region="true"></div><div class="sidebar-footer"><button type="button" class="sidebar-item" title="Ayarlar  ⌘,"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5"></path></svg><span>Ayarlar</span></button></div></aside><section class="content"><div class="titlebar-band" data-tauri-drag-region="true"></div><div class="toolbar" data-empty="false" data-tauri-drag-region="true"><div class="toolbar-context"><span class="doc-chip"><span class="doc-chip-name">sozlesme-v1.docx</span><span class="pill">docx</span><span class="doc-chip-sep">↔</span><span class="doc-chip-name">sozlesme-v2.docx</span><span class="pill">docx</span></span></div><div class="toolbar-spacer" data-tauri-drag-region="true"></div><div class="toolbar-actions"></div><div class="toolbar-shell"><button type="button" class="btn btn-quiet">Kapat</button></div></div><main id="icerik" class="content-body" tabindex="-1"><div class="compare-root"><div class="compare-panes"><div class="document-scroll"><article class="paper"><div class="document-row kind-unchanged   block-heading" data-row="0"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 1 — TARAFLAR</span></div></div></div><div class="document-row kind-modified   block-paragraph" data-row="1"><div class="row-gutter">2</div><div class="row-content"><div class="row-body"><span class="fragment equal">İşbu sözleşme, Yüksekbaş </span><span class="fragment removed">Ltd. Şti. </span><span class="fragment equal">ile Yüklenici arasında akdedilmiştir.</span></div></div></div><div class="document-row kind-unchanged   block-heading" data-row="2"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 2 — KONU</span></div></div></div><div class="document-row kind-unchanged   block-paragraph" data-row="3"><div class="row-gutter">4</div><div class="row-content"><div class="row-body"><span class="fragment equal">Sözleşmenin konusu, ekte belirtilen hizmetlerin ifasıdır.</span></div></div></div><div class="document-row kind-unchanged   block-heading" data-row="4"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 3 — HİZMET BEDELİ</span></div></div></div><div class="document-row kind-modified is-selected  block-paragraph" data-row="5"><div class="row-gutter">6</div><div class="row-content"><div class="row-body"><span class="fragment equal">3.1. </span><span class="fragment equal">Hizmet bedeli KDV dahil </span><span class="fragment removed">118.000 </span><span class="fragment equal">TL olarak kararlaştırılmıştır.</span></div></div></div><div class="document-row kind-modified   block-paragraph" data-row="6"><div class="row-gutter">7</div><div class="row-content"><div class="row-body"><span class="fragment equal">3.2. </span><span class="fragment equal">Ödeme, fatura tarihinden itibaren </span><span class="fragment removed">30 </span><span class="fragment equal">gün içinde yapılır.</span></div></div></div><div class="document-row kind-added   block-placeholder" data-row="7"><div class="row-gutter">8</div><div class="row-content"><div class="row-body"><span class="placeholder-copy">Bu bölüm eklenmiştir.</span></div></div></div></article></div><div class="change-rail"><div class="rail-head"><button class="rail-swap" title="Sürümleri değiştir" aria-label="Sürümleri değiştir"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h11l-3-3m3 3-3 3"></path><path d="M17 17H6l3 3m-3-3 3-3"></path></svg></button></div><div class="rail-body"><button class="rail-step up" aria-label="Önceki değişiklik" title="Önceki değişiklik"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg></button><div class="rail-track"><span class="rail-axis" aria-hidden="true"></span><button class="rail-node modified " title="01 · Değiştirilen · Değiştirilen paragraf" aria-label="1. değişiklik: Değiştirilen · Değiştirilen paragraf" data-row="1"><span class="rail-node-index">01</span><i aria-hidden="true"></i></button><button class="rail-node modified is-active" title="02 · Değiştirilen · Değiştirilen paragraf" aria-label="2. değişiklik: Değiştirilen · Değiştirilen paragraf" aria-current="true" data-row="5"><span class="rail-node-index">02</span><i aria-hidden="true"></i></button><button class="rail-node modified " title="03 · Değiştirilen · Değiştirilen paragraf" aria-label="3. değişiklik: Değiştirilen · Değiştirilen paragraf" data-row="6"><span class="rail-node-index">03</span><i aria-hidden="true"></i></button><button class="rail-node added " title="04 · Eklenen · Değiştirilen paragraf" aria-label="4. değişiklik: Eklenen · Değiştirilen paragraf" data-row="7"><span class="rail-node-index">04</span><i aria-hidden="true"></i></button></div><button class="rail-step down" aria-label="Sonraki değişiklik" title="Sonraki değişiklik"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><div class="rail-position">2/4</div></div></div><div class="document-scroll"><article class="paper"><div class="document-row kind-unchanged   block-heading" data-row="0"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 1 — TARAFLAR</span></div></div></div><div class="document-row kind-modified   block-paragraph" data-row="1"><div class="row-gutter">2</div><div class="row-content"><div class="row-body"><span class="fragment equal">İşbu sözleşme, Yüksekbaş </span><span class="fragment added">Limited Şirketi </span><span class="fragment equal">ile Yüklenici arasında akdedilmiştir.</span></div></div></div><div class="document-row kind-unchanged   block-heading" data-row="2"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 2 — KONU</span></div></div></div><div class="document-row kind-unchanged   block-paragraph" data-row="3"><div class="row-gutter">4</div><div class="row-content"><div class="row-body"><span class="fragment equal">Sözleşmenin konusu, ekte belirtilen hizmetlerin ifasıdır.</span></div></div></div><div class="document-row kind-unchanged   block-heading" data-row="4"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 3 — HİZMET BEDELİ</span></div></div></div><div class="document-row kind-modified is-selected  block-paragraph" data-row="5"><div class="row-gutter">6</div><div class="row-content"><div class="row-body"><span class="fragment equal">3.1. </span><span class="fragment equal">Hizmet bedeli KDV dahil </span><span class="fragment added">142.000 </span><span class="fragment equal">TL olarak kararlaştırılmıştır.</span></div></div></div><div class="document-row kind-modified   block-paragraph" data-row="6"><div class="row-gutter">7</div><div class="row-content"><div class="row-body"><span class="fragment equal">3.2. </span><span class="fragment equal">Ödeme, fatura tarihinden itibaren </span><span class="fragment added">45 </span><span class="fragment equal">gün içinde yapılır.</span></div></div></div><div class="document-row kind-added   block-paragraph" data-row="7"><div class="row-gutter">8</div><div class="row-content"><div class="row-body"><span class="fragment added">3.3. Gecikme hâlinde aylık %2 gecikme faizi uygulanır.</span></div></div></div></article></div></div></div></main><div class="inspector-slot" hidden=""></div></section><div aria-live="polite" aria-atomic="true" class="sr-only" data-testid="announcer"></div></div></div></body></html>
+</style></head><body><div style="height:100vh"><div class="shell" data-wide="true" data-fullscreen="false"><a class="skip-link" href="#icerik">İçeriğe geç</a><aside class="sidebar" data-tauri-drag-region="true"><div class="sidebar-head" data-tauri-drag-region="true"><svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true" class="sidebar-mark"><defs><clipPath id="gd-sidebar-mark"><rect x="12" y="8" width="40" height="48" rx="7"></rect></clipPath></defs><g clip-path="url(#gd-sidebar-mark)"><rect x="12" y="8" width="40" height="48" fill="var(--accent)"></rect><path d="M12 8 H52 V32 L28 56 H12 Z" fill="currentColor"></path></g></svg><span class="sidebar-brand" title="GölgeDosya">GölgeDosya</span></div><nav class="sidebar-nav" aria-label="Çalışma kipleri"><button type="button" class="sidebar-item" data-feature="duzenek"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M9.5 1.8H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V8"></path><path d="M13.9 2.4a1.2 1.2 0 0 0-1.7-1.7L8.6 4.3l-.5 2.2 2.2-.5z"></path></svg><span>Düzenle</span></button><button type="button" class="sidebar-item" data-feature="tavzih"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M2.4 5.6h9.1M9.3 3.4l2.2 2.2-2.2 2.2"></path><path d="M13.6 10.4H4.5m2.2-2.2-2.2 2.2 2.2 2.2"></path></svg><span>Dönüştür</span></button><button type="button" class="sidebar-item" data-feature="degisikis" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><rect x="1.7" y="2.4" width="5.2" height="11.2" rx="1"></rect><rect x="9.1" y="2.4" width="5.2" height="11.2" rx="1"></rect><path d="M3.3 5.6h2M3.3 8h2M10.7 5.6h2M10.7 8h2M10.7 10.4h2"></path></svg><span>Karşılaştır</span></button><button type="button" class="sidebar-item" data-feature="ikincigoz"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M12.6 7.4V2.8a1 1 0 0 0-1-1H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h4"></path><path d="M4.9 4.8h5.2M4.9 7.2h3.4"></path><circle cx="11.1" cy="11.1" r="2.4"></circle><path d="m12.9 12.9 1.4 1.4"></path></svg><span>Denetle</span></button></nav><div class="sidebar-spacer" data-tauri-drag-region="true"></div><div class="sidebar-footer"><button type="button" class="sidebar-item" title="Ayarlar  ⌘,"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5"></path></svg><span>Ayarlar</span></button></div></aside><section class="content"><div class="titlebar-band" data-tauri-drag-region="true"></div><div class="toolbar" data-empty="false" data-tauri-drag-region="true"><div class="toolbar-context"><span class="doc-chip"><span class="doc-chip-name">sozlesme-v1.docx</span><span class="pill">docx</span><span class="doc-chip-sep">↔</span><span class="doc-chip-name">sozlesme-v2.docx</span><span class="pill">docx</span></span></div><div class="toolbar-spacer" data-tauri-drag-region="true"></div><div class="toolbar-actions"></div><div class="toolbar-shell"><button type="button" class="btn btn-quiet">Kapat</button></div></div><main id="icerik" class="content-body" tabindex="-1"><div class="compare-root"><div class="compare-panes"><div class="document-scroll"><article class="paper"><div class="document-row kind-unchanged   block-heading" data-row="0"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 1 — TARAFLAR</span></div></div></div><div class="document-row kind-modified   block-paragraph" data-row="1"><div class="row-gutter">2</div><div class="row-content"><div class="row-body"><span class="fragment equal">İşbu sözleşme, Yüksekbaş </span><span class="fragment removed">Ltd. Şti. </span><span class="fragment equal">ile Yüklenici arasında akdedilmiştir.</span></div></div></div><div class="document-row kind-unchanged   block-heading" data-row="2"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 2 — KONU</span></div></div></div><div class="document-row kind-unchanged   block-paragraph" data-row="3"><div class="row-gutter">4</div><div class="row-content"><div class="row-body"><span class="fragment equal">Sözleşmenin konusu, ekte belirtilen hizmetlerin ifasıdır.</span></div></div></div><div class="document-row kind-unchanged   block-heading" data-row="4"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 3 — HİZMET BEDELİ</span></div></div></div><div class="document-row kind-modified is-selected  block-paragraph" data-row="5"><div class="row-gutter">6</div><div class="row-content"><div class="row-body"><span class="fragment equal">3.1. </span><span class="fragment equal">Hizmet bedeli KDV dahil </span><span class="fragment removed">118.000 </span><span class="fragment equal">TL olarak kararlaştırılmıştır.</span></div></div></div><div class="document-row kind-modified   block-paragraph" data-row="6"><div class="row-gutter">7</div><div class="row-content"><div class="row-body"><span class="fragment equal">3.2. </span><span class="fragment equal">Ödeme, fatura tarihinden itibaren </span><span class="fragment removed">30 </span><span class="fragment equal">gün içinde yapılır.</span></div></div></div><div class="document-row kind-added   block-placeholder" data-row="7"><div class="row-gutter">8</div><div class="row-content"><div class="row-body"><span class="placeholder-copy">Bu bölüm eklenmiştir.</span></div></div></div></article></div><div class="change-rail"><div class="rail-head"><button class="rail-swap" title="Sürümleri değiştir" aria-label="Sürümleri değiştir"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h11l-3-3m3 3-3 3"></path><path d="M17 17H6l3 3m-3-3 3-3"></path></svg></button></div><div class="rail-body"><button class="rail-step up" aria-label="Önceki değişiklik" title="Önceki değişiklik"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg></button><div class="rail-track"><span class="rail-axis" aria-hidden="true"></span><button class="rail-node modified " title="01 · Değiştirilen · Değiştirilen paragraf" aria-label="1. değişiklik: Değiştirilen · Değiştirilen paragraf" data-row="1"><span class="rail-node-index">01</span><i aria-hidden="true"></i></button><button class="rail-node modified is-active" title="02 · Değiştirilen · Değiştirilen paragraf" aria-label="2. değişiklik: Değiştirilen · Değiştirilen paragraf" aria-current="true" data-row="5"><span class="rail-node-index">02</span><i aria-hidden="true"></i></button><button class="rail-node modified " title="03 · Değiştirilen · Değiştirilen paragraf" aria-label="3. değişiklik: Değiştirilen · Değiştirilen paragraf" data-row="6"><span class="rail-node-index">03</span><i aria-hidden="true"></i></button><button class="rail-node added " title="04 · Eklenen · Değiştirilen paragraf" aria-label="4. değişiklik: Eklenen · Değiştirilen paragraf" data-row="7"><span class="rail-node-index">04</span><i aria-hidden="true"></i></button></div><button class="rail-step down" aria-label="Sonraki değişiklik" title="Sonraki değişiklik"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><div class="rail-position">2/4</div></div></div><div class="document-scroll"><article class="paper"><div class="document-row kind-unchanged   block-heading" data-row="0"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 1 — TARAFLAR</span></div></div></div><div class="document-row kind-modified   block-paragraph" data-row="1"><div class="row-gutter">2</div><div class="row-content"><div class="row-body"><span class="fragment equal">İşbu sözleşme, Yüksekbaş </span><span class="fragment added">Limited Şirketi </span><span class="fragment equal">ile Yüklenici arasında akdedilmiştir.</span></div></div></div><div class="document-row kind-unchanged   block-heading" data-row="2"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 2 — KONU</span></div></div></div><div class="document-row kind-unchanged   block-paragraph" data-row="3"><div class="row-gutter">4</div><div class="row-content"><div class="row-body"><span class="fragment equal">Sözleşmenin konusu, ekte belirtilen hizmetlerin ifasıdır.</span></div></div></div><div class="document-row kind-unchanged   block-heading" data-row="4"><div class="row-gutter">§</div><div class="row-content"><div class="row-body"><span class="fragment equal">MADDE 3 — HİZMET BEDELİ</span></div></div></div><div class="document-row kind-modified is-selected  block-paragraph" data-row="5"><div class="row-gutter">6</div><div class="row-content"><div class="row-body"><span class="fragment equal">3.1. </span><span class="fragment equal">Hizmet bedeli KDV dahil </span><span class="fragment added">142.000 </span><span class="fragment equal">TL olarak kararlaştırılmıştır.</span></div></div></div><div class="document-row kind-modified   block-paragraph" data-row="6"><div class="row-gutter">7</div><div class="row-content"><div class="row-body"><span class="fragment equal">3.2. </span><span class="fragment equal">Ödeme, fatura tarihinden itibaren </span><span class="fragment added">45 </span><span class="fragment equal">gün içinde yapılır.</span></div></div></div><div class="document-row kind-added   block-paragraph" data-row="7"><div class="row-gutter">8</div><div class="row-content"><div class="row-body"><span class="fragment added">3.3. Gecikme hâlinde aylık %2 gecikme faizi uygulanır.</span></div></div></div></article></div></div></div></main><div class="inspector-slot"><aside class="inspector compare-root" aria-label="Farklar"><div class="inspector-head"><h2 class="inspector-title">Farklar</h2></div><div class="inspector-body"><p class="inspector-total"><strong>4</strong> değişiklik</p><ul class="summary-legend"><li class="added"><i aria-hidden="true"></i><span class="legend-label">Eklenen</span><span class="legend-count">1</span></li><li class="removed"><i aria-hidden="true"></i><span class="legend-label">Silinen</span><span class="legend-count">0</span></li><li class="modified"><i aria-hidden="true"></i><span class="legend-label">Değiştirilen</span><span class="legend-count">3</span></li></ul><div class="inspector-section-head"><h3 class="inspector-label">Seçili fark</h3></div><section class="inspector-detail modified"><header><span class="change-no">02</span><span class="change-type"><i></i>Değiştirilen</span><span class="change-location">Değiştirilen paragraf</span></header><div class="detail-block removed"><span>TEMEL SÜRÜM</span><p>3.1. Hizmet bedeli KDV dahil 118.000 TL olarak kararlaştırılmıştır.</p></div><div class="detail-block added"><span>DEĞİŞİK SÜRÜM</span><p>3.1. Hizmet bedeli KDV dahil 142.000 TL olarak kararlaştırılmıştır.</p></div></section><div class="filters" role="group" aria-label="Değişiklik filtresi"><button class="is-active">Tümü</button><button class="">Eklenen</button><button class="">Silinen</button><button class="">Değiştirilen</button></div><div class="change-list"><button class="change-row modified "><span class="change-row-top"><span class="change-no">01</span><span class="change-type"><i></i>Değiştirilen</span><span class="change-location">Değiştirilen paragraf</span></span><span class="change-summary"><span>− “Ltd. Şti.”</span><span>+ “Limited Şirketi”</span></span></button><button class="change-row modified is-active"><span class="change-row-top"><span class="change-no">02</span><span class="change-type"><i></i>Değiştirilen</span><span class="change-location">Değiştirilen paragraf</span></span><span class="change-summary"><span>“118.000 TL” → “142.000 TL”</span></span></button><button class="change-row modified "><span class="change-row-top"><span class="change-no">03</span><span class="change-type"><i></i>Değiştirilen</span><span class="change-location">Değiştirilen paragraf</span></span><span class="change-summary"><span>“30” → “45”</span></span></button><button class="change-row added "><span class="change-row-top"><span class="change-no">04</span><span class="change-type"><i></i>Eklenen</span><span class="change-location">Değiştirilen paragraf</span></span><span class="change-summary"><span>Bölüm bütünüyle eklendi.</span></span></button></div></div></aside></div></section><div aria-live="polite" aria-atomic="true" class="sr-only" data-testid="announcer"></div></div></div></body></html>

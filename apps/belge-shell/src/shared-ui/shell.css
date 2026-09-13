@@ -484,13 +484,16 @@
 
 button.file-row:hover { background: var(--surface-hover); }
 
+/* Ad ve tür birlikte okunur; zaman satırın sağ ucunda kalır. Ad tek başına
+   sola, rozet ve zaman birlikte sağa itildiğinde göz bin piksel yol alıyordu. */
 .file-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.file-row .pill { margin-right: auto; }
 
 .file-kind {
   flex: none;
