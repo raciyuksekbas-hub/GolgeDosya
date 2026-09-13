@@ -98,16 +98,16 @@ describe("durum sözleşmesi", () => {
     expect(markup).toContain("Bulgu bulunmadı");
     expect(markup).toContain("Bu belge tanımlı kuralların hiçbirine takılmadı.");
     // Gerçek belge istatistiği tek satır künye olarak burada; panelde değil.
-    expect(markup).toMatch(/class="review-clear-meta">13 paragraf · 84 kelime incelendi<\/p>/);
-    expect((markup.match(/class="review-clear-meta"/g) ?? []).length).toBe(1);
+    expect(markup).toMatch(/class="empty-meta">13 paragraf · 84 kelime incelendi<\/p>/);
+    expect((markup.match(/class="empty-meta"/g) ?? []).length).toBe(1);
     // Kutu, kart, başarı kutusu ya da ikon yok.
     for (const forbidden of ["status", "<svg", "card", "kv-value", "inspector"])
       expect(markup).not.toContain(forbidden);
-    const box = declarations(".review-clear");
+    const box = declarations(".empty");
     for (const prop of ["background", "background-color", "border", "box-shadow"])
       expect(box[prop]).toBeUndefined();
     // Künye sessiz: ikincil renk, küçük punto.
-    const meta = declarations(".review-clear-meta");
+    const meta = declarations(".empty-meta");
     expect(meta.color).toBe("var(--text-secondary)");
     expect(meta["font-size"]).toBe("var(--text-meta)");
   });

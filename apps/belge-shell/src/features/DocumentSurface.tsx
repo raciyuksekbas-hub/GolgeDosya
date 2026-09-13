@@ -2,9 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { FeatureState, RecentDocument } from "../shell/types";
-import { IconDocumentLarge } from "../shell/icons";
 import { announce } from "../shared-ui/Announcer";
-import { Button, Pill, Status } from "../shared-ui/primitives";
+import { Button, EmptyState, Pill, Status } from "../shared-ui/primitives";
 import { ToolbarActions } from "../shell/chrome";
 import { MODES, extensionOf, fileNameOf, type ContextOutcome } from "../shell/modes";
 import { relativeTime } from "./relativeTime";
@@ -159,20 +158,15 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
           </ul>
         </section>
       ) : (
-        <div className="dropzone" onDoubleClick={browse} role="group" aria-label={mode.prompt}>
-          <div className="empty">
-            <div className="empty-icon">
-              <IconDocumentLarge />
-            </div>
-            <h1 className="empty-primary">Belge açın</h1>
-            <p className="empty-hint">{mode.hint}</p>
-            <div className="empty-actions">
-              <Button variant="primary" onClick={browse} title="Belge Aç  ⌘O">
-                Belge Aç
-              </Button>
-            </div>
-          </div>
-        </div>
+        <EmptyState
+          title="Belge açın"
+          note={mode.hint}
+          action={
+            <Button variant="primary" onClick={browse} title="Belge Aç  ⌘O">
+              Belge Aç
+            </Button>
+          }
+        />
       )}
 
       {shown.length > 0 ? (

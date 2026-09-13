@@ -107,6 +107,28 @@ test("SaaS dashboard dili yok", () => {
   }
 });
 
+test("boş, hata ve sonuç-yok durumları tek yüzeyden çizilir", () => {
+  // Dört ekran aynı bilgi mimarisini dört ayrı biçimde çiziyordu: iki farklı
+  // dikey hizalama, iki optik konum, dört CSS bloğu. Tek yüzey kaldı.
+  const users = sources.filter((p) => /EmptyState/.test(readFileSync(p, "utf8")));
+  assert.ok(
+    users.length >= 4,
+    `boş durumu olan her ekran ortak ilkeli kullanmalı (şu an ${users.length})`,
+  );
+  // Eski, ekrana özel boş durum sınıfları geri gelmemeli.
+  for (const gone of ["preview-empty", "preview-failed", "review-clear", "dropzone", "empty-primary"]) {
+    assert.equal(
+      allTsx.filter((s) => s.includes(gone)).length,
+      0,
+      `ekrana özel boş durum sınıfı geri geldi: ${gone}`,
+    );
+  }
+  // Optik konum tek yerde tanımlı: kalan alanın %38'i üstte.
+  const blocks = shell.match(/^\.empty \{[^}]*\}/gmu) ?? [];
+  assert.equal(blocks.length, 1, "boş durum tek CSS bloğuyla tanımlanmalı");
+  assert.match(blocks[0], /grid-template-rows: 38fr auto 62fr/u);
+});
+
 test("belge bağlamı kipler arasında korunur", () => {
   const modes = readFileSync("src/shell/modes.ts", "utf8");
   assert.match(modes, /export function carryContext/, "bağlam taşıma tanımlı olmalı");

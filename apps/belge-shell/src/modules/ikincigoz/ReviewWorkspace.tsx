@@ -3,7 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import * as api from "./api";
 import type { AnalysisResult, Finding, Fix, Severity } from "./types";
 import { announce } from "../../shared-ui/Announcer";
-import { Button, Status } from "../../shared-ui/primitives";
+import { Button, EmptyState, Status } from "../../shared-ui/primitives";
 import { InspectorPanel, InspectorSection, ToolbarActions } from "../../shell/chrome";
 
 /**
@@ -136,13 +136,11 @@ export function ReviewChrome({
  */
 export function ReviewClear({ doc }: { doc: AnalysisResult["document"] }) {
   return (
-    <div className="review-clear">
-      <p className="review-clear-title">Bulgu bulunmadı</p>
-      <p className="review-clear-note">Bu belge tanımlı kuralların hiçbirine takılmadı.</p>
-      <p className="review-clear-meta">
-        {doc.blockCount} paragraf · {doc.wordCount} kelime incelendi
-      </p>
-    </div>
+    <EmptyState
+      title="Bulgu bulunmadı"
+      note="Bu belge tanımlı kuralların hiçbirine takılmadı."
+      meta={`${doc.blockCount} paragraf · ${doc.wordCount} kelime incelendi`}
+    />
   );
 }
 

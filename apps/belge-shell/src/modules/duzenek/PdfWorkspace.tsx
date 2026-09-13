@@ -30,7 +30,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { ScanBatchResult, SourceFile } from './types';
 import { InspectorPanel, InspectorSection, ToolbarActions } from '../../shell/chrome';
-import { Button, IconButton, Status } from '../../shared-ui/primitives';
+import { Button, EmptyState, IconButton, Status } from '../../shared-ui/primitives';
 import './pdf.css';
 const tools = {
     merge: ['Birleştir', 'Birden fazla PDF’yi seçtiğiniz sırayla tek dosyada birleştirir.'],
@@ -142,14 +142,15 @@ export function PreviewPlaceholder({ state, detail, onOpenAnother }: {
     state: DocumentState; detail: string; onOpenAnother: () => void;
 }) {
     if (state === 'failed') {
-        return <div className="preview-failed" role="alert">
-            <h3>{OPEN_FAILURE_TITLE}</h3>
-            <p>{detail || OPEN_FAILURE_FALLBACK}</p>
-            <Button onClick={onOpenAnother}>Başka Belge Aç</Button>
-        </div>;
+        return <EmptyState
+            alert
+            title={OPEN_FAILURE_TITLE}
+            note={detail || OPEN_FAILURE_FALLBACK}
+            action={<Button onClick={onOpenAnother}>Başka Belge Aç</Button>}
+        />;
     }
     if (state === 'loading') return <Status tone="busy">Belgeler inceleniyor…</Status>;
-    return <div className="preview-empty"><h3>Belge önizlemesi</h3><p>PDF seçtiğinizde sayfaları burada göreceksiniz.</p></div>;
+    return <EmptyState title="Belge önizlemesi" note="PDF seçtiğinizde sayfaları burada göreceksiniz." />;
 }
 
 export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths: string[]) => void }> = ({ paths: initialPaths, onOpenDocument }) => {

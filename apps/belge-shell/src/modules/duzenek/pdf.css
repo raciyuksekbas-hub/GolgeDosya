@@ -142,33 +142,6 @@
   color: var(--text-secondary);
   font-size: var(--text-meta);
 }
-.pdf-root .preview-empty {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-  text-align: center;
-}
-.pdf-root .preview-empty h3 { margin: 0 0 var(--space-1); color: var(--text-primary); font-size: var(--text-heading); }
-.pdf-root .preview-empty p { margin: 0; }
-
-/* Açma hatası. Boş durumla aynı sakin yerleşim; tek farkı kurtarma eylemi.
-   Kutu, kırmızı panel ve çizim yok — hata bir olay, bir duyuru değil. */
-.pdf-root .preview-failed {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-  text-align: center;
-}
-.pdf-root .preview-failed h3 { margin: 0 0 var(--space-1); color: var(--text-primary); font-size: var(--text-heading); }
-.pdf-root .preview-failed p { max-width: 46ch; margin: 0; }
-.pdf-root .preview-failed .btn { margin-top: var(--space-5); }
-
 /* -- Önizleme sahnesi (geometri davranışı değişmedi) --------------------- */
 .pdf-root .pdf-preview-stage {
   box-sizing: border-box;

@@ -69,25 +69,37 @@ export function Section({
   );
 }
 
-/* ------------------------------------------------------------ EmptyState */
+/* ------------------------------------------------------------ EmptyState
+   Dört ekran aynı bilgi mimarisini — ne oldu, tek cümle, (varsa) tek eylem —
+   dört ayrı biçimde çiziyordu: iki farklı dikey hizalama, iki farklı optik
+   konum, dört CSS bloğu. Tek yüzey kaldı. Kart, çerçeve, ikon ve çizim yok;
+   konum optik üst-orta (kalan alanın %38'i üstte). */
 
 export function EmptyState({
-  icon,
-  primary,
-  hint,
-  actions,
+  title,
+  note,
+  meta,
+  action,
+  alert = false,
 }: {
-  icon?: ReactNode;
-  primary: string;
-  hint?: string;
-  actions?: ReactNode;
+  title: string;
+  /** Tek cümle. Ne olduğu ya da ne yapılabileceği. */
+  note?: ReactNode;
+  /** Sessiz künye satırı — gerçek bir sayı varsa. */
+  meta?: ReactNode;
+  /** Tek kurtarma/başlangıç eylemi. */
+  action?: ReactNode;
+  /** Hata durumu: ekran okuyucuya duyurulur. */
+  alert?: boolean;
 }) {
   return (
-    <div className="empty">
-      {icon ? <div className="empty-icon">{icon}</div> : null}
-      <div className="empty-primary">{primary}</div>
-      {hint ? <div className="empty-hint">{hint}</div> : null}
-      {actions ? <div className="empty-actions">{actions}</div> : null}
+    <div className="empty" role={alert ? "alert" : undefined}>
+      <div className="empty-body">
+        <h1 className="empty-title">{title}</h1>
+        {note ? <p className="empty-note">{note}</p> : null}
+        {meta ? <p className="empty-meta">{meta}</p> : null}
+        {action ? <div className="empty-action">{action}</div> : null}
+      </div>
     </div>
   );
 }

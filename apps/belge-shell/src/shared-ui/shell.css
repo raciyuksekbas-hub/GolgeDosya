@@ -389,7 +389,38 @@
 }
 
 /* ------------------------------------------------------------ EmptyState
-   Optik üst-orta: kalan alanın %38'inde. Kart içinde değil. */
+   Boş, hata ve "sonuç yok" durumlarının TEK yüzeyi: Home, Düzenle'nin iki
+   durumu ve Denetle'nin temiz belgesi aynı ritimde durur. Optik üst-orta:
+   kalan alanın %38'i üstte kalır. Kart, çerçeve, ikon ve çizim yok. */
+
+.empty {
+  display: grid;
+  flex: 1;
+  grid-template-rows: 38fr auto 62fr;
+  justify-items: center;
+  min-height: 200px;
+  padding: var(--space-4);
+  text-align: center;
+}
+.empty-body {
+  display: flex;
+  grid-row: 2;
+  flex-direction: column;
+  align-items: center;
+}
+.empty-title { margin: 0; font-size: var(--text-heading); font-weight: 600; }
+.empty-note {
+  max-width: 46ch;
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+}
+/* İşin gerçekten yapıldığını gösteren künye. Tek satır, sessiz. */
+.empty-meta {
+  margin: var(--space-5) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+}
+.empty-action { margin-top: var(--space-5); }
 
 /* Home: son kullanılanlar yüzeyin ASIL içeriğidir ve yukarıdan başlar.
    Boş durum yalnız hiç kayıt yokken çizilir ve kalan alanı alır. */
@@ -424,34 +455,6 @@
   background: var(--accent-quiet);
   border-color: var(--accent);
 }
-
-.dropzone {
-  display: grid;
-  flex: 1;
-  grid-template-rows: 38fr auto 62fr;
-  min-height: 220px;
-  border: 1px dashed transparent;
-  border-radius: var(--radius-lg);
-  transition:
-    background var(--motion) var(--ease),
-    border-color var(--motion) var(--ease);
-}
-.dropzone > .empty { grid-row: 2; }
-
-.empty {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  text-align: center;
-}
-
-.empty-icon { color: var(--text-muted); opacity: 0.7; margin-bottom: var(--space-1); }
-.empty-primary { margin: 0; font-size: var(--text-heading); font-weight: 600; }
-.empty-hint { max-width: 44ch; margin: 0; color: var(--text-secondary); }
-.empty-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
 
 /* --------------------------------------------------------------- FileRow
    Liste: hairline ayırıcı, sağda tür rozeti ve soluk zaman. Kart değil. */
@@ -745,38 +748,6 @@ input[type="number"] {
   text-align: center;
 }
 .flow-target { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.012em; }
-/* Denetle — bulgu yok. Optik olarak üst-orta bölgede: sonuç, tek satır açıklama
-   ve belge künyesi. Kutu, kart, ikon ve başarı rengi yok: iyi sonuç kendini
-   bağırmaz. */
-.review-clear {
-  display: grid;
-  grid-template-rows: 38fr auto auto 62fr;
-  flex: 1;
-  justify-items: center;
-  min-height: 200px;
-  text-align: center;
-}
-.review-clear-title {
-  grid-row: 2;
-  margin: 0;
-  font-size: var(--text-heading);
-  font-weight: 600;
-}
-.review-clear-note {
-  grid-row: 3;
-  max-width: 44ch;
-  margin: var(--space-2) 0 0;
-  color: var(--text-secondary);
-}
-/* İncelemenin gerçekten yapıldığını gösteren künye. Tek satır, sessiz. */
-.review-clear-meta {
-  grid-row: 4;
-  align-self: start;
-  margin: var(--space-5) 0 0;
-  color: var(--text-secondary);
-  font-size: var(--text-meta);
-}
-
 .file-kind[data-tone="error"] { color: var(--danger); }
 
 /* Bir işin sonucu. Büyük yeşil kutu değil; ince çizgili sade bir satır. */

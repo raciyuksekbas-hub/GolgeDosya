@@ -53,22 +53,6 @@ export const IconReview = ({ className }: P) => (
   </svg>
 );
 
-/** Belge yüzeyi boş durumu — küçük, dekoratif değil. */
-export const IconDocumentLarge = ({ className }: P) => (
-  <svg
-    {...base}
-    width={28}
-    height={28}
-    viewBox="0 0 28 28"
-    strokeWidth={1.2}
-    className={className}
-  >
-    <path d="M16.5 3.5H8a2 2 0 0 0-2 2v17a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-    <path d="M16.5 3.5V9H22" />
-    <path d="M10 14h8M10 17.5h8M10 21h5" />
-  </svg>
-);
-
 /** Tek belge — kenar çubuğu bağlamı ve bar çipi. */
 export const IconDocument = ({ className }: P) => (
   <svg {...base} className={className}>
