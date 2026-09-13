@@ -30,6 +30,7 @@ try {
         import { DocumentPane } from './src/modules/degisikis/DocumentPane';
         import { ChangeRail } from './src/modules/degisikis/ChangeRail';
         import { ChangeInspector } from './src/modules/degisikis/ChangeInspector';
+        import { ConvertFlow, ConvertDone } from './src/modules/tavzih/ConvertWorkspace';
 
         const features = [
           { key: 'duzenek', label: 'Düzenle', route: 'duzenek', compiled: true, enabled: true },
@@ -162,6 +163,29 @@ try {
                 el(ChangeInspector, { summary: cmpModel.summary,
                   filter: 'all', onFilterChange: noop, filteredChanges: cmpModel.changes,
                   selectedChange: cmpModel.changes[1], onSelect: noop })))));
+
+        const cnvChip = el('span', { className: 'doc-chip' },
+          el('span', { className: 'doc-chip-name' }, 'dava-dilekcesi.docx'), el(Pill, null, 'docx'));
+        const cnvFolder = { path: '/Users/örnek/Belgeler/Dönüştürülen Belgeler', is_default: true };
+        export const convert = renderToStaticMarkup(shell({
+          current: 'tavzih', context: cnvChip, actions: el(Button, { variant: 'quiet' }, 'Kapat'),
+        }, el('div', { className: 'surface convert' }, el('div', { className: 'convert-body' },
+          el(ConvertFlow, {
+            selected: [{ path: '/Users/örnek/Belgeler/dava-dilekcesi.docx',
+              info: { name: 'dava-dilekcesi.docx', source_format: 'Word (.docx)', size_label: '2,6 KB', target_format: 'UYAP (.udf)' } }],
+            target: 'UYAP (.udf)', folder: cnvFolder, onChooseFolder: noop, onResetFolder: noop,
+          })))));
+
+        export const convertDone = renderToStaticMarkup(shell({
+          current: 'tavzih', context: cnvChip, actions: el(Button, { variant: 'quiet' }, 'Kapat'),
+        }, el('div', { className: 'surface convert' }, el('div', { className: 'convert-body' },
+          el(ConvertDone, {
+            canReveal: true, onReveal: noop,
+            items: [{ source: '/a/dava-dilekcesi.docx', source_name: 'dava-dilekcesi.docx',
+              output_name: 'dava-dilekcesi.udf', status: 'success', source_unchanged: true, warnings: [
+                { code: 'W1', severity: 'APPROXIMATION', title: 'Tablo hücre kenarlıkları yaklaşık aktarıldı', location: 's. 2' },
+              ] }],
+          })))));
 
         export const settingsSheet = renderToStaticMarkup(
           el(React.Fragment, null,

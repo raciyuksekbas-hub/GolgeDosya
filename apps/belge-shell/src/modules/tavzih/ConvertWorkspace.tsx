@@ -21,6 +21,129 @@ function results(outcome: BatchResult | ConversionResult | null): ConversionResu
 }
 
 /**
+ * Dönüşüm akışı — KAYNAK, yön, HEDEF ve çıktının nereye yazılacağı.
+ *
+ * Form değil: iki durak ve aralarında bir ok. Çıktı klasörü akışın altında tek
+ * satırdır; bir klasör adı için üçüncü bir kolon açmak ve tam yolu dokuz satıra
+ * sarmak, o bilginin hak ettiğinden fazlasıydı. Tam yol ipucunda durur.
+ */
+export function ConvertFlow({
+  selected,
+  target,
+  folder,
+  onChooseFolder,
+  onResetFolder,
+}: {
+  selected: InspectOutcome[];
+  target: string | null;
+  folder: OutputFolder | null;
+  onChooseFolder: () => void;
+  onResetFolder: () => void;
+}) {
+  const folderName = folder ? folder.path.split("/").filter(Boolean).pop() ?? folder.path : "";
+  return (
+    <div className="flow">
+      <div className="flow-step">
+        <h2 className="section-head">Kaynak</h2>
+        <ul className="file-list">
+          {selected.map((s) => (
+            <li key={s.path}>
+              <div className="file-row">
+                <span className="file-name">{s.info?.name ?? s.path.split("/").pop()}</span>
+                {s.info ? (
+                  <>
+                    <Pill>{s.info.source_format}</Pill>
+                    <span className="file-time">{s.info.size_label}</span>
+                  </>
+                ) : (
+                  <span className="file-kind" data-tone="error">
+                    {s.error?.message ?? "okunamadı"}
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {target ? (
+        <>
+          <div className="flow-arrow" aria-hidden="true">
+            ↓
+          </div>
+          <div className="flow-step">
+            <h2 className="section-head">Hedef</h2>
+            <p className="flow-target">{target}</p>
+          </div>
+        </>
+      ) : null}
+
+      {folder ? (
+        <p className="flow-dest">
+          <span title={folder.path}>Çıktı: {folderName}</span>
+          <Button className="btn-sm" variant="quiet" onClick={onChooseFolder}>
+            Değiştir…
+          </Button>
+          {!folder.is_default ? (
+            <Button className="btn-sm" variant="quiet" onClick={onResetFolder}>
+              Varsayılana dön
+            </Button>
+          ) : null}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Tamamlandı — ne üretildi, nerede.
+ *
+ * Akışın yerini alır, üstüne binmez: iş bitince kullanıcının sorusu artık
+ * "neye dönüşecek" değil "ne çıktı ve nerede" sorusudur. Kaynağın
+ * değişmediği her sonuçta açıkça yazılır; motor bunu hash'le kanıtlar.
+ */
+export function ConvertDone({ items, canReveal, onReveal }: {
+  items: ConversionResult[];
+  canReveal: boolean;
+  onReveal: () => void;
+}) {
+  const failed = items.filter((r) => r.status === "failure").length;
+  return (
+    <section className="convert-done" aria-labelledby="sonuc-baslik">
+      <h1 id="sonuc-baslik">
+        {failed > 0 ? "Dönüştürme tamamlandı, hatalar var" : "Dönüştürme tamamlandı"}
+      </h1>
+      {items.map((r) => (
+        <div key={r.source} className="result" data-tone={r.status === "failure" ? "error" : undefined}>
+          <div className="result-line">
+            {r.source_name} → {r.output_name ?? "—"}
+          </div>
+          {r.error ? <div>{r.error.message}</div> : null}
+          {r.source_unchanged ? <div>Kaynak belge değiştirilmedi.</div> : null}
+          {r.warnings.length > 0 ? (
+            <ul className="warn-list">
+              {r.warnings.map((w, i) => (
+                <li key={`${w.code}-${i}`}>
+                  <strong>{SEVERITY_LABEL[w.severity] ?? w.severity}:</strong> {w.title}
+                  {w.location ? ` (${w.location})` : ""}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ))}
+      {canReveal ? (
+        <div className="convert-action">
+          <Button variant="primary" onClick={onReveal}>
+            Finder'da Göster
+          </Button>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/**
  * Dönüştür — DOCX ↔ UDF.
  *
  * Motor `document-core`'un `convert` modülüdür ve hiç değiştirilmemiştir.
@@ -102,9 +225,7 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
   const items = results(outcome);
 
   const target = usable[0]?.info?.target_format ?? null;
-  const failed = items.filter((r) => r.status === "failure").length;
   const done = phase === "done" && items.length > 0;
-  const folderName = folder ? folder.path.split("/").filter(Boolean).pop() ?? folder.path : "";
 
   return (
     <>
@@ -127,97 +248,15 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
           {failure ? <Status tone="error">{failure}</Status> : null}
 
           {done ? (
-            <section className="convert-done" aria-labelledby="sonuc-baslik">
-              <h1 id="sonuc-baslik">
-                {failed > 0 ? "Dönüştürme tamamlandı, hatalar var" : "Dönüştürme tamamlandı"}
-              </h1>
-              {items.map((r) => (
-                <div key={r.source} className="result" data-tone={r.status === "failure" ? "error" : undefined}>
-                  <div className="result-line">
-                    {r.source_name} → {r.output_name ?? "—"}
-                  </div>
-                  {r.error ? <div>{r.error.message}</div> : null}
-                  {/* Kaynak dosyanın değişmediği her sonuçta açıkça gösterilir:
-                      motor kaynağı asla değiştirmez ve bunu hash'le kanıtlar. */}
-                  {r.source_unchanged ? <div>Kaynak belge değiştirilmedi.</div> : null}
-                  {r.warnings.length > 0 ? (
-                    <ul className="warn-list">
-                      {r.warnings.map((w, i) => (
-                        <li key={`${w.code}-${i}`}>
-                          <strong>{SEVERITY_LABEL[w.severity] ?? w.severity}:</strong> {w.title}
-                          {w.location ? ` (${w.location})` : ""}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
-              ))}
-              {folder ? (
-                <div className="convert-action">
-                  <Button variant="primary" onClick={() => api.revealOutputFolder()}>
-                    Finder'da Göster
-                  </Button>
-                </div>
-              ) : null}
-            </section>
+            <ConvertDone items={items} canReveal={folder !== null} onReveal={() => api.revealOutputFolder()} />
           ) : selected.length > 0 ? (
-            <div className="flow">
-              <div className="flow-step">
-                <h2 className="section-head">Kaynak</h2>
-                <ul className="file-list">
-                  {selected.map((s) => (
-                    <li key={s.path}>
-                      <div className="file-row">
-                        <span className="file-name">{s.info?.name ?? s.path.split("/").pop()}</span>
-                        {s.info ? (
-                          <>
-                            <Pill>{s.info.source_format}</Pill>
-                            <span className="file-time">{s.info.size_label}</span>
-                          </>
-                        ) : (
-                          <span className="file-kind" data-tone="error">
-                            {s.error?.message ?? "okunamadı"}
-                          </span>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {target ? (
-                <>
-                  <div className="flow-arrow" aria-hidden="true">
-                    ↓
-                  </div>
-                  <div className="flow-step">
-                    <h2 className="section-head">Hedef</h2>
-                    <p className="flow-target">{target}</p>
-                  </div>
-                </>
-              ) : null}
-
-              {/* Çıktının nereye yazılacağı işin yapıldığı yerde, tek satır.
-                  Bunun için üçüncü bir kolon açmak ve tam yolu dokuz satıra
-                  sarmak, bir klasör adının hak ettiğinden fazlasıydı. */}
-              {folder ? (
-                <p className="flow-dest">
-                  <span title={folder.path}>Çıktı: {folderName}</span>
-                  <Button className="btn-sm" variant="quiet" onClick={chooseFolder}>
-                    Değiştir…
-                  </Button>
-                  {!folder.is_default ? (
-                    <Button
-                      className="btn-sm"
-                      variant="quiet"
-                      onClick={async () => setFolder(await api.setOutputFolder(null))}
-                    >
-                      Varsayılana dön
-                    </Button>
-                  ) : null}
-                </p>
-              ) : null}
-            </div>
+            <ConvertFlow
+              selected={selected}
+              target={target}
+              folder={folder}
+              onChooseFolder={chooseFolder}
+              onResetFolder={async () => setFolder(await api.setOutputFolder(null))}
+            />
           ) : (
             <Status tone="busy">Belge inceleniyor…</Status>
           )}

@@ -31,6 +31,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { ScanBatchResult, SourceFile } from './types';
 import { InspectorPanel, InspectorSection, ToolbarActions } from '../../shell/chrome';
 import { Button, EmptyState, IconButton, Status } from '../../shared-ui/primitives';
+import { announce } from '../../shared-ui/Announcer';
 import './pdf.css';
 const tools = {
     merge: ['Birleştir', 'Birden fazla PDF’yi seçtiğiniz sırayla tek dosyada birleştirir.'],
@@ -178,7 +179,10 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         setSources(result.sources);
         build(result.sources);
         setApproved(false);
-        setStatus('Belgeler açıldı.');
+        // Belge ekranda: "açıldı" diyen yeşil bir kutu yeni bir bilgi taşımaz.
+        // Ekran okuyucu için sonuç yine bildirilir.
+        setStatus('');
+        announce(result.sources.length > 1 ? 'Belgeler açıldı.' : 'Belge açıldı.');
         setDocState('ready');
     }
     catch (e) {
@@ -342,7 +346,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                         </IconButton>}
                     </li>)}</ol>}
                     {order.length > 0 && <>
-                        <p className="tool-count">{order.length} kaynak sayfası · {selected.length} işaretli · Çıktı: {outputCount} sayfa</p>
+                        <p className="tool-count">{order.length} kaynak sayfası{pageSelection ? ` · ${selected.length} işaretli` : ''} · Çıktı: {outputCount} sayfa</p>
                         {pageSelection && <div className="row">
                             <Button className="btn-sm" disabled={busy} onClick={() => setSelected(order.map(p => p.key))}>Tümünü işaretle</Button>
                             <Button className="btn-sm" disabled={busy} onClick={() => setSelected([])}>Seçimi temizle</Button>
