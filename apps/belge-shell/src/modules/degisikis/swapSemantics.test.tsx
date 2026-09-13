@@ -83,7 +83,7 @@ describe("Fark paneli erişilebilirliği", () => {
     const changes = model(BASE, REVISED).changes;
     const markup = renderToStaticMarkup(
       <ChangeInspector
-        summary={summarize(changes)} changes={changes} filter="all"
+        summary={summarize(changes)} filter="all"
         onFilterChange={() => undefined} filteredChanges={changes}
         selectedChange={undefined} onSelect={() => undefined}
       />,

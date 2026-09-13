@@ -98,6 +98,13 @@ export function CompareWorkspace({ paths }: { paths: string[] }) {
     [comparison],
   );
 
+  // İlk fark açılışta seçilir. Panel boş bir yer tutucuyla ("bir fark seçin")
+  // açılmaz ve kullanıcı ilk farkı görmek için tıklamak zorunda kalmaz;
+  // Denetle de ilk bulguyu aynı şekilde açar.
+  useEffect(() => {
+    setSelected(model?.changes[0]?.id);
+  }, [model]);
+
   const visible = useMemo(
     () => (model ? filterChanges(model.changes, filter) : []),
     [model, filter],
@@ -155,7 +162,6 @@ export function CompareWorkspace({ paths }: { paths: string[] }) {
       <InspectorPanel title="Farklar" scope="compare-root">
         <ChangeInspector
           summary={model.summary}
-          changes={model.changes}
           filter={filter}
           onFilterChange={setFilter}
           filteredChanges={visible}

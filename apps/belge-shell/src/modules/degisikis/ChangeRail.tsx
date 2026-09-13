@@ -117,10 +117,8 @@ export function ChangeRail({ changes, selectedIndex, onSelect, onMove, onSwap, c
         </button>
       </div>
       <div className="rail-body">
-        <div className="rail-count" aria-hidden="true">
-          <span>FARKLAR</span>
-          <strong>{total || "—"}</strong>
-        </div>
+        {/* Toplam sayı rayın altındaki konum göstergesinde zaten var
+            ("3/22"); ayrıca bir sayaç bloğu aynı sayıyı ikinci kez yazıyordu. */}
         <button
           className="rail-step up"
           onClick={() => onMove(-1)}

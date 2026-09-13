@@ -73,28 +73,23 @@ function SelectedDetail({ change }: { change: ComparisonChange }) {
  * grafikten daha hızlı okunur ve ürünün geri kalanıyla aynı dili konuşur.
  * Sayılar view model'den gelir; burada yeniden hesaplanmaz.
  */
-export function ChangeInspector({ summary, changes, filter, onFilterChange, filteredChanges, selectedChange, onSelect }: {
+export function ChangeInspector({ summary, filter, onFilterChange, filteredChanges, selectedChange, onSelect }: {
   summary?: ComparisonSummary;
-  changes: ComparisonChange[];
   filter: ChangeFilter;
   onFilterChange: (filter: ChangeFilter) => void;
   filteredChanges: ComparisonChange[];
   selectedChange?: ComparisonChange;
   onSelect: (change: ComparisonChange) => void;
 }) {
-  if (!summary) {
-    return (
-      <div className="inspector-empty">
-        <strong>Değişiklikler burada listelenir</strong>
-        <p>Karşılaştırmak için iki belge açın.</p>
-      </div>
-    );
+  // Fark yoksa özet, filtre ve liste yazacak bir şey bulamaz: tek satır kalır.
+  if (!summary || summary.total === 0) {
+    return <p className="inspector-total">Fark bulunmadı</p>;
   }
 
-  const rows: Array<{ kind: ComparisonChange["kind"]; count: number; pct: number }> = [
-    { kind: "added", count: summary.added, pct: summary.addedPct },
-    { kind: "removed", count: summary.removed, pct: summary.removedPct },
-    { kind: "modified", count: summary.modified, pct: summary.modifiedPct },
+  const rows: Array<{ kind: ComparisonChange["kind"]; count: number }> = [
+    { kind: "added", count: summary.added },
+    { kind: "removed", count: summary.removed },
+    { kind: "modified", count: summary.modified },
   ];
 
   return (
@@ -108,7 +103,6 @@ export function ChangeInspector({ summary, changes, filter, onFilterChange, filt
             <i aria-hidden="true" />
             <span className="legend-label">{KIND_LABEL[row.kind]}</span>
             <span className="legend-count">{row.count}</span>
-            <span className="legend-pct">%{row.pct}</span>
           </li>
         ))}
       </ul>
@@ -118,9 +112,7 @@ export function ChangeInspector({ summary, changes, filter, onFilterChange, filt
         {filter !== "all" && <span className="filter-note">{filteredChanges.length} / {summary.total} gösteriliyor</span>}
       </div>
 
-      {selectedChange
-        ? <SelectedDetail change={selectedChange} />
-        : <p className="detail-idle">Rayda ya da listede bir fark seçin.</p>}
+      {selectedChange ? <SelectedDetail change={selectedChange} /> : null}
 
       <div className="filters" role="group" aria-label="Değişiklik filtresi">
         {(Object.keys(FILTER_LABELS) as ChangeFilter[]).map((value) => (
@@ -138,9 +130,6 @@ export function ChangeInspector({ summary, changes, filter, onFilterChange, filt
           : <div className="filter-empty">Bu filtrede değişiklik yok.</div>}
       </div>
 
-      <p className="inspector-hint">
-        <kbd>↑</kbd><kbd>↓</kbd> <span>{changes.length} fark arasında gezin</span>
-      </p>
     </>
   );
 }

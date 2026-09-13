@@ -159,7 +159,7 @@ try {
             el('aside', { className: 'inspector compare-root', 'aria-label': 'Farklar' },
               el('div', { className: 'inspector-head' }, el('h2', { className: 'inspector-title' }, 'Farklar')),
               el('div', { className: 'inspector-body' },
-                el(ChangeInspector, { summary: cmpModel.summary, changes: cmpModel.changes,
+                el(ChangeInspector, { summary: cmpModel.summary,
                   filter: 'all', onFilterChange: noop, filteredChanges: cmpModel.changes,
                   selectedChange: cmpModel.changes[1], onSelect: noop })))));
 

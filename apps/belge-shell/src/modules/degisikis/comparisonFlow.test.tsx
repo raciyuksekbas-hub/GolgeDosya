@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -7,6 +10,8 @@ import { buildComparisonViewModel, filterChanges } from "./viewModels/comparison
 import { buildReport, buildReportJson, reportFileName, saveReport } from "./report";
 import { ChangeRail } from "./ChangeRail";
 import { ChangeInspector } from "./ChangeInspector";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 const BASE = [
   { text: "MADDE 3 — HİZMET BEDELİ" },
@@ -63,7 +68,6 @@ describe("karşılaştırma akışı: motordan raya, panele ve rapora", () => {
     const markup = renderToStaticMarkup(
       <ChangeInspector
         summary={summary}
-        changes={changes}
         filter="all"
         onFilterChange={() => undefined}
         filteredChanges={changes}
@@ -75,23 +79,41 @@ describe("karşılaştırma akışı: motordan raya, panele ve rapora", () => {
     expect(markup).toContain("DEĞİŞİK SÜRÜM");
     expect(markup).toContain(selected.sectionLabel);
     expect(markup).toContain(selected.displayIndex);
-    expect(markup).toContain(`%${summary.addedPct}`);
-    // Oran halkası kaldırıldı: 300 px'lik panelde üç sayı ve üç yüzde daha
-    // hızlı okunur. Sayılar view model'den; panel kendi grafiğini çizmez.
+    // Oran halkası da yüzdeler de kaldırıldı: sayının yanındaki türetilmiş
+    // yüzde kararı değiştirmiyordu. Panel kendi grafiğini çizmez.
     expect(markup).not.toContain("<svg");
+    expect(markup).not.toContain("%");
     expect(markup).toContain(`>${summary.added}<`);
   });
 
-  it("seçim yokken panel seçim çağrısı yapar, ayrıntı yerine yönlendirme gösterir", () => {
+  it("panel boş yer tutucu çizmez: ilk fark açılışta seçilir", () => {
+    // Eskiden panel "Rayda ya da listede bir fark seçin." diye bir yer tutucu
+    // açıyordu. Yer tutucu yerine gerçek içerik: workspace ilk farkı seçer.
     const { changes, summary } = model();
     const markup = renderToStaticMarkup(
       <ChangeInspector
-        summary={summary} changes={changes} filter="all"
+        summary={summary} filter="all"
         onFilterChange={() => undefined} filteredChanges={changes}
         selectedChange={undefined} onSelect={() => undefined}
       />,
     );
-    expect(markup).toContain("Rayda ya da listede bir fark seçin.");
+    expect(markup).not.toContain("bir fark seçin");
+    expect(markup).not.toContain("detail-idle");
+    const source = readFileSync(resolve(here, "CompareWorkspace.tsx"), "utf8");
+    expect(source).toMatch(/setSelected\(model\?\.changes\[0\]\?\.id\)/);
+  });
+
+  it("fark yoksa panel tek satıra iner", () => {
+    const markup = renderToStaticMarkup(
+      <ChangeInspector
+        summary={{ total: 0, added: 0, removed: 0, modified: 0, addedPct: 0, removedPct: 0, modifiedPct: 0 }}
+        filter="all" onFilterChange={() => undefined} filteredChanges={[]}
+        selectedChange={undefined} onSelect={() => undefined}
+      />,
+    );
+    expect(markup).toContain("Fark bulunmadı");
+    expect(markup).not.toContain("summary-legend");
+    expect(markup).not.toContain("change-list");
   });
 
   it("filtre toplamı değiştirmez, panel görünen alt kümeyi bildirir", () => {
@@ -99,7 +121,7 @@ describe("karşılaştırma akışı: motordan raya, panele ve rapora", () => {
     const added = filterChanges(changes, "added");
     const markup = renderToStaticMarkup(
       <ChangeInspector
-        summary={summary} changes={changes} filter="added"
+        summary={summary} filter="added"
         onFilterChange={() => undefined} filteredChanges={added}
         selectedChange={undefined} onSelect={() => undefined}
       />,
