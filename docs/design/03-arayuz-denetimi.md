@@ -128,7 +128,18 @@ Aynı bilgi mimarisi: **ne oldu → tek cümle → (varsa) tek eylem.**
 
 ---
 
-## 8. Kalan borç (bu turda kapatılmıyor)
+## 8. Denetim sırasında gerçek pencerede görülenler
+
+Paketlenmiş uygulamada Düzenle karesine bakınca iki şey daha çıktı:
+
+| Parça | Gözlem | Karar |
+|---|---|---|
+| `Belgeler açıldı.` yeşil kutusu | Belge zaten ekranda; kutu yeni bilgi taşımıyor | `REMOVE` (ekran okuyucuya duyuru kalır) |
+| `2 kaynak sayfası · 1 işaretli · Çıktı: 2 sayfa` | "İşaretli" sayısı, seçim kullanmayan araçlarda (Birleştir) anlamsız | `HIDE` (yalnız sayfa seçimiyle çalışan araçlarda) |
+
+---
+
+## 9. Kalan borç (bu turda kapatılmıyor)
 
 - **Düzenle DOCX/UDF sözü.** Kip bu türleri açabildiğini söylüyor ama dönüşüm
   harici bir bileşene bağlı; yoksa belge açılamıyor. Durum artık dürüstçe
