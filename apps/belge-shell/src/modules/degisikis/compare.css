@@ -42,9 +42,7 @@
   --surface-raised: var(--surface-raised);
   --surface-hover: var(--surface-hover);
   --surface-document: var(--surface-document);
-  --surface-document-revised: var(--surface-document);
   --surface-pane-head: var(--surface-raised);
-  --surface-pane-head-revised: var(--surface-raised);
   --surface-inset: var(--surface-sunken);
   --surface-selected: var(--surface-selected);
   --surface-veil: rgb(0 0 0 / 22%);
@@ -127,10 +125,6 @@
 
 /* == Çalışma alanı ========================================================= */
 .compare-root .workspace { min-width: 0; min-height: 0; display: grid; background: var(--surface-window); }
-.pane-revised .paper { background: var(--surface-document-revised); }
-.pane-revised .pane-header { background: var(--surface-pane-head-revised); }
-.pane.is-drop-target .paper { background: var(--accent-glow); }
-.compare-root .workspace.is-drop-target { background: var(--accent-glow); }
 
 .pane-header { flex: 0 0 34px; display: flex; align-items: center; gap: 9px; min-width: 0; padding: 0 12px; background: var(--surface-pane-head); border-bottom: 1px solid var(--border-hairline); }
 .pane-side { flex: 0 0 auto; color: var(--text-faint); font-size: 8.5px; font-weight: 700; letter-spacing: .14em; }
@@ -339,16 +333,6 @@
 
 .compare-root .inspector-hint { display: flex; align-items: center; justify-content: center; gap: 4px; margin: var(--space-4) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
 .compare-root kbd { padding: 1px 5px; font-family: var(--font-mono); font-size: var(--text-label); background: var(--surface-sunken); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); }
-.compare-root .status { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; color: var(--text-faint); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
-.compare-root .status.is-ready { color: var(--text-secondary); }
-.compare-root .status.is-ready svg { color: var(--accent-muted); }
-.compare-root .status-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; }
-.compare-root .status-toggle { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; color: var(--text-secondary); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); background: transparent; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap; transition: color var(--fast), background var(--fast), border-color var(--fast); }
-.compare-root .status-toggle:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-raised); }
-.compare-root .status-toggle.is-active { color: var(--text-primary); border-color: var(--accent-chrome-line); background: var(--accent-chrome-wash); }
-.compare-root .status-toggle:disabled { opacity: .3; cursor: not-allowed; }
-.compare-root .status-meta { flex: 0 0 auto; color: var(--text-faint); font-size: 9.5px; font-variant-numeric: tabular-nums; }
-.update-notice .button.primary { min-height: 28px; padding: 0 12px; font-size: 11px; white-space: nowrap; }
 
 @media (max-width: 1180px) {
   .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }

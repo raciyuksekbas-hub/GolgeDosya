@@ -194,37 +194,6 @@
 }
 .toolbar-actions:empty { display: none; }
 
-.toolbar-group {
-  display: flex;
-  gap: var(--space-1);
-  align-items: center;
-}
-
-.toolbar-divider {
-  align-self: center;
-  width: 1px;
-  height: 18px;
-  background: var(--border-subtle);
-}
-
-/* Eski başlık bloğu: yalnız açılış hatası ekranında (bkz. App.tsx). */
-.toolbar-title { display: flex; flex-direction: column; min-width: 0; }
-.toolbar-title h1 {
-  margin: 0;
-  overflow: hidden;
-  font-size: var(--text-body);
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.toolbar-subtitle {
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-size: var(--text-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .content-body {
   grid-row: 3;
   grid-column: 1;
@@ -310,29 +279,6 @@
   padding: var(--space-6) var(--space-7) var(--space-6);
 }
 
-.surface-wide { max-width: none; padding: 0; }
-
-.workspace-head {
-  display: flex;
-  gap: var(--space-4);
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: var(--space-5);
-}
-.workspace-head-text { min-width: 0; }
-.workspace-title {
-  margin: 0;
-  font-size: var(--text-title);
-  font-weight: 600;
-  letter-spacing: -0.012em;
-  line-height: 1.2;
-}
-.workspace-state {
-  margin: var(--space-1) 0 0;
-  color: var(--text-secondary);
-}
-.workspace-head-actions { display: flex; flex: none; gap: var(--space-2); }
-
 /* ==========================================================================
    İlkeller
    ========================================================================== */
@@ -382,8 +328,6 @@
   background: var(--surface-hover);
 }
 
-.btn-danger { color: var(--danger); border-color: var(--border-strong); }
-
 .btn-sm { min-height: 24px; padding: 0 var(--space-2); font-size: var(--text-meta); }
 
 /* ------------------------------------------------------------ IconButton */
@@ -427,15 +371,6 @@
   text-transform: uppercase;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-}
-
-/* --------------------------------------------------------------- Divider */
-
-.divider {
-  height: 1px;
-  background: var(--border-subtle);
-  border: 0;
-  margin: var(--space-5) 0;
 }
 
 /* -------------------------------------------------------- Section header
@@ -604,19 +539,6 @@ button.file-row:hover { background: var(--surface-hover); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.progress {
-  overflow: hidden;
-  width: 100%;
-  height: 3px;
-  background: var(--surface-sunken);
-  border-radius: 2px;
-}
-.progress-bar {
-  height: 100%;
-  background: var(--accent);
-  transition: width var(--motion) var(--ease);
-}
-
 /* ----------------------------------------------------------- Dialog/Sheet
    macOS sheet: üstten iner, pencereye bağlıdır. */
 
@@ -694,11 +616,6 @@ input[type="number"] {
   background: var(--surface-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-}
-
-.prose {
-  max-width: var(--measure);
-  color: var(--text-secondary);
 }
 
 /* ==========================================================================
@@ -828,8 +745,6 @@ input[type="number"] {
   text-align: center;
 }
 .flow-target { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.012em; }
-.row-end { display: flex; gap: var(--space-2); justify-content: flex-end; }
-
 /* Denetle — bulgu yok. Optik olarak üst-orta bölgede: sonuç, tek satır açıklama
    ve belge künyesi. Kutu, kart, ikon ve başarı rengi yok: iyi sonuç kendini
    bağırmaz. */
@@ -858,14 +773,6 @@ input[type="number"] {
   grid-row: 4;
   align-self: start;
   margin: var(--space-5) 0 0;
-  color: var(--text-secondary);
-  font-size: var(--text-meta);
-}
-
-/* Belge hakkında ikincil bilgi — sayaçlar, özet, not. */
-.doc-meta {
-  max-width: var(--measure);
-  margin: 0 0 var(--space-4);
   color: var(--text-secondary);
   font-size: var(--text-meta);
 }

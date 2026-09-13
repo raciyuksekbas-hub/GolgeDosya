@@ -45,33 +45,6 @@ export function IconButton({ label, pressed, className, children, ...rest }: Ico
   );
 }
 
-/* ----------------------------------------------------------------- Toolbar */
-
-export function Toolbar({ children }: { children: ReactNode }) {
-  return <div className="toolbar">{children}</div>;
-}
-
-export function ToolbarTitle({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <div className="toolbar-title">
-      <h1>{title}</h1>
-      {subtitle ? <div className="toolbar-subtitle">{subtitle}</div> : null}
-    </div>
-  );
-}
-
-export function ToolbarSpacer() {
-  return <div className="toolbar-spacer" />;
-}
-
-export function ToolbarGroup({ children }: { children: ReactNode }) {
-  return <div className="toolbar-group">{children}</div>;
-}
-
-export function ToolbarDivider() {
-  return <div className="toolbar-divider" role="separator" aria-orientation="vertical" />;
-}
-
 /* --------------------------------------------------------------- Section */
 
 export function Section({
@@ -94,10 +67,6 @@ export function Section({
       {children}
     </section>
   );
-}
-
-export function Divider() {
-  return <hr className="divider" />;
 }
 
 /* ------------------------------------------------------------ EmptyState */
@@ -160,30 +129,6 @@ export function Status({
 
 export function Pill({ children, className }: { children: ReactNode; className?: string }) {
   return <span className={`pill${className ? ` ${className}` : ""}`}>{children}</span>;
-}
-
-/* --------------------------------------------------------- WorkspaceHead
-   Workspace başlığı içeriğin parçasıdır: üstten nefesli, altında DURUM
-   satırı. Chrome bandı değil. */
-
-export function WorkspaceHead({
-  title,
-  state,
-  children,
-}: {
-  title: string;
-  state?: ReactNode;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="workspace-head">
-      <div className="workspace-head-text">
-        <h1 className="workspace-title">{title}</h1>
-        {state ? <p className="workspace-state">{state}</p> : null}
-      </div>
-      {children ? <div className="workspace-head-actions">{children}</div> : null}
-    </div>
-  );
 }
 
 /* ------------------------------------------------------------------ Field */
