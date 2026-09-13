@@ -1,5 +1,5 @@
 /**
- * Açma hatalarının kullanıcı karşılığı.
+ * Hataların kullanıcı karşılığı — açma, kaydetme ve dışa aktarma.
  *
  * Motorun hata metni geliştirici içindir: JavaScript'in `Error:` öneki,
  * `Doğrulama hatası (Validation Failed)` gibi sınıf etiketleri, io ayrıntıları
@@ -9,11 +9,15 @@
  * çevrilir. Motorun söylemediği bir sebep uydurulmaz; tanınmayan hata için
  * güvenli yedek cümle döner. Teknik metin kaybolmaz, `console.debug`'da kalır.
  *
+ * Aynı ilke iki yolda da geçerlidir: belge açılırken de kopya yazılırken de
+ * kullanıcı motorun cümlesini değil, kategorisinin tek cümlesini görür.
+ *
  * Motor sözleşmesi değişmedi: eşleme yalnız sunum sınırında yapılır.
  */
 
 export const OPEN_FAILURE_TITLE = "Belge açılamadı";
 export const OPEN_FAILURE_FALLBACK = "Farklı bir dosya seçip yeniden deneyin.";
+export const SAVE_FAILURE_FALLBACK = "Kopya oluşturulamadı. Yeniden deneyin.";
 
 /**
  * Teknik önek ve sarmalayıcı etiketleri düşürür.
@@ -74,6 +78,84 @@ const CATEGORIES: { match: RegExp; detail: string }[] = [
     detail: "Dosya okunamadı. Erişim izni olan bir konumdan seçmeyi deneyin.",
   },
 ];
+
+/**
+ * Metin hâlâ geliştirici gibi mi konuşuyor?
+ *
+ * Bazı motorlar kullanıcı cümlesini kendisi üretir (İkinciGöz'ün `message_tr`'si,
+ * Tavzih'in `AppError.message`'ı). O cümleleri kategoriye indirmek bilgi
+ * kaybettirir. Bu yollarda metin olduğu gibi taşınır — ama yalnız temizse.
+ */
+const TECHNICAL =
+  /(^|\s)\/[\w.\-/]+|os error|\bpanic\b|\bunwrap\b|\.rs\b|[a-z_]{2,}::[a-z_]{2,}|\bError\b|Failed\b|\bcommand\b|\bundefined\b|Validation/i;
+
+/**
+ * Motorun kendi kullanıcı cümlesini taşıyan yollar için güvenli geçiş.
+ *
+ * Sınıf öneki ve sarmalayıcı etiket düşer; geriye teknik görünen bir şey
+ * kalırsa (dosya yolu, io kodu, sınıf adı) kullanıcıya o değil, verilen yedek
+ * cümle gider. Ham metin çağıranın `console.debug`'unda kalır.
+ */
+export function safeMessage(raw: unknown, fallback: string): string {
+  const text = plainMessage(raw);
+  return text.length === 0 || TECHNICAL.test(text) ? fallback : text;
+}
+
+/**
+ * Kaydetme ve dışa aktarma kategorileri.
+ *
+ * Bu yoldaki hatalar güvenlik denetimlerini de taşır — kaynak bütünlüğü, sayfa
+ * sayımı, boyut sınırı. Bu bilgi kullanıcıya ulaşmalı, ama sınıf adlarıyla ve
+ * dosya yollarıyla değil. En özgül kategori önce gelir.
+ */
+const SAVE_CATEGORIES: { match: RegExp; detail: string }[] = [
+  {
+    match: /bütünlük|integrity|tarama sırasında değişti/i,
+    detail: "Kaynak belge işlem sırasında değişti; kopya oluşturulmadı. Belgeyi yeniden açıp deneyin.",
+  },
+  {
+    match: /sayfa hesaplama|page accounting/i,
+    detail: "Çıktının sayfa sayısı beklenenle uyuşmadı; kopya kaydedilmedi.",
+  },
+  {
+    match: /boyut\w* sınırı|size limit/i,
+    detail: "Çıktı dosyası boyut sınırını aştı; kopya kaydedilmedi.",
+  },
+  {
+    match: /onayı verilmedi|unapproved/i,
+    detail: "İmzalı belge için onay verilmedi. Onay kutusunu işaretleyip yeniden deneyin.",
+  },
+  {
+    match: /yeniden doğrulanamadı/i,
+    detail: "Kaydedilen kopya yeniden açılıp doğrulanamadı. Yeniden deneyin.",
+  },
+  {
+    match: /bozuk veya geçersiz|geçersiz pdf|geçersiz udf|geçersiz görsel/i,
+    detail: "Belge okunamadı; kopya oluşturulamadı. Farklı bir kopya deneyin.",
+  },
+  {
+    match: /permission|izin|read-?only|salt okunur/i,
+    detail: "Bu klasöre yazılamadı. Yazma izni olan bir klasör seçip yeniden deneyin.",
+  },
+  {
+    match: /no space|disk full|yeterli (disk )?alan/i,
+    detail: "Diskte yeterli yer yok. Yer açıp yeniden deneyin.",
+  },
+  {
+    match: /doğrulama hatası|validation failed/i,
+    detail: "Çıktı doğrulanamadı; kopya kaydedilmedi. Yeniden deneyin.",
+  },
+  {
+    match: /okunamadı|erişilemedi|yazılamadı|os error|io error|bulunamadı/i,
+    detail: "Dosya yazılamadı. Klasörü kontrol edip yeniden deneyin.",
+  },
+];
+
+/** Kaydetme/dışa aktarma hatasının kullanıcı cümlesi. Teknik metin DÖNMEZ. */
+export function describeSaveFailure(raw: unknown): string {
+  const text = raw instanceof Error ? raw.message : String(raw);
+  return SAVE_CATEGORIES.find((c) => c.match.test(text))?.detail ?? SAVE_FAILURE_FALLBACK;
+}
 
 /**
  * Ham hatanın kullanıcıya söylenecek tek cümlesi. Teknik metin DÖNMEZ.

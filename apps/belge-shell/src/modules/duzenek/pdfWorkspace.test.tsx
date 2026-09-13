@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { PdfWorkspace } from "./PdfWorkspace";
 import { previewGeometry, rotatePages, workspaceSurfaces } from "./pdfWorkspaceState";
 import { PreviewPlaceholder } from "./PdfWorkspace";
-import { describeOpenFailure, plainMessage, OPEN_FAILURE_FALLBACK } from "./openFailure";
+import { describeOpenFailure, plainMessage, OPEN_FAILURE_FALLBACK } from "../../shared-ui/failure";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");

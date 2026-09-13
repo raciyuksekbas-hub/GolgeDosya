@@ -24,7 +24,7 @@
  */
 import { rotatePages, previewGeometry, workspaceSurfaces, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { copyDestination } from './copyDestination';
-import { describeOpenFailure, plainMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from './openFailure';
+import { describeOpenFailure, describeSaveFailure, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
 import React, { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -275,7 +275,12 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             setStatus(`PDF kaydedildi ve yeniden açılarak doğrulandı: ${outputPath}\n${receipt.sources[0].page_count} sayfa · ${(size / 1024).toFixed(1)} KB` + (kind === 'compress' ? `\n${(before / 1024).toFixed(1)} KB → ${(size / 1024).toFixed(1)} KB · %${((1 - size / before) * 100).toFixed(1)} küçültüldü.\n${metrics}` : ''));
         }
         catch (e) {
-            setStatus((kind === 'compress' ? 'Sıkıştırma tamamlanamadı.\n' : 'İşlem tamamlanamadı: ') + plainMessage(e));
+            // Kaydetme yolu da açma yolu gibi: motorun cümlesi log'da kalır,
+            // kullanıcı kategorisinin tek cümlesini görür. Bu yoldaki güvenlik
+            // denetimleri (bütünlük, sayfa sayımı, boyut sınırı) kategori olarak
+            // korunur; sınıf adları ve dosya yolları çıkmaz.
+            console.debug('[belge] duzenek save failure', e);
+            setStatus((kind === 'compress' ? 'Sıkıştırma tamamlanamadı. ' : 'İşlem tamamlanamadı. ') + describeSaveFailure(e));
         }
         finally {
             setBusy(false);
