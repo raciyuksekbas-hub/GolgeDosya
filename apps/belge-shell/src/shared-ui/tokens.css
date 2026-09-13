@@ -27,33 +27,36 @@
 :root {
   --text-scale: 1;
 
-  /* ---------------------------------------------------------------- Kanso
-     Saf beyaz değil. Hafif sıcak nötr bir chrome; belge yüzeyi ondan daha
-     açık. Sepia/parşömen değil — modern ve hassas. */
-  --surface-app: #ebeae7;
-  --surface-sidebar: #e6e5e1;
-  --surface-workspace: #f3f2ef;
-  --surface-raised: #fbfbfa;
+  /* --------------------------------------------------------------- Yüzeyler
+     Nötr, hafif sıcak bir gri aile. Saf beyaz yok: uzun okuma için yumuşak.
+     Hiyerarşi çizgiyle değil TON farkıyla kurulur. */
+  --surface-app: #efeeec;
+  --surface-sidebar: #e9e8e5;
+  --surface-workspace: #f6f5f3;
+  --surface-raised: #fbfaf9;
   --surface-document: #ffffff;
-  --surface-sunken: #e2e1dd;
+  --surface-sunken: #e6e5e2;
   --surface-hover: rgb(0 0 0 / 4%);
-  --surface-selected: rgb(0 0 0 / 6%);
+  --surface-selected: rgb(0 0 0 / 7%);
 
-  /* Sumi tonlu metin — saf siyah değil, mürekkep. */
   --text-primary: #1c1c1e;
   --text-secondary: #6b6b70;
-  --text-muted: #929297;
+  --text-muted: #94949a;
 
-  --border-subtle: rgb(0 0 0 / 9%);
-  --border-strong: rgb(0 0 0 / 16%);
+  --border-subtle: rgb(0 0 0 / 8%);
+  --border-strong: rgb(0 0 0 / 14%);
 
-  /* Tek vurgu: eskitilmiş pirinç — markanın "kat" rengi (brand/BRAND.md).
-     Mavi-SaaS tonu değil, petrol yeşili değil. Her yerde değil: seçili
-     navigasyon, birincil eylem, aktif durum, küçük durum işaretleri. */
+  /* Vurgu SESSİZDİR: yalnız seçili kenar çubuğu satırındaki 2 px işaret ve
+     birkaç küçük durum işareti. Hiçbir düğme yüzeyini boyamaz. */
   --accent: #8a6a3e;
   --accent-hover: #75592f;
   --accent-quiet: rgb(138 106 62 / 10%);
   --on-accent: #ffffff;
+
+  /* Birincil eylem: sistem düğmesi karakteri — mürekkep yüzey, açık metin. */
+  --primary-surface: #1f1f21;
+  --primary-surface-hover: #303033;
+  --primary-text: #f7f6f4;
 
   /* Semantik. Hiçbir anlam YALNIZ renkle verilmez; işaret ve etiket eşlik eder. */
   --danger: #a8322a;
@@ -77,41 +80,44 @@
   --space-6: 32px;
   --space-7: 48px;
 
-  /* Küçük radius: masaüstü aleti, yuvarlak kart değil. */
+  /* Radius: 4 küçük, 6 kontrol, 8 panel. Pill yok. */
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 8px;
 
-  /* Tipografi — macOS sistem fontu. Yeni font paketlenmez. */
+  /* Tipografi — macOS sistem fontu. Harf aralığıyla "premium" görünmeye
+     çalışılmaz; hiyerarşi boyut ve ağırlıktan gelir. */
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
     system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 
-  --text-title: calc(20px * var(--text-scale));
-  --text-heading: calc(15px * var(--text-scale));
+  --text-title: calc(17px * var(--text-scale));
+  --text-heading: calc(17px * var(--text-scale));
+  --text-section: calc(13.5px * var(--text-scale));
   --text-body: calc(13px * var(--text-scale));
-  --text-meta: calc(12px * var(--text-scale));
-  /* BÜYÜK HARF grup ve panel etiketi — en küçük boy, aralıklı. */
+  --text-meta: calc(11.5px * var(--text-scale));
+  /* Büyük harf etiket yalnız panel başlığında kaldı. */
   --text-label: calc(11px * var(--text-scale));
-  --tracking-label: 0.06em;
+  --tracking-label: 0.05em;
 
   /* Hareket: dikkat istemez, durumu anlatır. Spring/bounce yok. */
   --motion-fast: 120ms;
   --motion: 180ms;
   --ease: cubic-bezier(0.32, 0.08, 0.24, 1);
 
-  /* Kabuk ölçüleri. Dört yüzeyin dört yoğunluğu: kenar çubuğu ve bar kompakt,
-     workspace ferah, panel orta. Referans oranlarından tercüme edildi. */
-  --sidebar-w: 232px;
+  /* Kabuk ölçüleri. */
+  --sidebar-w: 220px;
   --inspector-w: 300px;
   --inspector-inset: 12px;
-  --toolbar-h: calc(48px * var(--text-scale));
-  /* Örtüşük başlık çubuğu: trafik ışıklarının kapladığı üst bant. */
-  --titlebar-h: 52px;
-  /* Satır ve kontrol yükseklikleri metin ölçeğiyle büyür; sabit px 28 px'lik
-     kutuya %200 metin sığdırmaya çalışırdı. Hepsi min-height olarak kullanılır. */
-  --row-h: calc(32px * var(--text-scale));
+  --toolbar-h: calc(46px * var(--text-scale));
+  /* Trafik ışıklarının bandı — eski 52 px'lik boş şerit değil. */
+  --titlebar-h: 40px;
+  --row-h: calc(31px * var(--text-scale));
   --control-h: calc(28px * var(--text-scale));
+  /* Okuma genişlikleri: liste 680, akış 420, boş durum 360. */
+  --measure-list: 680px;
+  --measure-flow: 420px;
+  --measure-empty: 360px;
 
   /* Okunabilir ölçü — uzun açıklama metni bu genişliği aşmaz. */
   --measure: 62ch;
@@ -123,25 +129,30 @@
    net ayrılır. */
 :root[data-theme="dark"] {
   --surface-app: #1c1c1e;
-  --surface-sidebar: #1f1f21;
-  --surface-workspace: #171719;
-  --surface-raised: #232326;
+  --surface-sidebar: #202022;
+  --surface-workspace: #18181a;
+  --surface-raised: #242426;
   --surface-document: #ffffff;
-  --surface-sunken: #131315;
-  --surface-hover: rgb(255 255 255 / 6%);
-  --surface-selected: rgb(255 255 255 / 9%);
+  --surface-sunken: #141416;
+  --surface-hover: rgb(255 255 255 / 5%);
+  --surface-selected: rgb(255 255 255 / 8%);
 
-  --text-primary: #ececee;
-  --text-secondary: #9d9da3;
-  --text-muted: #76767c;
+  --text-primary: rgb(255 255 255 / 92%);
+  --text-secondary: rgb(255 255 255 / 58%);
+  --text-muted: rgb(255 255 255 / 38%);
 
-  --border-subtle: rgb(255 255 255 / 9%);
-  --border-strong: rgb(255 255 255 / 17%);
+  --border-subtle: rgb(255 255 255 / 8%);
+  --border-strong: rgb(255 255 255 / 14%);
 
-  --accent: #c9a472;
-  --accent-hover: #d8b688;
-  --accent-quiet: rgb(201 164 114 / 14%);
+  --accent: #a8906a;
+  --accent-hover: #bda47c;
+  --accent-quiet: rgb(168 144 106 / 12%);
   --on-accent: #1c1610;
+
+  /* Koyu temada sistem düğmesi açık nötrdür; altın değil. */
+  --primary-surface: #eceae5;
+  --primary-surface-hover: #ffffff;
+  --primary-text: #1c1c1e;
 
   --danger: #f08a80;
   --danger-quiet: rgb(240 138 128 / 13%);

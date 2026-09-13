@@ -151,10 +151,8 @@ try {
         const mapRef = { current: new Map() };
         const cmpNames = el('span', { className: 'doc-chip' },
           el('span', { className: 'doc-chip-name' }, 'sozlesme-v1.docx'),
-          el(Pill, null, 'docx'),
           el('span', { className: 'doc-chip-sep' }, '↔'),
-          el('span', { className: 'doc-chip-name' }, 'sozlesme-v2.docx'),
-          el(Pill, null, 'docx'));
+          el('span', { className: 'doc-chip-name' }, 'sozlesme-v2.docx'));
         const doc = (name) => ({ name, extension: 'docx', size: 24576, blocks: [], warnings: [] });
         const comparePanelBody = renderToStaticMarkup(el(ChangeInspector, {
           summary: cmpModel.summary, filter: 'all', onFilterChange: noop,
@@ -186,7 +184,7 @@ try {
                   selectedChange: cmpModel.changes[1], onSelect: noop })))));
 
         const cnvChip = el('span', { className: 'doc-chip' },
-          el('span', { className: 'doc-chip-name' }, 'dava-dilekcesi.docx'), el(Pill, null, 'docx'));
+          el('span', { className: 'doc-chip-name' }, 'dava-dilekcesi.docx'));
         const cnvFolder = { path: '/Users/örnek/Belgeler/Dönüştürülen Belgeler', is_default: true };
         export const convert = renderToStaticMarkup(shell({
           current: 'tavzih', context: cnvChip, actions: el(Button, { variant: 'quiet' }, 'Kapat'),
@@ -210,7 +208,7 @@ try {
 
         /* ---------------------------------------------------------- Düzenle */
         const editChip = el('span', { className: 'doc-chip' },
-          el('span', { className: 'doc-chip-name' }, 'ek-3 bilirkişi raporu.pdf'), el(Pill, null, 'pdf'));
+          el('span', { className: 'doc-chip-name' }, 'ek-3 bilirkişi raporu.pdf'));
 
         export const editEmpty = renderToStaticMarkup(shell({
           current: 'duzenek', context: editChip, actions: el(Button, { variant: 'quiet' }, 'Kapat'),
@@ -234,7 +232,7 @@ try {
               el('div', { className: 'pdf-strip' },
                 el('div', { className: 'tool-segment', role: 'group', 'aria-label': 'Sayfa araçları' },
                   ['Seç','Sırala','Sil','Döndür'].map((t, i) =>
-                    el('button', { key: t, type: 'button', className: 'segment' + (i === 0 ? ' is-current' : '') }, t))),
+                    el('button', { key: t, type: 'button', className: 'segment', 'aria-pressed': i === 0 }, t))),
                 el('div', { className: 'toolbar-spacer' }),
                 el('label', { className: 'zoom' }, 'Yakınlaştır',
                   el('select', { defaultValue: 'fit', readOnly: true }, el('option', { value: 'fit' }, 'Sayfaya sığdır')))),
@@ -301,7 +299,7 @@ try {
         };
         const blockText8 = new Map(Object.keys(P).map(id => [id, P[id]]));
         const reviewChip = el('span', { className: 'doc-chip' },
-          el('span', { className: 'doc-chip-name' }, 'dava-dilekcesi.docx'), el(Pill, null, 'docx'));
+          el('span', { className: 'doc-chip-name' }, 'dava-dilekcesi.docx'));
 
         export const review0 = renderToStaticMarkup(shell({
           current: 'ikincigoz', context: reviewChip, actions: el(Button, { variant: 'quiet' }, 'Kapat'),

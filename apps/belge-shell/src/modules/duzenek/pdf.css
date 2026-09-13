@@ -33,7 +33,6 @@
   overflow: auto;
   padding: var(--space-3);
   background: var(--surface-sunken);
-  border-right: 1px solid var(--border-subtle);
 }
 .pdf-root .thumbnail {
   padding: var(--space-1);
@@ -87,12 +86,12 @@
   align-items: center;
   min-height: 40px;
   padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--border-subtle);
 }
 .pdf-root .tool-segment {
   display: flex;
   overflow: hidden;
-  border: 1px solid var(--border-subtle);
+  background: var(--surface-hover);
+  border: 0;
   border-radius: var(--radius);
 }
 .pdf-root .segment {
@@ -104,7 +103,7 @@
   border: 0;
   transition: background var(--motion-fast) var(--ease);
 }
-.pdf-root .segment + .segment { border-left: 1px solid var(--border-subtle); }
+
 .pdf-root .segment:hover:not(:disabled) { color: var(--text-primary); }
 .pdf-root .segment[aria-pressed="true"] {
   color: var(--text-primary);
@@ -167,10 +166,8 @@
 .pdf-root .tool-group > summary {
   padding: var(--space-1) 0;
   color: var(--text-secondary);
-  font-size: var(--text-label);
-  font-weight: 600;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font-size: var(--text-meta);
+  font-weight: 500;
 }
 /* Katlı grup kapalıyken hemen altındaki bölüm etiketine yapışıyordu. */
 .pdf-root details.tool-group { margin-bottom: var(--space-4); }

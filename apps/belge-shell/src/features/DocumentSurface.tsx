@@ -3,7 +3,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { FeatureState, RecentDocument } from "../shell/types";
 import { announce } from "../shared-ui/Announcer";
-import { Button, EmptyState, Pill, Status } from "../shared-ui/primitives";
+import { Button, EmptyState, Status } from "../shared-ui/primitives";
+import { IconDocument } from "../shell/icons";
 import { ToolbarActions } from "../shell/chrome";
 import { MODES, extensionOf, fileNameOf, type ContextOutcome } from "../shell/modes";
 import { relativeTime } from "./relativeTime";
@@ -143,15 +144,19 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
       {shown.length > 0 ? (
         <section className="recents" aria-labelledby="son-baslik">
           <h2 className="section-head" id="son-baslik">
-            Son kullanılanlar
+            Son Kullanılanlar
           </h2>
           <ul className="file-list">
             {shown.map((r) => (
               <li key={r.path}>
                 <button type="button" className="file-row" onClick={() => accept([r.path])}>
-                  <span className="file-name">{fileNameOf(r.path)}</span>
-                  <Pill>{extensionOf(r.path)}</Pill>
-                  <span className="file-time">{relativeTime(r.openedAt)}</span>
+                  <IconDocument className="file-icon" />
+                  <span className="file-text">
+                    <span className="file-name">{fileNameOf(r.path)}</span>
+                    <span className="file-meta">
+                      {extensionOf(r.path).toLocaleUpperCase("tr-TR")} · {relativeTime(r.openedAt)}
+                    </span>
+                  </span>
                 </button>
               </li>
             ))}

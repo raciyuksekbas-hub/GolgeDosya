@@ -10,9 +10,8 @@ import { ConvertWorkspace } from "./modules/tavzih/ConvertWorkspace";
 import { ReviewWorkspace } from "./modules/ikincigoz/ReviewWorkspace";
 import { CompareWorkspace } from "./modules/degisikis/CompareWorkspace";
 import { PdfWorkspace } from "./modules/duzenek/PdfWorkspace";
-import { MODES, carryContext, extensionOf, fileNameOf, type ContextOutcome } from "./shell/modes";
-import { Button, Pill, Status } from "./shared-ui/primitives";
-import { IconDocument } from "./shell/icons";
+import { MODES, carryContext, fileNameOf, type ContextOutcome } from "./shell/modes";
+import { Button, Status } from "./shared-ui/primitives";
 import { announce } from "./shared-ui/Announcer";
 import { useShortcuts } from "./shared-ui/useShortcuts";
 
@@ -149,9 +148,7 @@ export function App() {
             ↔
           </span>
         ) : null}
-        <IconDocument className="sidebar-icon" />
         <span className="doc-chip-name">{fileNameOf(p)}</span>
-        <Pill>{extensionOf(p)}</Pill>
       </span>
     ));
   }, [documents, active]);

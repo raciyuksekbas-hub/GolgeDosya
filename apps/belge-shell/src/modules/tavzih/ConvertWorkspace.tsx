@@ -4,7 +4,7 @@ import * as api from "./api";
 import type { BatchResult, ConversionResult, InspectOutcome, OutputFolder } from "./types";
 import { ConversionWarning, FirstUseAcceptance } from "./Consent";
 import { announce } from "../../shared-ui/Announcer";
-import { Button, Pill, Status } from "../../shared-ui/primitives";
+import { Button, Status } from "../../shared-ui/primitives";
 import { ToolbarActions } from "../../shell/chrome";
 import { logFailure, safeMessage } from "../../shared-ui/failure";
 
@@ -42,41 +42,25 @@ export function ConvertFlow({
   onResetFolder: () => void;
 }) {
   const folderName = folder ? folder.path.split("/").filter(Boolean).pop() ?? folder.path : "";
+  const source = selected[0];
   return (
     <div className="flow">
-      <div className="flow-step">
-        <h2 className="section-head">Kaynak</h2>
-        <ul className="file-list">
-          {selected.map((s) => (
-            <li key={s.path}>
-              <div className="file-row">
-                <span className="file-name">{s.info?.name ?? s.path.split("/").pop()}</span>
-                {s.info ? (
-                  <>
-                    <Pill>{s.info.source_format}</Pill>
-                    <span className="file-time">{s.info.size_label}</span>
-                  </>
-                ) : (
-                  <span className="file-kind" data-tone="error">
-                    {s.error?.message ?? "okunamadı"}
-                  </span>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <p className="flow-source">{source?.info?.name ?? source?.path.split("/").pop()}</p>
+      <p className="flow-line">
+        <span>{source?.info?.source_format ?? "—"}</span>
+        <span className="flow-arrow" aria-hidden="true">→</span>
+        <span className="flow-target">{target ?? "—"}</span>
+      </p>
 
-      {target ? (
-        <>
-          <div className="flow-arrow" aria-hidden="true">
-            ↓
-          </div>
-          <div className="flow-step">
-            <h2 className="section-head">Hedef</h2>
-            <p className="flow-target">{target}</p>
-          </div>
-        </>
+      {selected.length > 1 ? (
+        <p className="flow-line">
+          <span>{selected.length} belge dönüştürülecek.</span>
+        </p>
+      ) : null}
+      {source && !source.info ? (
+        <p className="flow-line">
+          <span className="file-kind" data-tone="error">{source.error?.message ?? "okunamadı"}</span>
+        </p>
       ) : null}
 
       {folder ? (

@@ -57,8 +57,11 @@ const done = renderToStaticMarkup(
 
 describe("durum sözleşmesi", () => {
   it("hazır: kaynak, hedef ve çıktının yeri tek yüzeyde", () => {
-    expect(flow).toContain("Kaynak");
-    expect(flow).toContain("Hedef");
+    // Form değil: belgenin adı, biçim oku ve çıktının yeri. Ayrı "Kaynak" ve
+    // "Hedef" bölüm başlıkları kaldırıldı — satırın kendisi zaten onu söylüyor.
+    expect(flow).toContain("ornek-dilekce.docx");
+    expect(flow).toContain("Word (.docx)");
+    expect(flow).toContain("→");
     expect(flow).toContain("UYAP (.udf)");
     // Çıktı klasörü: adı görünür, tam yol ipucunda. Monospace bir yol bloğu değil.
     expect(flow).toMatch(/title="[^"]*Dönüştürülen Belgeler"[^>]*>Çıktı: Dönüştürülen Belgeler</);
@@ -73,7 +76,7 @@ describe("durum sözleşmesi", () => {
     expect(done).toContain("ornek-dilekce.docx → ornek-dilekce.udf");
     expect(done).toContain("Kaynak belge değiştirilmedi.");
     // Soru artık "neye dönüşecek" değil: akış çizilmez.
-    expect(done).not.toContain("Kaynak</h2>");
+    expect(done).not.toContain("flow-source");
     expect(done).not.toContain("flow-arrow");
     expect(done).not.toContain("flow-dest");
     // Tek baskın eylem.
