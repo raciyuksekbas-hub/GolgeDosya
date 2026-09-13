@@ -110,11 +110,16 @@ test("SaaS dashboard dili yok", () => {
 test("boş, hata ve sonuç-yok durumları tek yüzeyden çizilir", () => {
   // Dört ekran aynı bilgi mimarisini dört ayrı biçimde çiziyordu: iki farklı
   // dikey hizalama, iki optik konum, dört CSS bloğu. Tek yüzey kaldı.
+  // Home artık kipe özgü bir KARŞILAMA yüzeyi çizer (her kip aynı şablonu
+  // paylaşmaz); geri kalan üç boş durum ortak ilkeli kullanır.
   const users = sources.filter((p) => /EmptyState/.test(readFileSync(p, "utf8")));
   assert.ok(
-    users.length >= 4,
+    users.length >= 3,
     `boş durumu olan her ekran ortak ilkeli kullanmalı (şu an ${users.length})`,
   );
+  const welcome = readFileSync("src/features/DocumentSurface.tsx", "utf8");
+  assert.match(welcome, /mode\.emptyTitle/, "karşılama başlığı kipten gelmeli");
+  assert.match(welcome, /mode\.openLabel/, "açma eyleminin adı kipten gelmeli");
   // Eski, ekrana özel boş durum sınıfları geri gelmemeli.
   for (const gone of ["preview-empty", "preview-failed", "review-clear", "dropzone", "empty-primary"]) {
     assert.equal(
@@ -202,10 +207,11 @@ test("kısayollar bağlı ve keşfedilebilir", () => {
   const app = readFileSync("src/App.tsx", "utf8");
   assert.match(app, /key: "o"/, "⌘O bağlı olmalı");
   assert.match(app, /key: ","/, "⌘, bağlı olmalı");
-  assert.match(app, /enabled: !showSettings/, "sheet açıkken ⌘O kapalı olmalı");
+  assert.match(app, /enabled: !prefsTab/, "tercihler açıkken ⌘O kapalı olmalı");
 
   const surface = readFileSync("src/features/DocumentSurface.tsx", "utf8");
-  assert.match(surface, /title="Belge Aç {2}⌘O"/, "Belge Aç ⌘O'yu göstermeli");
+  // Birincil eylemin adı kipe göre değişir (PDF Aç / Belge Aç / İlk Belgeyi Aç).
+  assert.match(surface, /title=\{`\$\{mode\.openLabel\} {2}⌘O`\}/, "açma eylemi ⌘O'yu göstermeli");
   const sidebar = readFileSync("src/shell/Sidebar.tsx", "utf8");
   assert.match(sidebar, /title="Ayarlar {2}⌘,"/, "Ayarlar ⌘,'i göstermeli");
 

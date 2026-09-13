@@ -3,9 +3,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { FeatureState, RecentDocument } from "../shell/types";
 import { announce } from "../shared-ui/Announcer";
-import { Button, EmptyState, Status } from "../shared-ui/primitives";
+import { Button, Status } from "../shared-ui/primitives";
 import { IconDocument } from "../shell/icons";
-import { ToolbarActions } from "../shell/chrome";
 import { MODES, extensionOf, fileNameOf, type ContextOutcome } from "../shell/modes";
 import { relativeTime } from "./relativeTime";
 
@@ -28,13 +27,13 @@ const RECENT_ROWS = 10;
  *
  * Mod başlığı yok: kip kenar çubuğunda zaten seçili.
  *
- * Bu yüzey bir "boş durum ekranı" değil, **çalışma yüzeyidir**. Son kullanılan
- * belgeler yüzeyin asıl içeriğidir ve yukarıdan başlar: belge açmanın en hızlı
- * yolu onlardır. Birincil eylem yardımcı bardadır; böylece bar boş kalmaz ve
- * yüzeyin ortasında tek başına duran bir düğme olmaz.
+ * Dört kip bu yüzeyi paylaşır ama AYNI ekranı göstermez: başlık, açıklama ve
+ * birincil eylem kipin görevinden gelir (`MODES`). Kullanıcı yalnız ekrana
+ * bakarak hangi kipte olduğunu anlar.
  *
- * Boş durum yalnız gerçekten boşken çizilir — hiç son kullanılan yoksa. O
- * zaman optik olarak üst-orta bölgede durur.
+ * Karşılama bloğu ekranın matematiksel merkezinde değil, çalışma sütununun
+ * üst bandında ve sola hizalıdır; hemen altında gerçek içerik durur: son
+ * kullanılan belgeler. Kayıt yoksa o blok hiç çizilmez.
  *
  * Sürükle-bırak hedefi tüm yüzeydir; kesikli çerçeve yalnız sürükleme
  * sırasında belirir.
@@ -122,13 +121,6 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
 
   return (
     <div className="surface home" data-over={over}>
-      {/* Birincil eylem barda: yüzeyin ortasında yalnız duran düğme yok. */}
-      <ToolbarActions>
-        <Button variant="primary" onClick={browse} title="Belge Aç  ⌘O">
-          Belge Aç
-        </Button>
-      </ToolbarActions>
-
       {/* Kip değişiminde belge taşınamadıysa, sebebi sade biçimde söylenir. */}
       {outcome?.kind === "mismatch" ? (
         <Status tone="info">
@@ -141,47 +133,47 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
       ) : null}
       {refused ? <Status tone="error">{refused}</Status> : null}
 
-      {shown.length > 0 ? (
-        <section className="recents" aria-labelledby="son-baslik">
-          <h2 className="section-head" id="son-baslik">
-            Son Kullanılanlar
-          </h2>
-          <ul className="file-list">
-            {shown.map((r) => (
-              <li key={r.path}>
-                <button type="button" className="file-row" onClick={() => accept([r.path])}>
-                  <IconDocument className="file-icon" />
-                  <span className="file-text">
-                    <span className="file-name">{fileNameOf(r.path)}</span>
-                    <span className="file-meta">
-                      {extensionOf(r.path).toLocaleUpperCase("tr-TR")} · {relativeTime(r.openedAt)}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : (
-        <EmptyState
-          title="Belge açın"
-          note={mode.hint}
-          action={
-            <Button variant="primary" onClick={browse} title="Belge Aç  ⌘O">
-              Belge Aç
-            </Button>
-          }
-        />
-      )}
-
-      {shown.length > 0 ? (
-        <div className="home-foot">
-          <p>veya belgeyi buraya sürükleyin</p>
-          <Button variant="quiet" onClick={onForget}>
-            Listeyi temizle
+      {/* Karşılama: kipin GÖREVİ. Dört kip aynı şablonu paylaşmaz — başlık,
+          açıklama ve eylem kipe aittir. Ekranın matematiksel merkezinde değil,
+          çalışma sütununun üst bandında ve sola hizalı durur. */}
+      <div className="welcome">
+        <h1 className="welcome-title">{mode.emptyTitle}</h1>
+        <p className="welcome-note">{mode.hint}</p>
+        <div className="welcome-action">
+          <Button variant="primary" onClick={browse} title={`${mode.openLabel}  ⌘O`}>
+            {mode.openLabel}
           </Button>
+          <span className="welcome-hint">veya belgeyi buraya sürükleyin</span>
         </div>
-      ) : null}
+
+        {shown.length > 0 ? (
+          <section className="recents" aria-labelledby="son-baslik">
+            <div className="recents-head">
+              <h2 className="section-head" id="son-baslik">
+                Son Kullanılanlar
+              </h2>
+              <Button className="btn-sm" variant="quiet" onClick={onForget}>
+                Listeyi temizle
+              </Button>
+            </div>
+            <ul className="file-list">
+              {shown.map((r) => (
+                <li key={r.path}>
+                  <button type="button" className="file-row" onClick={() => accept([r.path])}>
+                    <IconDocument className="file-icon" />
+                    <span className="file-text">
+                      <span className="file-name">{fileNameOf(r.path)}</span>
+                      <span className="file-meta">
+                        {extensionOf(r.path).toLocaleUpperCase("tr-TR")} · {relativeTime(r.openedAt)}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }

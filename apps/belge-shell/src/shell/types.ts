@@ -59,3 +59,6 @@ export interface MigrationReport {
   changed: boolean;
   sources: SourceReport[];
 }
+
+/** Tercihler penceresinin sekmeleri. Kenar çubuğu doğrudan birini açar. */
+export type PrefTab = "gorunum" | "erisim" | "hakkinda" | "telif" | "geri";

@@ -98,3 +98,18 @@ export const IconSettings = ({ className }: P) => (
     <path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5" />
   </svg>
 );
+
+/** Hakkında — bilgi. */
+export const IconAbout = ({ className }: P) => (
+  <svg {...base} className={className}>
+    <circle cx="8" cy="8" r="6.2" />
+    <path d="M8 7.2v4M8 4.9h.01" />
+  </svg>
+);
+
+/** Geri bildirim — söz. */
+export const IconFeedback = ({ className }: P) => (
+  <svg {...base} className={className}>
+    <path d="M13.6 9.8a1 1 0 0 1-1 1H6.2L3.4 13.2V4.2a1 1 0 0 1 1-1h8.2a1 1 0 0 1 1 1z" />
+  </svg>
+);

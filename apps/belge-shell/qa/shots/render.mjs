@@ -23,7 +23,7 @@ try {
         import { renderToStaticMarkup } from 'react-dom/server';
         import { Layout } from './src/shell/Layout';
         import { DocumentSurface } from './src/features/DocumentSurface';
-        import { SettingsSheet } from './src/shell/Settings';
+        import { PreferencesSheet } from './src/shell/Settings';
         import { Button, Pill } from './src/shared-ui/primitives';
         import { compareDocuments } from './src/modules/degisikis/core/compare';
         import { buildComparisonViewModel } from './src/modules/degisikis/viewModels/comparisonViewModel';
@@ -72,9 +72,17 @@ try {
               '<div class="inspector-body">' + panelHtml + '</div></aside></div>',
           );
 
-        export const home = renderToStaticMarkup(shell({}, el(DocumentSurface, {
-          feature: features[0], recents, outcome: null, onDocuments(){}, onForget(){},
+        const welcome = (i, withRecents) => renderToStaticMarkup(shell({
+          current: features[i].route,
+          context: el('span', { className: 'toolbar-mode' }, features[i].label),
+        }, el(DocumentSurface, {
+          feature: features[i], recents: withRecents ? recents : [],
+          outcome: null, onDocuments(){}, onForget(){},
         })));
+        export const home = welcome(0, true);
+        export const welcomeConvert = welcome(1, true);
+        export const welcomeCompare = welcome(2, true);
+        export const welcomeReview = welcome(3, false);
 
         export const homeEmpty = renderToStaticMarkup(shell({}, el(DocumentSurface, {
           feature: features[2], recents: [], outcome: null, onDocuments(){}, onForget(){},
@@ -324,12 +332,18 @@ try {
             selectedKeys: new Set(), onSetActive(){}, onToggleFix(){},
           })))), reviewPanel, 'Denetim özeti');
 
-        export const settingsSheet = renderToStaticMarkup(
+        const prefs = (tab) => renderToStaticMarkup(
           el(React.Fragment, null,
-            shell({}, el(DocumentSurface, {
-              feature: features[0], recents, outcome: null, onDocuments(){}, onForget(){},
-            })),
-            el(SettingsSheet, { settings, version: '0.0.1', onChange(){}, onClose(){} })));
+            shell({ context: el('span', { className: 'toolbar-mode' }, 'Düzenle') },
+              el(DocumentSurface, { feature: features[0], recents, outcome: null, onDocuments(){}, onForget(){} })),
+            el(PreferencesSheet, {
+              settings, version: '0.0.1', tab, onTab(){}, onChange(){}, onClose(){},
+            })));
+        export const prefsGorunum = prefs('gorunum');
+        export const prefsErisim = prefs('erisim');
+        export const prefsHakkinda = prefs('hakkinda');
+        export const prefsTelif = prefs('telif');
+        export const prefsGeri = prefs('geri');
       `,
       resolveDir: process.cwd(),
       loader: "tsx",

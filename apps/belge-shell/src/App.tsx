@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Layout } from "./shell/Layout";
-import { SettingsSheet } from "./shell/Settings";
+import { PreferencesSheet } from "./shell/Settings";
 import { featureForRoute, firstAvailableRoute, resolveRoute } from "./shell/routes";
-import type { FeatureState, Settings } from "./shell/types";
+import type { FeatureState, PrefTab, Settings } from "./shell/types";
 import * as api from "./shell/api";
 import { applyPreferences } from "./shared-ui/theme";
 import { DocumentSurface } from "./features/DocumentSurface";
@@ -19,7 +19,8 @@ export function App() {
   const [features, setFeatures] = useState<FeatureState[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [route, setRoute] = useState("");
-  const [showSettings, setShowSettings] = useState(false);
+  /** Tercihler penceresi — hangi sekmede açıldığı kenar çubuğundan gelir. */
+  const [prefsTab, setPrefsTab] = useState<PrefTab | null>(null);
   /** Sürüm — yalnız Hakkında bölümünde. Yapılandırma dizini GÖSTERİLMEZ. */
   const [version, setVersion] = useState<string | null>(null);
   /**
@@ -117,10 +118,10 @@ export function App() {
   useShortcuts(
     useMemo(
       () => [
-        { key: "o", run: () => setOpenRequest((n) => n + 1), enabled: !showSettings },
-        { key: ",", run: () => setShowSettings(true) },
+        { key: "o", run: () => setOpenRequest((n) => n + 1), enabled: !prefsTab },
+        { key: ",", run: () => setPrefsTab("gorunum") },
       ],
-      [showSettings],
+      [prefsTab],
     ),
   );
 
@@ -132,11 +133,13 @@ export function App() {
   }, [active, documents, context]);
 
   /**
-   * Yardımcı barın sol ucu: açık belgenin adı ve türü. Belge yokken boş —
-   * bar sayfa başlığı taşımaz, kip adı kenar çubuğunda zaten seçili.
+   * Yardımcı barın sol ucu: açık belgenin adı; belge yokken kipin adı.
    */
   const barContext = useMemo(() => {
-    if (documents.length === 0) return null;
+    // Belge yokken bar boş bir bant değildir: kipin adını taşır.
+    if (documents.length === 0) {
+      return active ? <span className="toolbar-mode">{MODES[active.key].label}</span> : null;
+    }
     // Yalnız bu kipin GERÇEKTEN kullandığı belgeler. Seçici çoklu seçime izin
     // veriyor; yedi dosya seçilince bar yedi kırpılmış çipe dönüşüyordu.
     // Fazlalıklar atılmaz — kullanıcı geri döndüğünde yine oradalar.
@@ -159,7 +162,7 @@ export function App() {
         features={features}
         current={route}
         onNavigate={navigate}
-        onOpenSettings={() => setShowSettings(true)}
+        onOpenSettings={setPrefsTab}
       >
         <div className="surface">
           <Status tone="error">Uygulama başlatılamadı. Lütfen yeniden açmayı deneyin.</Status>
@@ -176,7 +179,7 @@ export function App() {
         features={features}
         current={route}
         onNavigate={navigate}
-        onOpenSettings={() => setShowSettings(true)}
+        onOpenSettings={setPrefsTab}
         context={barContext}
         actions={
           // Home'da bar boştur: tek birincil eylem boş durumdadır (§6, §22).
@@ -210,12 +213,14 @@ export function App() {
           )
         ) : null}
       </Layout>
-      {showSettings && settings ? (
-        <SettingsSheet
+      {prefsTab && settings ? (
+        <PreferencesSheet
           settings={settings}
           version={version}
+          tab={prefsTab}
+          onTab={setPrefsTab}
           onChange={saveSettings}
-          onClose={() => setShowSettings(false)}
+          onClose={() => setPrefsTab(null)}
         />
       ) : null}
     </>

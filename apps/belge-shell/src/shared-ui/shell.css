@@ -97,8 +97,13 @@
 .sidebar-icon { flex: none; width: 16px; height: 16px; }
 
 .sidebar-spacer { flex: 1; }
-/* Ayarlar altta; divider yok. */
-.sidebar-footer { padding-top: var(--space-2); }
+/* Ürün yüzeyleri kiplerden tek ince çizgiyle ayrılır — tüm arayüzdeki ikinci
+   ve son yatay çizgi. */
+.sidebar-footer {
+  padding-top: var(--space-2);
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
 
 /* ---------------------------------------------------------------- İçerik */
 
@@ -149,6 +154,9 @@
 }
 .doc-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-chip-sep { color: var(--text-muted); }
+
+/* Belge yokken barın sol ucu: kipin adı. */
+.toolbar-mode { color: var(--text-primary); font-weight: 500; }
 
 .toolbar-spacer { flex: 1; min-width: var(--space-4); }
 
@@ -354,26 +362,35 @@
 .empty-meta { margin: var(--space-4) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
 .empty-action { margin-top: var(--space-5); }
 
-/* ---------------------------------------------------------------- Home
-   Son kullanılanlar yüzeyin asıl içeriğidir ve yukarıdan başlar. Liste
-   okunabilir genişlikte kalır; ekranın tamamına yayılmaz. */
+/* ------------------------------------------------------- Karşılama yüzeyi
+   Kipin görevi üstte, gerçek içerik (son kullanılanlar) hemen altında.
+   Matematiksel merkez değil: çalışma sütununun üst bandı, sola hizalı. */
 
 .home { display: flex; flex-direction: column; }
-.recents { display: flex; flex-direction: column; min-height: 0; max-width: var(--measure-list); }
-.recents .file-list { min-height: 0; overflow: auto; }
 
-/* Sürükle ipucu ve listeyi temizleme listenin hemen altında, ikincil. */
-.home-foot {
+.welcome {
   display: flex;
-  flex: none;
-  gap: var(--space-4);
-  align-items: center;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
   max-width: var(--measure-list);
-  margin-top: var(--space-4);
-  padding-left: 8px;
+  padding-top: 6%;
 }
-.home-foot > p { margin: 0; color: var(--text-muted); font-size: var(--text-meta); }
-.home-foot > .btn { margin-left: auto; }
+.welcome-title { margin: 0; font-size: var(--text-title); font-weight: 600; }
+.welcome-note {
+  max-width: 46ch;
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.welcome-action { display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-4); }
+.welcome-hint { color: var(--text-muted); font-size: var(--text-meta); }
+
+.recents { display: flex; flex-direction: column; min-height: 0; margin-top: var(--space-7); }
+.recents .file-list { min-height: 0; overflow: auto; }
+.recents-head { display: flex; align-items: baseline; padding-left: 8px; }
+.recents-head > .section-head { flex: 1; margin-bottom: var(--space-2); }
 
 /* Sürükle-bırak hedefi tüm yüzey; kesikli çerçeve yalnız sürükleme sırasında. */
 .home {
@@ -654,3 +671,62 @@ input[type="number"] {
   font-weight: 500;
 }
 .settings-about { color: var(--text-secondary); font-size: var(--text-meta); }
+
+/* ==========================================================================
+   Tercihler penceresi
+   --------------------------------------------------------------------------
+   Solda sekme rayı, sağda içerik. Kutu ve çizgi yok; bölümler boşlukla
+   ayrılır. Ray, kenar çubuğuyla aynı dili konuşur.
+   ========================================================================== */
+
+/* Sekme değiştirince pencere zıplamasın: yükseklik sabit, içerik kayar. */
+.sheet.prefs {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  width: min(660px, calc(100vw - var(--space-6)));
+  height: min(500px, calc(100vh - var(--space-7)));
+  overflow: hidden;
+}
+
+.prefs-tabs {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5) 10px var(--space-5);
+  background: var(--surface-sidebar);
+  border-radius: 0 0 0 var(--radius-lg);
+}
+
+.prefs-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  overflow: auto;
+}
+.prefs-title { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 600; }
+.prefs-body > .sheet-actions { margin-top: auto; padding: var(--space-5) 0 0; }
+
+/* -- Hakkında ----------------------------------------------------------- */
+.about-mark { width: 32px; height: 32px; }
+.about-name { margin: var(--space-3) 0 0; font-size: var(--text-section); font-weight: 600; }
+.about-version { margin: 2px 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
+.about-note {
+  max-width: 48ch;
+  margin: var(--space-4) 0 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.about-line { margin: var(--space-4) 0 0; color: var(--text-primary); font-size: var(--text-meta); }
+.about-line > span { display: inline-block; min-width: 9ch; color: var(--text-secondary); }
+
+/* -- Telif ve geri bildirim --------------------------------------------- */
+.legal { max-width: 52ch; color: var(--text-secondary); line-height: 1.55; }
+.legal > p { margin: 0 0 var(--space-3); }
+.legal-strong { color: var(--text-primary); font-weight: 500; }
+.legal-muted { color: var(--text-muted); font-size: var(--text-meta); }
+.legal > .section-head { margin-top: var(--space-5); }
+
+.notices { margin: 0 0 var(--space-3); font-size: var(--text-meta); }
+.notices > div { display: flex; gap: var(--space-3); padding: 3px 0; }
+.notices dt { flex: none; min-width: 13ch; color: var(--text-primary); }
+.notices dd { margin: 0; color: var(--text-secondary); }

@@ -1,4 +1,4 @@
-import type { FeatureState } from "./types";
+import type { FeatureState, PrefTab } from "./types";
 import {
   AppMark,
   IconCompare,
@@ -6,6 +6,8 @@ import {
   IconEdit,
   IconReview,
   IconSettings,
+  IconAbout,
+  IconFeedback,
 } from "./icons";
 import { announce } from "../shared-ui/Announcer";
 import { MODES } from "./modes";
@@ -21,7 +23,7 @@ interface Props {
   features: FeatureState[];
   current: string;
   onNavigate: (route: string) => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (tab: PrefTab) => void;
 }
 
 /**
@@ -73,15 +75,20 @@ export function Sidebar({ features, current, onNavigate, onOpenSettings }: Props
 
       <div className="sidebar-spacer" data-tauri-drag-region />
 
+      {/* Ürün yüzeyleri: gizli değil, kiplerin altında kendi grubunda. Üçü de
+          tercihler penceresini kendi sekmesinde açar. */}
       <div className="sidebar-footer">
-        <button
-          type="button"
-          className="sidebar-item"
-          onClick={onOpenSettings}
-          title="Ayarlar  ⌘,"
-        >
+        <button type="button" className="sidebar-item" onClick={() => onOpenSettings("gorunum")} title="Ayarlar  ⌘,">
           <IconSettings className="sidebar-icon" />
           <span>Ayarlar</span>
+        </button>
+        <button type="button" className="sidebar-item" onClick={() => onOpenSettings("hakkinda")}>
+          <IconAbout className="sidebar-icon" />
+          <span>Hakkında</span>
+        </button>
+        <button type="button" className="sidebar-item" onClick={() => onOpenSettings("geri")}>
+          <IconFeedback className="sidebar-icon" />
+          <span>Geri bildirim</span>
         </button>
       </div>
     </aside>

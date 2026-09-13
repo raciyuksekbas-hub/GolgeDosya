@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { FeatureState } from "./types";
+import type { FeatureState, PrefTab } from "./types";
 import { Sidebar } from "./Sidebar";
 import { Announcer } from "../shared-ui/Announcer";
 import { IconButton } from "../shared-ui/primitives";
@@ -11,7 +11,7 @@ interface Props {
   features: FeatureState[];
   current: string;
   onNavigate: (route: string) => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (tab: PrefTab) => void;
   /** Yardımcı barın sol ucu: belge bağlamı. Belge yokken boş ve sakin. */
   context?: ReactNode;
   /** Kabuğun kendi eylemleri (Kapat, Belge Aç). Kip eylemleri portalla gelir. */

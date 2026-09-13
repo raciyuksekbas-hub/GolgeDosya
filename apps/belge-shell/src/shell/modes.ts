@@ -15,12 +15,14 @@ import type { FeatureState } from "./types";
 export interface Mode {
   /** Kullanıcının gördüğü eylem adı. */
   label: string;
-  /** Kipin ne yaptığı — tek cümle, başlık altında. */
-  purpose: string;
+  /** Karşılama ekranının başlığı — kipin GÖREVİ, "Belge açın" değil. */
+  emptyTitle: string;
   /** Bu kipin açabildiği uzantılar. */
   extensions: string[];
-  /** Boş durumun açıklaması — bu kipin gerçekten açtığı türler (§8). */
+  /** Karşılama açıklaması: ne yapılacağı ve hangi türlerle. */
   hint: string;
+  /** Karşılama ekranındaki birincil eylemin adı. */
+  openLabel: string;
   /** Dosya seçicide görünecek tür adı. */
   pickerLabel: string;
   /** Kaç belge gerekir: bir kip iki belge isteyebilir (Karşılaştır). */
@@ -30,33 +32,37 @@ export interface Mode {
 export const MODES: Record<FeatureState["key"], Mode> = {
   duzenek: {
     label: "Düzenle",
-    purpose: "Sayfaları düzenleyin, yeni bir kopya oluşturun",
+    emptyTitle: "PDF üzerinde çalışın",
     extensions: ["pdf", "docx", "doc", "udf", "jpg", "jpeg", "png", "tiff", "heic"],
-    hint: "PDF, DOCX, UDF veya görsel dosyanızı açın ya da buraya sürükleyin.",
+    hint: "Sayfaları düzenlemek, döndürmek, sıralamak veya dışa aktarmak için bir PDF açın.",
+    openLabel: "PDF Aç",
     pickerLabel: "Belge veya görsel",
     needs: 1,
   },
   tavzih: {
     label: "Dönüştür",
-    purpose: "Word ve UYAP biçimleri arasında",
+    emptyTitle: "Belge dönüştürün",
     extensions: ["docx", "udf"],
-    hint: "DOCX veya UDF dosyanızı açın ya da buraya sürükleyin.",
+    hint: "Word ve UYAP biçimleri arasında: DOCX ⇄ UDF.",
+    openLabel: "Belge Aç",
     pickerLabel: "Word veya UYAP belgesi",
     needs: 1,
   },
   degisikis: {
     label: "Karşılaştır",
-    purpose: "İki belge arasındaki değişiklikler",
+    emptyTitle: "İki belgeyi karşılaştırın",
     extensions: ["pdf", "docx", "doc", "udf"],
-    hint: "Karşılaştırmak için iki PDF, DOCX veya UDF dosyası açın ya da buraya sürükleyin.",
+    hint: "İlk belgeyi açın, ardından karşılaştıracağınız ikinci belgeyi seçin.",
+    openLabel: "İlk Belgeyi Aç",
     pickerLabel: "Karşılaştırılacak belgeler",
     needs: 2,
   },
   ikincigoz: {
     label: "Denetle",
-    purpose: "Göndermeden önce son okuma",
+    emptyTitle: "Belgeyi denetleyin",
     extensions: ["docx", "udf"],
-    hint: "DOCX veya UDF dosyanızı açın ya da buraya sürükleyin.",
+    hint: "Göndermeden önce son okuma: DOCX veya UDF dosyanızı açın.",
+    openLabel: "Belge Aç",
     pickerLabel: "Word veya UYAP belgesi",
     needs: 1,
   },
