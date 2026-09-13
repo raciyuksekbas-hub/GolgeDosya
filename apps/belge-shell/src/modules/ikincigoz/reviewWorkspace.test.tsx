@@ -13,7 +13,7 @@ import { dirname, resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import postcss from "postcss";
 import { describe, expect, it } from "vitest";
-import { ReviewChrome, ReviewClear } from "./ReviewWorkspace";
+import { ReviewChrome, ReviewClear, visibleText } from "./ReviewWorkspace";
 import type { AnalysisResult, Finding } from "./types";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -139,5 +139,19 @@ describe("durum sözleşmesi", () => {
     );
     // Sonuç ekran okuyucuya her iki durumda da bildirilir.
     expect(source).toContain('"İnceleme tamamlandı. Bulgu yok."');
+  });
+});
+
+describe("düzeltmenin yazımı", () => {
+  it("boşluk düzeltmesi görünür yazılır", () => {
+    // HTML boşlukları daraltıyor: "iki boşluk → bir boşluk" düzeltmesi
+    // paketlenmiş uygulamada iki boş kutu olarak çiziliyordu.
+    expect(visibleText("  ")).toBe("··");
+    expect(visibleText(" ")).toBe("·");
+    expect(visibleText("")).toBe("∅");
+    expect(visibleText("\t")).toBe("⇥");
+    // Gerçek metin değişmez.
+    expect(visibleText("Ek-1'de")).toBe("Ek-1'de");
+    expect(visibleText("Ek - 1 ' de")).toBe("Ek·-·1·'·de");
   });
 });

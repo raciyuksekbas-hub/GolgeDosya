@@ -52,11 +52,9 @@ function SelectedDetail({ change }: { change: ComparisonChange }) {
         <span>DEĞİŞİK SÜRÜM</span>
         <p>{change.rightText ?? "—"}</p>
       </div>
-      {change.summary.length > 0 && (
-        <div className="detail-summary">
-          {change.summary.map((line, index) => <span key={index}>{line}</span>)}
-        </div>
-      )}
+      {/* Özet satırları burada TEKRARLANMAZ: aynı üç satır hemen aşağıdaki
+          listede de yazılıyordu ve gerçek pencerede iki kez okunuyordu. Burada
+          sürümlerin tam metni var — özetten fazlası. */}
     </section>
   );
 }

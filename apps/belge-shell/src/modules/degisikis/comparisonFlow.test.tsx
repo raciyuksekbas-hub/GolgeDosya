@@ -77,6 +77,9 @@ describe("karşılaştırma akışı: motordan raya, panele ve rapora", () => {
     );
     expect(markup).toContain("TEMEL SÜRÜM");
     expect(markup).toContain("DEĞİŞİK SÜRÜM");
+    // Seçili farkın özeti hemen altındaki listede zaten yazılıyor; panel aynı
+    // üç satırı ikinci kez çizmez (gerçek pencerede iki kez okunuyordu).
+    expect(markup).not.toContain("detail-summary");
     expect(markup).toContain(selected.sectionLabel);
     expect(markup).toContain(selected.displayIndex);
     // Oran halkası da yüzdeler de kaldırıldı: sayının yanındaki türetilmiş

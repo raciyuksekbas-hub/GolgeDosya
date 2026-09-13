@@ -28,6 +28,19 @@ function summary(r: AnalysisResult): string {
 }
 
 /**
+ * Düzeltmenin görünür yazımı.
+ *
+ * Boşluk düzeltmelerinde eski ve yeni değer yalnız boşluktan ibaret; HTML
+ * boşlukları daralttığı için `<code>` kutuları bomboş çiziliyordu ve kullanıcı
+ * "Önerilen düzeltme:  →  " diye bir şey okuyordu (gerçek pencerede görüldü).
+ * Boşluklar görünür bir işaretle yazılır; metin değişmez.
+ */
+export function visibleText(text: string): string {
+  if (text.length === 0) return "∅";
+  return text.replace(/ /g, "·").replace(/\t/g, "⇥");
+}
+
+/**
  * Bulgunun işaretli aralığı.
  *
  * Motor `SourceLocation`'ı snake_case seri hâle getiriyor (`char_start`),
@@ -334,8 +347,8 @@ export function ReviewWorkspace({ path }: { path: string }) {
                               onChange={() => toggle(f)}
                             />
                             <span>
-                              Önerilen düzeltme: <code>{f.fix.original || "∅"}</code> →{" "}
-                              <code>{f.fix.replacement || "∅"}</code>
+                              Önerilen düzeltme: <code>{visibleText(f.fix.original)}</code> →{" "}
+                              <code>{visibleText(f.fix.replacement)}</code>
                               <span className="finding-fixnote"> ({f.fix.description})</span>
                             </span>
                           </label>

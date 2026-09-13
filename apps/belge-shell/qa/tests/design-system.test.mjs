@@ -129,6 +129,18 @@ test("boş, hata ve sonuç-yok durumları tek yüzeyden çizilir", () => {
   assert.match(blocks[0], /grid-template-rows: 38fr auto 62fr/u);
 });
 
+test("etkisiz eylem ekranın en ağır öğesi olamaz", () => {
+  // Devre dışı birincil düğme dolgulu gri çiziliyordu; koyu temada bu, çevresindeki
+  // her şeyden AÇIKTI ve etkisiz eylem ekranın en güçlü öğesi oluyordu.
+  const rule = shell.match(/\.btn-primary:disabled \{[^}]*\}/u);
+  assert.ok(rule, ".btn-primary:disabled tanımlı olmalı");
+  assert.ok(
+    !/background:\s*var\(--text-muted\)/u.test(rule[0]),
+    "etkisiz birincil düğme metin rengiyle doldurulmamalı",
+  );
+  assert.match(rule[0], /color:\s*var\(--text-muted\)/u, "etkisiz eylemin metni sönük olmalı");
+});
+
 test("belge bağlamı kipler arasında korunur", () => {
   const modes = readFileSync("src/shell/modes.ts", "utf8");
   assert.match(modes, /export function carryContext/, "bağlam taşıma tanımlı olmalı");

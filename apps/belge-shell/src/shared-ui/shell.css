@@ -315,7 +315,14 @@
   border-color: transparent;
 }
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-primary:disabled { color: var(--on-accent); background: var(--text-muted); }
+/* Etkisiz bir eylem öne çıkmaz: dolgulu gri, koyu temada çevresindeki her
+   şeyden açıktı ve devre dışı düğme ekranın en ağır öğesi oluyordu (gerçek
+   pencerede görüldü — Denetle, seçim yokken "Kopyaya uygula…"). */
+.btn-primary:disabled {
+  color: var(--text-muted);
+  background: var(--surface-hover);
+  border-color: var(--border-subtle);
+}
 
 .btn-quiet {
   color: var(--text-secondary);

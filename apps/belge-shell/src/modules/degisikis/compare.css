@@ -277,9 +277,7 @@
 .compare-root .detail-block p { margin: 0; color: var(--text-primary); }
 .compare-root .detail-block.removed p { color: var(--diff-removed-text); }
 .compare-root .detail-block.added p { color: var(--diff-added-text); }
-.compare-root .detail-note,
-.compare-root .detail-summary,
-.compare-root .detail-summary { display: grid; gap: 2px; }
+.compare-root .detail-note { display: grid; gap: 2px; }
 
 .compare-root .filters { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .compare-root .filters button {
