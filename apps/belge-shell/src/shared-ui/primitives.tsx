@@ -45,30 +45,6 @@ export function IconButton({ label, pressed, className, children, ...rest }: Ico
   );
 }
 
-/* --------------------------------------------------------------- Section */
-
-export function Section({
-  title,
-  children,
-  id,
-}: {
-  title?: string;
-  children: ReactNode;
-  id?: string;
-}) {
-  const headingId = id ? `${id}-baslik` : undefined;
-  return (
-    <section className="section" aria-labelledby={headingId}>
-      {title ? (
-        <h2 className="section-head" id={headingId}>
-          {title}
-        </h2>
-      ) : null}
-      {children}
-    </section>
-  );
-}
-
 /* ------------------------------------------------------------ EmptyState
    Dört ekran aynı bilgi mimarisini — ne oldu, tek cümle, (varsa) tek eylem —
    dört ayrı biçimde çiziyordu: iki farklı dikey hizalama, iki farklı optik

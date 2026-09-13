@@ -4,8 +4,8 @@ import * as api from "./api";
 import type { BatchResult, ConversionResult, InspectOutcome, OutputFolder } from "./types";
 import { ConversionWarning, FirstUseAcceptance } from "./Consent";
 import { announce } from "../../shared-ui/Announcer";
-import { Button, Pill, Section, Status } from "../../shared-ui/primitives";
-import { InspectorPanel, InspectorSection, ToolbarActions } from "../../shell/chrome";
+import { Button, Pill, Status } from "../../shared-ui/primitives";
+import { ToolbarActions } from "../../shell/chrome";
 
 type Phase = "idle" | "confirm" | "running" | "done";
 
@@ -27,8 +27,12 @@ function results(outcome: BatchResult | ConversionResult | null): ConversionResu
  * Akış da aynı: onay → seçim → uyarı → dönüştürme → sonuç.
  *
  * Yüzey bir form değil, sakin bir dönüşüm akışıdır: KAYNAK, aşağı ok, HEDEF.
- * Birincil eylem yardımcı barda; çıktı klasörü sağ panelde, işin yapıldığı
- * yerin yanında. Sonuç tek yerde — workspace'te — durur.
+ * Birincil eylem yardımcı barda; çıktı klasörü akışın altında tek satır.
+ *
+ * Durumlar birbirini dışlar: belge inceleniyor → akış → sonuç. İş bitince akış
+ * yerini sonuca bırakır, çünkü o an kullanıcının sorusu "ne üretildi ve nerede"
+ * sorusudur. Kip kendi sağ panelini açmaz: bir klasör adı üçüncü bir kolonu hak
+ * etmiyordu.
  */
 export function ConvertWorkspace({ paths }: { paths: string[] }) {
   const [accepted, setAccepted] = useState<boolean | null>(null);
@@ -98,114 +102,126 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
   const items = results(outcome);
 
   const target = usable[0]?.info?.target_format ?? null;
+  const failed = items.filter((r) => r.status === "failure").length;
+  const done = phase === "done" && items.length > 0;
+  const folderName = folder ? folder.path.split("/").filter(Boolean).pop() ?? folder.path : "";
 
   return (
     <>
       {usable.length > 0 ? (
         <ToolbarActions>
+          {/* İş bitince birincil eylem sonucun yanındaki "Finder'da Göster"dir;
+              bardaki düğme ikincil kalır ve ne yaptığını adıyla söyler. */}
           <Button
-            variant="primary"
+            variant={done ? "default" : "primary"}
             disabled={phase === "running"}
             onClick={() => setPhase("confirm")}
           >
-            {phase === "running" ? "Dönüştürülüyor…" : "Dönüştür"}
+            {phase === "running" ? "Dönüştürülüyor…" : done ? "Yeniden dönüştür" : "Dönüştür"}
           </Button>
         </ToolbarActions>
       ) : null}
 
-      {folder ? (
-        <InspectorPanel title="Çıktı">
-          <p className="folder-path selectable" title={folder.path}>
-            {folder.path}
-          </p>
-          <div className="row">
-            <Button onClick={() => api.revealOutputFolder()}>Finder'da Göster</Button>
-            <Button onClick={chooseFolder}>Değiştir…</Button>
-          </div>
-          {!folder.is_default ? (
-            <Button variant="quiet" onClick={async () => setFolder(await api.setOutputFolder(null))}>
-              Varsayılana dön
-            </Button>
-          ) : null}
-          {items.length > 0 ? (
-            <InspectorSection title="Son işlem">
-              {items.map((r) => (
-                <p key={r.source} className="tool-hint">
-                  {r.output_name ?? r.source_name}
-                </p>
-              ))}
-            </InspectorSection>
-          ) : null}
-        </InspectorPanel>
-      ) : null}
-
       <div className="surface convert">
-        {failure ? <Status tone="error">{failure}</Status> : null}
+        <div className="convert-body">
+          {failure ? <Status tone="error">{failure}</Status> : null}
 
-        {selected.length > 0 ? (
-          <div className="flow">
-            <div className="flow-step">
-              <h2 className="section-head">Kaynak</h2>
-              <ul className="file-list">
-                {selected.map((s) => (
-                  <li key={s.path}>
-                    <div className="file-row">
-                      <span className="file-name">{s.info?.name ?? s.path.split("/").pop()}</span>
-                      {s.info ? (
-                        <>
-                          <Pill>{s.info.source_format}</Pill>
-                          <span className="file-time">{s.info.size_label}</span>
-                        </>
-                      ) : (
-                        <span className="file-kind" data-tone="error">
-                          {s.error?.message ?? "okunamadı"}
-                        </span>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {target ? (
-              <>
-                <div className="flow-arrow" aria-hidden="true">
-                  ↓
+          {done ? (
+            <section className="convert-done" aria-labelledby="sonuc-baslik">
+              <h1 id="sonuc-baslik">
+                {failed > 0 ? "Dönüştürme tamamlandı, hatalar var" : "Dönüştürme tamamlandı"}
+              </h1>
+              {items.map((r) => (
+                <div key={r.source} className="result" data-tone={r.status === "failure" ? "error" : undefined}>
+                  <div className="result-line">
+                    {r.source_name} → {r.output_name ?? "—"}
+                  </div>
+                  {r.error ? <div>{r.error.message}</div> : null}
+                  {/* Kaynak dosyanın değişmediği her sonuçta açıkça gösterilir:
+                      motor kaynağı asla değiştirmez ve bunu hash'le kanıtlar. */}
+                  {r.source_unchanged ? <div>Kaynak belge değiştirilmedi.</div> : null}
+                  {r.warnings.length > 0 ? (
+                    <ul className="warn-list">
+                      {r.warnings.map((w, i) => (
+                        <li key={`${w.code}-${i}`}>
+                          <strong>{SEVERITY_LABEL[w.severity] ?? w.severity}:</strong> {w.title}
+                          {w.location ? ` (${w.location})` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
-                <div className="flow-step">
-                  <h2 className="section-head">Hedef</h2>
-                  <p className="flow-target">{target}</p>
+              ))}
+              {folder ? (
+                <div className="convert-action">
+                  <Button variant="primary" onClick={() => api.revealOutputFolder()}>
+                    Finder'da Göster
+                  </Button>
                 </div>
-              </>
-            ) : null}
-          </div>
-        ) : null}
-
-        {items.length > 0 ? (
-          <Section title="Sonuç" id="sonuc">
-            {items.map((r) => (
-              <div key={r.source} className="result" data-tone={r.status === "failure" ? "error" : undefined}>
-                <div className="result-line">
-                  {r.source_name} → {r.output_name ?? "—"}
-                </div>
-                {r.error ? <div>{r.error.message}</div> : null}
-                {/* Kaynak dosyanın değişmediği her sonuçta açıkça gösterilir:
-                    motor kaynağı asla değiştirmez ve bunu hash'le kanıtlar. */}
-                {r.source_unchanged ? <div>Kaynak belge değiştirilmedi.</div> : null}
-                {r.warnings.length > 0 ? (
-                  <ul className="warn-list">
-                    {r.warnings.map((w, i) => (
-                      <li key={`${w.code}-${i}`}>
-                        <strong>{SEVERITY_LABEL[w.severity] ?? w.severity}:</strong> {w.title}
-                        {w.location ? ` (${w.location})` : ""}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
+              ) : null}
+            </section>
+          ) : selected.length > 0 ? (
+            <div className="flow">
+              <div className="flow-step">
+                <h2 className="section-head">Kaynak</h2>
+                <ul className="file-list">
+                  {selected.map((s) => (
+                    <li key={s.path}>
+                      <div className="file-row">
+                        <span className="file-name">{s.info?.name ?? s.path.split("/").pop()}</span>
+                        {s.info ? (
+                          <>
+                            <Pill>{s.info.source_format}</Pill>
+                            <span className="file-time">{s.info.size_label}</span>
+                          </>
+                        ) : (
+                          <span className="file-kind" data-tone="error">
+                            {s.error?.message ?? "okunamadı"}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
-            ))}
-          </Section>
-        ) : null}
+
+              {target ? (
+                <>
+                  <div className="flow-arrow" aria-hidden="true">
+                    ↓
+                  </div>
+                  <div className="flow-step">
+                    <h2 className="section-head">Hedef</h2>
+                    <p className="flow-target">{target}</p>
+                  </div>
+                </>
+              ) : null}
+
+              {/* Çıktının nereye yazılacağı işin yapıldığı yerde, tek satır.
+                  Bunun için üçüncü bir kolon açmak ve tam yolu dokuz satıra
+                  sarmak, bir klasör adının hak ettiğinden fazlasıydı. */}
+              {folder ? (
+                <p className="flow-dest">
+                  <span title={folder.path}>Çıktı: {folderName}</span>
+                  <Button className="btn-sm" variant="quiet" onClick={chooseFolder}>
+                    Değiştir…
+                  </Button>
+                  {!folder.is_default ? (
+                    <Button
+                      className="btn-sm"
+                      variant="quiet"
+                      onClick={async () => setFolder(await api.setOutputFolder(null))}
+                    >
+                      Varsayılana dön
+                    </Button>
+                  ) : null}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <Status tone="busy">Belge inceleniyor…</Status>
+          )}
+        </div>
 
         {phase === "confirm" ? (
           <ConversionWarning
