@@ -8,8 +8,8 @@
  *
  * Öncelik sırası: PDF > sayfalar > araçlar > ayarlar.
  *   - Belge alanı ortada ve en geniş; solunda sayfa şeridi.
- *   - Günlük iş olan SAYFALAR araçları belgenin üstündeki şeritte, segment
- *     olarak; döndürme ve yakınlaştırma da orada.
+ *   - Günlük iş olan SAYFALAR araçları YALNIZ belgenin üstündeki şeritte,
+ *     segment olarak; döndürme ve yakınlaştırma da orada.
  *   - BELGE ve katlı DİĞER grupları, seçili aracın ayarı ve kaynak listesi
  *     sağ panelde.
  *   - Kaydetme eylemleri yardımcı barda; sonuç metni workspace'te kalır ki
@@ -62,8 +62,11 @@ const SHORT: Record<Kind, string> = {
  * hangisinin nadir ayarlı işlem olduğunu ayırt edemiyordu. Gruplama gerçek
  * kullanım modelinden çıkarıldı, keyfi değil:
  *
- *   Sayfalar — açık belgenin SAYFA SEÇİMİ üzerinde çalışır. Aynı zihinsel
- *              model: işaretle, uygula. Günlük iş bunlar.
+ *   Sayfalar — açık belgenin SAYFA SEÇİMİ üzerinde çalışır. Bu dört araç
+ *              PANELDE DEĞİL, belgenin üstündeki şeritte durur (`PAGE_TOOLS`):
+ *              sayfa işi sayfaların yanında yapılır ve ancak sayfa varken
+ *              anlamlıdır. İkisinde birden çizilince aynı dört komut aynı
+ *              ekranda iki ayrı evde görünüyordu.
  *   Belge    — belgenin BÜTÜNÜ üzerinde çalışır, sayfa seçimi gerektirmez.
  *   Diğer    — ek AYAR ister (kenar boşluğu, metin, başlangıç numarası) ya da
  *              farklı bir girdi türü alır. Seyrek; katlanmış durur.
@@ -71,7 +74,6 @@ const SHORT: Record<Kind, string> = {
  * `kind` modeli, komut adları ve motor sözleşmesi DEĞİŞMEDİ — yalnız sunum.
  */
 const TOOL_GROUPS: { title: string; keys: Kind[]; collapsed?: boolean }[] = [
-    { title: 'Sayfalar', keys: ['select', 'reorder', 'delete', 'rotate'] },
     { title: 'Belge', keys: ['merge', 'compress', 'raster'] },
     { title: 'Diğer', keys: ['crop', 'watermark', 'number', 'images'], collapsed: true },
 ];
@@ -321,8 +323,6 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                             <div className="tool-grid">{buttons}</div>
                         </details>;
                     }
-                    // Sayfalar grubu belgenin üstündeki şeritte de var; burada
-                    // eksiksiz liste durur (klavye ve panel kullanıcısı için).
                     return <div key={group.title} className="tool-group">
                         <h3 className="inspector-label">{group.title}</h3>
                         <div className="tool-grid">{buttons}</div>
@@ -374,7 +374,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             <aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">{surfaces.strip && kind !== 'images' ? <>
                 <div className="pdf-strip">
                     <div className="tool-segment" role="group" aria-label="Sayfa araçları">
-                        {PAGE_TOOLS.map(key => <button key={key} type="button" className={`segment ${kind === key ? 'is-current' : ''}`} title={tools[key][1]} aria-pressed={kind === key} disabled={busy} onClick={() => pick(key)}>{SHORT[key]}</button>)}
+                        {PAGE_TOOLS.map(key => <button key={key} type="button" className={`segment ${kind === key ? 'is-current' : ''}`} title={tools[key][1]} aria-label={tools[key][0]} aria-pressed={kind === key} disabled={busy} onClick={() => pick(key)}>{SHORT[key]}</button>)}
                     </div>
                     {kind === 'rotate' && <div className="row">
                         <Button className="btn-sm" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, -90))}>↶ Sola 90°</Button>

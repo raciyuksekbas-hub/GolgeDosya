@@ -406,11 +406,17 @@ describe("kabuğa bağlanma", () => {
       expect(source).toContain(marker);
   });
 
-  /** Araçlar eşit ağırlıkta değil: üç gruba ayrılmış ve nadir olanlar katlı. */
+  /** Araçlar eşit ağırlıkta değil: gruplara ayrılmış ve nadir olanlar katlı. */
   it("araç hiyerarşisi var, on bir araç düz bir yığın değil", () => {
-    for (const group of ["Sayfalar", "Belge", "Diğer"]) {
+    // Sayfa araçlarının TEK evi belgenin üstündeki şerit; panelde ikinci kez
+    // çizilmez. Panelde belgenin bütününe ait işler ve katlı nadir işler kalır.
+    expect(source).not.toMatch(/title: 'Sayfalar'/);
+    expect(source).toMatch(/PAGE_TOOLS: Kind\[\] = \['select', 'reorder', 'delete', 'rotate'\]/);
+    for (const group of ["Belge", "Diğer"]) {
       expect(source).toMatch(new RegExp(`title: '${group}'`));
     }
+    // Kısa segment etiketi görünürde; tam ad erişilebilir adda kalır.
+    expect(source).toMatch(/className=\{`segment [^`]*`\} title=\{tools\[key\]\[1\]\} aria-label=\{tools\[key\]\[0\]\}/);
     // Nadir grup katlı gelir; <details> olmadan hiyerarşi yalnız görsel olurdu.
     expect(source).toContain("<details");
     expect(source).toMatch(/keys: \['crop', 'watermark', 'number', 'images'\], collapsed: true/);
