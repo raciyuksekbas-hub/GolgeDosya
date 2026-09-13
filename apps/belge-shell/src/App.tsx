@@ -48,9 +48,13 @@ export function App() {
         ]);
         if (cancelled) return;
         setVersion(info.version);
-        console.debug("[belge] app", info);
-        console.debug("[belge] features", f);
-        if (report) console.debug("[belge] legacy settings migration", report);
+        // Bu üçü yapılandırma dizinini, özellik matrisini ve eski kurulumların
+        // yollarını taşır. Konsol da bir yüzeydir: yalnız geliştirmede yazılır.
+        if (import.meta.env.DEV) {
+          console.debug("[belge] app", info);
+          console.debug("[belge] features", f);
+          if (report) console.debug("[belge] legacy settings migration", report);
+        }
         setFeatures(f);
         setSettings(s);
         setRoute(firstAvailableRoute(f));

@@ -6,7 +6,7 @@ import { ConversionWarning, FirstUseAcceptance } from "./Consent";
 import { announce } from "../../shared-ui/Announcer";
 import { Button, Pill, Status } from "../../shared-ui/primitives";
 import { ToolbarActions } from "../../shell/chrome";
-import { safeMessage } from "../../shared-ui/failure";
+import { logFailure, safeMessage } from "../../shared-ui/failure";
 
 type Phase = "idle" | "confirm" | "running" | "done";
 
@@ -195,7 +195,7 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
       const failed = "items" in result ? result.failed : result.status === "failure" ? 1 : 0;
       announce(failed > 0 ? "Dönüştürme tamamlandı, hatalar var." : "Dönüştürme tamamlandı.");
     } catch (e) {
-      console.debug("[belge] tavzih convert failure", e);
+      logFailure("tavzih convert failure", e);
       setFailure(safeMessage((e as { message?: string })?.message ?? e, "Dönüştürme tamamlanamadı. Yeniden deneyin."));
       setPhase("idle");
     }
@@ -207,7 +207,7 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
     try {
       setFolder(await api.setOutputFolder(picked));
     } catch (e) {
-      console.debug("[belge] tavzih output folder failure", e);
+      logFailure("tavzih output folder failure", e);
       setFailure(safeMessage((e as { message?: string })?.message ?? e, "Klasör seçilemedi. Başka bir klasör deneyin."));
     }
   }, []);

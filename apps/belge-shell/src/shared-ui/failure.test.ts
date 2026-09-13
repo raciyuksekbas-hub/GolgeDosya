@@ -6,7 +6,9 @@
 import { describe, expect, it } from "vitest";
 import {
   describeSaveFailure,
+  failureLogLine,
   plainMessage,
+  redact,
   safeMessage,
   SAVE_FAILURE_FALLBACK,
 } from "./failure";
@@ -93,5 +95,35 @@ describe("motorun kendi kullanıcı cümlesini taşıyan yollar", () => {
 
   it("plainMessage sınıf önekini düşürür, cümleyi bırakır", () => {
     expect(plainMessage(new Error("Klasör oluşturulamadı."))).toBe("Klasör oluşturulamadı.");
+  });
+});
+
+describe("hata kaydı", () => {
+  it("üretim kaydında yol ve belge adı bulunmaz", () => {
+    // Konsol da bir yüzeydir: paketlenmiş üründe açılabilir ve içeriği dışarı
+    // taşınabilir. Müvekkilin dosya adı oraya yazılmaz.
+    const raws = [
+      "Error: Kaynak dosya bütünlük hatası! Kaynak değiştirilmiş: /Users/av/Belgeler/Barış itiraz.pdf",
+      "Error: 'dava-dilekcesi.docx' okunamadı: Bozuk veya geçersiz PDF dosyası: xref",
+      "Error: Dosya okunamadı veya erişilemedi: ~/Belgeler/müvekkil/sözleşme.udf: Permission denied (os error 13)",
+    ];
+    for (const raw of raws) {
+      const line = failureLogLine("duzenek save failure", raw);
+      expect(line).not.toMatch(/\/Users\//);
+      expect(line).not.toMatch(/Belgeler/);
+      expect(line).not.toMatch(/\.(pdf|docx|udf)\b/i);
+      expect(line).not.toContain("Barış");
+      expect(line).not.toContain("dava-dilekcesi");
+      expect(line).not.toContain("sözleşme");
+      // Kategori okunur kalır: hata ayıklama için gereken bu.
+      expect(line).toContain("[belge] duzenek save failure");
+    }
+    expect(failureLogLine("x", raws[0])).toMatch(/bütünlük/);
+  });
+
+  it("redaksiyon yolu ve belge adını değiştirir, cümleyi bırakır", () => {
+    expect(redact("'ek-3 rapor.pdf' okunamadı")).toBe("'‹belge›' okunamadı");
+    expect(redact("Kaynak değiştirilmiş: /Users/av/x/y.pdf")).toBe("Kaynak değiştirilmiş: ‹yol›");
+    expect(redact("Sayfa sayısı uyuşmuyor")).toBe("Sayfa sayısı uyuşmuyor");
   });
 });

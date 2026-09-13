@@ -202,6 +202,28 @@ test("kısayollar bağlı ve keşfedilebilir", () => {
   assert.match(hook, /inTextEntry/, "metin girişinde devre dışı olmalı");
 });
 
+test("üretim derlemesinde ham hata konsola da yazılmaz", () => {
+  // Konsol da bir yüzeydir: paketlenmiş üründe açılabilir. Ham motor metni
+  // yol ve belge adı taşır; ikisi de müvekkil bilgisidir.
+  const gate = readFileSync("src/shared-ui/failure.ts", "utf8");
+  assert.match(gate, /export function logFailure/u, "tek kapı tanımlı olmalı");
+  assert.match(gate, /if \(isDev\(\)\)/u, "ham kayıt yalnız geliştirmede olmalı");
+  assert.match(gate, /export function redact/u, "üretim satırı redakte edilmeli");
+
+  for (const file of sources) {
+    if (file.endsWith("shared-ui/failure.ts") || file.endsWith("devMock.ts")) continue;
+    const body = readFileSync(file, "utf8");
+    for (const line of body.split("\n")) {
+      if (!/console\.(debug|log|error|warn)\(/.test(line)) continue;
+      // Kalan tek istisna: App.tsx'in açılış kayıtları, DEV bloğunun içinde.
+      assert.ok(
+        /import\.meta\.env\.DEV/.test(body),
+        `${file}: konsol kaydı geliştirme bloğuna alınmamış — ${line.trim()}`,
+      );
+    }
+  }
+});
+
 test("teknik ayrıntı kullanıcı arayüzünde görünmez", () => {
   const forbidden = [
     "localStorage", "configDir", "migratedFrom", "feature_", "bundle",

@@ -3,7 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import * as api from "./api";
 import type { AnalysisResult, Finding, Fix, Severity } from "./types";
 import { announce } from "../../shared-ui/Announcer";
-import { safeMessage } from "../../shared-ui/failure";
+import { logFailure, safeMessage } from "../../shared-ui/failure";
 import { Button, EmptyState, Status } from "../../shared-ui/primitives";
 import { InspectorPanel, InspectorSection, ToolbarActions } from "../../shell/chrome";
 
@@ -192,7 +192,7 @@ export function ReviewWorkspace({ path }: { path: string }) {
         if (cancelled) return;
         // Motor kullanıcı cümlesini kendisi üretiyor; teknik bir şey kalırsa
         // kullanıcıya yedek cümle gider, ham metin log'da durur.
-        console.debug("[belge] ikincigoz analyze failure", e);
+        logFailure("ikincigoz analyze failure", e);
         setFailure(safeMessage(e, "Belge incelenemedi. Farklı bir dosya seçip yeniden deneyin."));
       })
       .finally(() => !cancelled && setBusy(false));
@@ -242,7 +242,7 @@ export function ReviewWorkspace({ path }: { path: string }) {
       // Kaynak değişmediği için bulgular geçerliliğini korur; seçim sıfırlanır.
       setSelected(new Set());
     } catch (e) {
-      console.debug("[belge] ikincigoz writeback failure", e);
+      logFailure("ikincigoz writeback failure", e);
       setFailure(safeMessage(e, "Düzeltmeler uygulanamadı. Yeniden deneyin."));
     }
   }, [chosen, path]);

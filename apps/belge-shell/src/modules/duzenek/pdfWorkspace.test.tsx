@@ -157,7 +157,7 @@ describe("durum sözleşmesi", () => {
 
     // Belge açılamadığında bu durum gerçekten kurulur.
     expect(source).toMatch(
-      /catch \(e\) \{[\s\S]{0,500}?setDocState\(previous => previous === 'ready' \? previous : 'failed'\)/,
+      /catch \(e\) \{[\s\S]{0,900}?setDocState\(previous => previous === 'ready' \? previous : 'failed'\)/,
     );
 
     // Çizilen iki hâl: belge hiç yok, ve kabuğun verdiği belge taranıyor.

@@ -80,6 +80,56 @@ const CATEGORIES: { match: RegExp; detail: string }[] = [
 ];
 
 /**
+ * Kayıt için metni zararsızlaştırır.
+ *
+ * Konsol da bir yüzeydir: paketlenmiş üründe açılabilir ve içeriği dışarı
+ * taşınabilir. Dosya yolu ve belge adı müvekkil bilgisidir — hata ayıklama
+ * için gereken kategori bilgisi onlarsız da okunur.
+ */
+const DOC_EXT = "pdf|docx?|udf|jpe?g|png|tiff?|heic|json|xml";
+
+export function redact(text: string): string {
+  return (
+    text
+      // Yollar önce: içlerinde belge adı da var.
+      .replace(/(?:~|\.{1,2})?\/[^\s"'`,;)\]]+/g, "‹yol›")
+      // Motor belge adını tırnak içinde verir; boşluklu adlar da bütün gider.
+      .replace(new RegExp(`'[^']*\\.(?:${DOC_EXT})'`, "gi"), "'‹belge›'")
+      .replace(new RegExp(`"[^"]*\\.(?:${DOC_EXT})"`, "gi"), '"‹belge›"')
+      .replace(new RegExp(`[^\\s/\\\\"'\`]+\\.(?:${DOC_EXT})\\b`, "gi"), "‹belge›")
+  );
+}
+
+/** Üretim derlemesinde konsola giden tek satır. Ham motor metni DEĞİLDİR. */
+export function failureLogLine(scope: string, raw: unknown): string {
+  return `[belge] ${scope}: ${redact(plainMessage(raw)).slice(0, 200)}`;
+}
+
+/** Geliştirme derlemesi mi? Vite dışında (test koşucusu, statik çizim) hayır. */
+function isDev(): boolean {
+  try {
+    return Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Hata kaydı — tek kapı.
+ *
+ * Geliştirmede ham hata nesnesi olduğu gibi durur; orada yığın izi ve yol
+ * gerçekten gerekir. Üretimde yalnız redakte edilmiş tek satır yazılır:
+ * kategoriyi görürsünüz, müvekkilin dosya adını görmezsiniz.
+ */
+export function logFailure(scope: string, raw: unknown): void {
+  if (isDev()) {
+    console.debug(`[belge] ${scope}`, raw);
+    return;
+  }
+  console.debug(failureLogLine(scope, raw));
+}
+
+/**
  * Metin hâlâ geliştirici gibi mi konuşuyor?
  *
  * Bazı motorlar kullanıcı cümlesini kendisi üretir (İkinciGöz'ün `message_tr`'si,

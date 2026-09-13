@@ -24,7 +24,7 @@
  */
 import { rotatePages, previewGeometry, workspaceSurfaces, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { copyDestination } from './copyDestination';
-import { describeOpenFailure, describeSaveFailure, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
+import { describeOpenFailure, describeSaveFailure, logFailure, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
 import React, { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -186,8 +186,9 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         setDocState('ready');
     }
     catch (e) {
-        // Teknik metin yalnız burada kalır; kullanıcıya kategorisinin tek cümlesi gider.
-        console.debug('[belge] duzenek open failure', e);
+        // Kullanıcıya kategorisinin tek cümlesi gider; teknik metin yalnız
+        // geliştirme derlemesinde, üretimde redakte edilmiş tek satır olarak.
+        logFailure('duzenek open failure', e);
         const detail = describeOpenFailure(e);
         setFailure(detail);
         setStatus(`${OPEN_FAILURE_TITLE}. ${detail}`);
@@ -279,7 +280,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             // kullanıcı kategorisinin tek cümlesini görür. Bu yoldaki güvenlik
             // denetimleri (bütünlük, sayfa sayımı, boyut sınırı) kategori olarak
             // korunur; sınıf adları ve dosya yolları çıkmaz.
-            console.debug('[belge] duzenek save failure', e);
+            logFailure('duzenek save failure', e);
             setStatus((kind === 'compress' ? 'Sıkıştırma tamamlanamadı. ' : 'İşlem tamamlanamadı. ') + describeSaveFailure(e));
         }
         finally {
