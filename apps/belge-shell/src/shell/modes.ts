@@ -29,7 +29,12 @@ export interface Mode {
   hint: string;
   /** Karşılama ekranındaki birincil eylemin adı. */
   openLabel: string;
-  /** Son kullanılanlar bölümünün başlığı — kipin diliyle. */
+  /**
+   * Son belgeler bölümünün başlığı.
+   *
+   * Aynı kavramın ürün içinde TEK adı vardır: tercihler penceresi de bu
+   * listeyi "Son belgeler" diye anar. İki ad, iki kavram demektir.
+   */
   recentTitle: string;
   /** Dosya seçicide görünecek tür adı. */
   pickerLabel: string;
@@ -63,14 +68,14 @@ export function formatList(mode: Mode, limit = 5): string {
 export const MODES: Record<FeatureState["key"], Mode> = {
   duzenek: {
     label: "Düzenle",
-    emptyTitle: "Sayfalar ve dışa aktarma",
+    emptyTitle: "PDF çalışma alanı",
     extensions: ["pdf", "docx", "doc", "udf", "jpg", "jpeg", "png", "tiff", "heic"],
     // İkinci cümle bir nezaket değil zorunluluk: liste DOCX ve UDF satırları
     // gösteriyor, motor da onları gerçekten açıyor. "Yalnız PDF" demek
     // verilmeyen bir söz olurdu.
     hint:
-      "Bir PDF açın; sayfaları sıralayın, döndürün ya da dışa aktarın. " +
-      "Word ve UYAP belgeleri açılırken PDF'ye dönüştürülür.",
+      "Sayfaları sıralayın, döndürün ya da dışa aktarın. " +
+      "Word ve UYAP belgeleri PDF'ye dönüştürülür.",
     openLabel: "PDF Aç",
     // Liste PDF dışı türleri de taşır (Düzenle onları da açar), bu yüzden
     // başlık "Son PDF'ler" olamaz: etiketin listeyle uyuşması, sloganın
@@ -83,7 +88,7 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     label: "Dönüştür",
     emptyTitle: "Word ve UYAP arasında",
     extensions: ["docx", "udf"],
-    hint: "DOCX ve UDF biçimleri arasında dönüştürün; kaynak belgeniz olduğu gibi kalır.",
+    hint: "DOCX ve UDF biçimleri arasında dönüştürün. Kaynak belgeniz değişmez.",
     openLabel: "Belge Aç",
     recentTitle: "Son belgeler",
     pickerLabel: "Word veya UYAP belgesi",
@@ -105,7 +110,7 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     label: "Denetle",
     emptyTitle: "Göndermeden önce son okuma",
     extensions: ["docx", "udf"],
-    hint: "Bir DOCX veya UDF açın; yazım, noktalama ve tutarlılık bulgularını inceleyin.",
+    hint: "Yazım, noktalama ve tutarlılık bulgularını tek listede görün.",
     openLabel: "Belge Aç",
     recentTitle: "Son belgeler",
     pickerLabel: "Word veya UYAP belgesi",

@@ -466,3 +466,48 @@ yan yana durunca liste bir çalışma notu gibi okunuyordu: artık "6 saat önce
 
 **A/B yuvaları tek ızgarada.** Etiket · ad/davet · künye üç satırdır; dolu
 yuvayla boş yuva satır satır hizalanır, sıradaki adım tek yuvada konuşur.
+
+---
+
+## Terminoloji ve merkezlenmiş boş durum
+
+**Aynı kavramın tek adı var.** Ürün içinde iki yazımı olan üç şey vardı;
+üçü de tek ada indi ve sözleşmeyle kilitlendi:
+
+| Kavram | Eskiden | Şimdi |
+|---|---|---|
+| son belgeler listesi | `Son belgeler` (karşılama) / `Son kullanılanlar` (tercihler) | `Son belgeler` |
+| çıktının yeri | `Çıktı` (akış) / `Çıktı klasörü` (tercihler) | `Çıktı klasörü` |
+| geri bildirim yüzeyi | `Geri bildirim` / `Geri Bildirim` | `Geri Bildirim` |
+
+Kenar çubuğu ve tercih sekmeleri artık aynı yazım kuralını paylaşıyor:
+komut ve gezinme etiketleri Başlık Düzeni, bölüm başlıkları ve yardımcı
+metin cümle düzeni.
+
+**Boş durum artık ortalanmış.** Başlık · açıklama · eylem · yardımcı satır ·
+tür satırı tek bir dikey kompozisyondur ve içerik alanının **yatay merkez
+eksenine** oturur — blok da, içindeki her satır da. Eylem artık yardımcı
+metnin yanında değil üstünde; ikisi aynı eksende alt alta devam eder.
+
+```
+              PDF çalışma alanı
+
+     Sayfaları sıralayın, döndürün ya da dışa aktarın.
+       Word ve UYAP belgeleri PDF'ye dönüştürülür.
+
+                   [ PDF Aç ]
+
+              veya buraya sürükleyin
+```
+
+`Son belgeler` bölümü bu kompozisyonun altında, aynı eksende ama kendi
+içinde soldan okunan bir liste: satırlar taranabilir kalmalı, asıl mesajı
+bastırmamalı (460 px, nötr ton).
+
+Karşılaştır'ın A/B yuvaları da aynı eksende: iki yuva birbirinin aynası,
+yükseklik içerikten gelir, sırası gelen yuva tek başına konuşur.
+
+Başlıklar bir tur daha sadeleşti — `PDF çalışma alanı` ·
+`Word ve UYAP arasında` · `İki sürüm arasındaki farklar` ·
+`Göndermeden önce son okuma` — ve açıklamalar merkez kompozisyonu bozmayacak
+şekilde iki dengeli satıra indi.

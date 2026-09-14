@@ -134,14 +134,18 @@ test("boş, hata ve sonuç-yok durumları tek yüzeyden çizilir", () => {
   const blocks = shell.match(/^\.empty \{[^}]*\}/gmu) ?? [];
   assert.equal(blocks.length, 1, "boş durum tek CSS bloğuyla tanımlanmalı");
   assert.match(blocks[0], /var\(--band-top\)/u, "boş durum ortak üst bandı kullanmalı");
-  assert.match(blocks[0], /var\(--band-left\)/u, "boş durum ortak sol bandı kullanmalı");
-  assert.match(blocks[0], /align-items: flex-start/u, "boş durum sola hizalı olmalı");
+  // Blok da, içindeki her satır da AYNI merkez eksenine oturur.
+  assert.match(blocks[0], /align-items: center/u, "boş durum ortalanmalı");
+  assert.match(blocks[0], /text-align: center/u, "boş durumun metni de ortalanmalı");
   const welcomeBlock = shell.match(/^\.welcome \{[^}]*\}/gmu) ?? [];
   assert.equal(welcomeBlock.length, 1, "karşılama tek CSS bloğuyla tanımlanmalı");
   assert.match(welcomeBlock[0], /var\(--band-top\)/u, "karşılama aynı bandı kullanmalı");
-  assert.match(welcomeBlock[0], /var\(--band-left\)/u, "karşılama aynı sol bandı kullanmalı");
-  // Dönüştür akışı da aynı aileye girer: üç yüzey tek optik banttan yerleşir.
-  assert.match(shell, /\.convert-body \{[^}]*var\(--band-left\)/su, "akış da aynı sol bandı kullanmalı");
+  assert.match(welcomeBlock[0], /align-items: center/u, "karşılama ortalanmalı");
+  assert.match(welcomeBlock[0], /text-align: center/u, "karşılamanın metni de ortalanmalı");
+  assert.match(welcomeBlock[0], /margin-inline: auto/u, "karşılama sütunu ortalanmalı");
+  // Eylem ve yardımcı satır da aynı eksende: buton bir yerde, ipucu başka
+  // yerde duramaz.
+  assert.match(shell, /\.welcome-action \{[^}]*align-items: center/su, "eylem de ortalanmalı");
 });
 
 test("etkisiz eylem ekranın en ağır öğesi olamaz", () => {
@@ -526,6 +530,32 @@ test("büyük harf düzeni tek kural: komut Başlık, bölüm cümle düzeninde"
     for (const w of rest) {
       assert.match(w, /^[a-zçğıöşü]/u, `bölüm başlığı cümle düzeninde olmalı — "${m[1]}"`);
     }
+  }
+});
+
+test("aynı kavramın tek adı var", () => {
+  // Son belgeler listesi karşılama yüzeyinde ve tercihler penceresinde aynı
+  // listedir; iki ad iki kavram demektir ve arayüzü amatör gösterir.
+  const modes = readFileSync("src/shell/modes.ts", "utf8");
+  const settings = readFileSync("src/shell/Settings.tsx", "utf8");
+  assert.match(modes, /recentTitle: "Son belgeler"/u);
+  assert.ok(!/Son kullanılanlar/.test(settings), "tercihler de aynı adı kullanmalı");
+  const visible = (src) => [...src.matchAll(/>([^<>{}]{3,60})</g)].map((m) => m[1]).join("|");
+  assert.ok(visible(settings).includes("Son belgeler"), "tercihlerde 'Son belgeler' görünmeli");
+
+  // Çıktı klasörü de tek ad: akışta "Çıktı", tercihlerde "Çıktı klasörü" iki
+  // ayrı şey gibi okunuyordu.
+  const convert = readFileSync("src/modules/tavzih/ConvertWorkspace.tsx", "utf8");
+  const folder = readFileSync("src/modules/tavzih/OutputFolderField.tsx", "utf8");
+  for (const [name, src] of [["akış", convert], ["tercihler", folder]]) {
+    assert.ok(visible(src).includes("Çıktı klasörü"), `${name} "Çıktı klasörü" demeli`);
+  }
+
+  // Menü dili tek elden: kenar çubuğu ile tercih sekmeleri aynı yazımı taşır.
+  const sidebar = readFileSync("src/shell/Sidebar.tsx", "utf8");
+  for (const src of [sidebar, settings]) {
+    assert.ok(src.includes("Geri Bildirim"), "tek yazım: Geri Bildirim");
+    assert.ok(!/Geri bildirim<|"Geri bildirim"/.test(src), "ikinci yazım kalmamalı");
   }
 });
 

@@ -1274,16 +1274,15 @@ body { user-select: none; -webkit-user-select: none; }
   display: flex;
   flex: 1;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   min-height: 200px;
   padding-top: calc(var(--band-top) * 2);
-  padding-left: var(--band-left);
-  text-align: left;
+  text-align: center;
 }
 .empty-body {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   max-width: 46ch;
 }
 .empty-title { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.01em; }
@@ -1303,37 +1302,48 @@ body { user-select: none; -webkit-user-select: none; }
 
 .home { display: flex; flex-direction: column; }
 
-/* Başlık · açıklama · eylem · yardımcı satır TEK kompozisyondur: hepsi aynı
-   sol kenarı paylaşır, aralarındaki boşluk artan ağırlıkta açılır ve blok
-   içerik alanının sol kenarına yapışmaz. */
+/* Başlık · açıklama · eylem · yardımcı satır TEK kompozisyondur ve içerik
+   alanında YATAY OLARAK ORTALANIR. Blok da, içindeki her satır da aynı
+   merkez eksenine oturur: sola yaslı bir paragraf sütunu değil.
+
+   Landing-page hero değil: ölçü dar, tipografi sakin, eylem küçük. Değişen
+   yalnız eksen. */
 .welcome {
   display: flex;
   flex: 1;
   flex-direction: column;
+  align-items: center;
   min-height: 0;
   max-width: var(--measure-list);
   padding-top: var(--band-top);
-  margin-left: var(--band-left);
+  margin-inline: auto;
+  text-align: center;
 }
 /* Altında liste yokken blok kısadır ve tepeye asılı kalır; o durumda
    boş durumla aynı bandı kullanır. */
 .welcome[data-recents="false"] { padding-top: calc(var(--band-top) * 2); }
 .welcome-title { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.01em; }
 .welcome-note {
-  max-width: 56ch;
-  margin: var(--space-3) 0 0;
+  max-width: 50ch;
+  margin: var(--space-3) auto 0;
   color: var(--text-secondary);
   font-size: var(--text-body);
   line-height: 1.5;
   text-wrap: balance;
 }
-/* Eylem ile yardımcı satır aynı taban çizgisinde oturur. */
-.welcome-action { display: flex; gap: var(--space-3); align-items: baseline; margin-top: var(--space-5); }
+/* Eylem ve yardımcı satır butonun altında, aynı eksende devam eder. */
+.welcome-action {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: center;
+  margin-top: var(--space-5);
+}
 .welcome-hint { color: var(--text-muted); font-size: var(--text-meta); }
 
 /* Kayıt yokken: "henüz yok" değil, ekranın ne kabul ettiği. */
 .welcome-formats {
-  margin: var(--space-7) 0 0;
+  margin: var(--space-6) 0 0;
   color: var(--text-muted);
   font-size: var(--text-meta);
 }
@@ -1346,8 +1356,11 @@ body { user-select: none; -webkit-user-select: none; }
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: var(--space-3);
-  align-items: stretch;
-  max-width: 540px;
+  /* Üç satır her iki yuvada da var; yükseklik içerikten gelir. Germek,
+     altlarında boş bir kuşak bırakıyordu. */
+  align-items: start;
+  width: 100%;
+  max-width: 520px;
   margin-top: var(--space-5);
 }
 
@@ -1358,8 +1371,9 @@ body { user-select: none; -webkit-user-select: none; }
   grid-template-rows: auto auto auto;
   row-gap: 2px;
   align-content: start;
-  justify-items: start;
+  justify-items: center;
   padding: var(--space-4);
+  text-align: center;
   color: inherit;
   font: inherit;
   text-align: left;
@@ -1390,7 +1404,18 @@ body { user-select: none; -webkit-user-select: none; }
 
 .slot-join { color: var(--text-muted); }
 
-.recents { display: flex; flex-direction: column; min-height: 0; margin-top: var(--space-7); }
+/* Son belgeler merkez kompozisyonun ALTINDA, aynı eksende ama kendi içinde
+   soldan okunan bir liste: satırlar taranabilir kalmalı. Asıl mesajı
+   bastırmasın diye daha dar ve daha nötr. */
+.recents {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  max-width: 460px;
+  margin-top: var(--space-7);
+  text-align: left;
+}
 .recents .file-list { min-height: 0; overflow: auto; }
 /* Üçüncül eylem başlığın YANINDA durur. Sağ uca itilince aralarında 500 px
    boşluk kalıyor ve hangi listeyi temizlediği okunmuyordu. */
@@ -1824,7 +1849,14 @@ textarea {
 /* -- Genel -------------------------------------------------------------- */
 .prefs-group + .prefs-group { margin-top: var(--space-7); }
 .prefs-group > .section-head { margin-bottom: var(--space-1); }
-.prefs-hint { margin: var(--space-1) 0 0; color: var(--text-muted); font-size: var(--text-meta); }
+/* Alt açıklama kontrol kolonunun altına taşmaz: etiket sütununda kalır. */
+.prefs-hint {
+  max-width: calc(100% - var(--control-col) - var(--space-4));
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
 
 /* -- Geri bildirim ------------------------------------------------------ */
 .feedback { display: flex; flex-direction: column; }

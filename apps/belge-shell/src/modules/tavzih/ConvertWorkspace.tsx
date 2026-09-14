@@ -73,7 +73,7 @@ export function FlowDestination({ folder, onChoose, onReset }: {
   const name = folder.path.split("/").filter(Boolean).pop() ?? folder.path;
   return (
     <div className="flow-dest">
-      <p className="flow-label">Çıktı</p>
+      <p className="flow-label">Çıktı klasörü</p>
       <p className="flow-dest-row">
         <span title={folder.path}>{name}</span>
         {onChoose ? (

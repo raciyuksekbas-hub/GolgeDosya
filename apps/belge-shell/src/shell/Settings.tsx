@@ -13,7 +13,7 @@ interface Props {
   tab: PrefTab;
   onTab: (tab: PrefTab) => void;
   onChange: (next: Settings) => void;
-  /** Son kullanılanlar listesini unut — kabuğun kendi eylemi. */
+  /** Son belgeler listesini unut — kabuğun kendi eylemi. */
   onForget: () => void;
   onClose: () => void;
 }
@@ -175,7 +175,7 @@ export function PreferencesSheet({
               <div className="prefs-group">
                 <div className="field">
                   <div className="field-label">
-                    Son kullanılanlar
+                    Son belgeler
                     <span>
                       {remembered > 0
                         ? `${remembered} belge hatırlanıyor`
