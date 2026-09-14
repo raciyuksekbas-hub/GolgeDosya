@@ -163,6 +163,157 @@ bağlanmadı ve bağlanmadıkları kayda geçti (aşağıda B5).
   sıkıştırılır; görseller yukarıda açıkça ele alınır.
 - **Regresyon testi:** `compress_raw_image_with_incompressible_ballast_is_no_benefit_not_failed`.
 
+## Kullanıcı raporu — "Sıkıştırma tamamlanamadı. Belge okunamadı" (29ffb73 üzerinde)
+
+Kullanıcı `29ffb73` derlemesinde gerçek bir sözleşmeyi (12 sayfa, vurgulu)
+sıkıştırmak istedi ve "Sıkıştırma tamamlanamadı. Belge okunamadı; kopya
+oluşturulamadı. Farklı bir kopya deneyin." aldı. Belge açılıyor ve
+önizleniyordu — PDF sağlamdı. Gerçek müvekkil belgesi kullanılmadı: mesaj
+motorun `InvalidPdf` önekinin ("Bozuk veya geçersiz PDF dosyası: …") kabuktaki
+karşılığı olduğundan, sıkıştırma zincirinde `InvalidPdf` üretebilecek her şekil
+sentetik fixture ile tek tek denendi. 19 aday şeklin 10'u belirtiyi birebir
+üretti; iki ayrı kök neden ailesi çıktı (B10, B11).
+
+İkinci turda tahmin yerine **gerçek üreticilerin çıktısı** tarandı: aynı
+sentetik sözleşme Chrome/Skia, macOS Quartz ve PDFKit ile basıldı, Word'ün ve
+Acrobat'ın fiziksel yerleşimi elle kuruldu (15 belge, aşağıdaki matris).
+Kullanıcının desenini — belge açılıyor, 12 sayfa önizleniyor, yalnız Sıkıştır
+düşüyor — birebir üreten tek aile **B13** oldu: artımlı güncellenmiş dosya.
+Word'ün "PDF olarak kaydet" çıktısı bu yapıdadır; ekran görüntüsündeki
+sözleşme için en olası neden budur. Önizleme ekranı açıklamaları çizmediği
+için B10'un (Önizleme/Acrobat notu) da dışlanamayacağı not edildi.
+
+### B10 — P0 · Marka payı denetimi sağlam belgeyi "bozuk PDF" diye reddediyordu (kaydetme DE)
+
+- **Semptom:** Sıkıştır, Yeni PDF Kaydet, Klasör Seçerek Kaydet, filigran ve
+  sayfa numarası — marka payı eklenen **her** türetme — "Belge okunamadı".
+  Kullanıcının ilk günden bildirdiği "kaydetmiyor" şikâyetinin de bir kaynağı.
+- **Yeniden üretim (hepsi `InvalidPdf`):** sağ kenarı aşan bağlantı; vurgu +
+  sayfanın sağındaki popup (gözden geçirilmiş sözleşmelerin tipik yapısı);
+  `/Annots` içinde `null` ("An object does not have the expected type");
+  dolaylı `/Rect` (aynı); `/Rect`'siz açıklama ("A required dictionary key was
+  not found"); 90'ın katı olmayan `/Rotate` ("Geçersiz sayfa dönüşü").
+- **Kök neden:** `pdf-core::pdf::stamp::apply_stamp_to_page` payı eklemeden
+  ÖNCE her açıklamanın sayfa kutusunun dört kenarından da içeride olmasını
+  şart koşuyordu. Oysa pay tek bir kenara eklenir (dik sayfada alt, 90°'de
+  sağ…); sağdaki bir popup alt şeritle asla görünür olmaz. Denetim ayrıca
+  `map_err(pdf_error)?` ile her okuma hatasını ölümcül yapıyordu.
+- **Beklenen değişmez (korundu):** pay, daha önce görünür alanın dışında kalan
+  ve GERÇEKTEN çizilen bir açıklamayı açığa çıkaramaz.
+- **Düzeltme:** denetim payı ekledikten SONRA ve yalnız yeni açılan şeride
+  bakar (`revealed_strip`, `annotation_would_be_revealed`). Görüntüleyicinin
+  yerleştiremeyeceği girdi (null, sözlük olmayan, `/Rect`'i eksik ya da sayı
+  olmayan) açığa çıkamaz; `/F` Hidden/NoView zaten görünmez; görünüm akışı
+  olmayan, kenarlık kalınlığı 0 olan bağlantı (Word'ün yazdığı biçim) hiçbir
+  şey çizmez. `/Rect` ve öğeleri çözülür, köşe sırası normalize edilir, saç
+  teli temas sayılmaz. Uyumsuz `/Rotate` pdf.js gibi 0 sayılır; sayfanın kendi
+  değerine dokunulmaz.
+- **Gerçek üreticiyle doğrulama:** Quartz sözleşmesine PDFKit (Önizleme'nin
+  motoru) ile vurgu + not eklendi. `29ffb73`'te Sıkıştır, Sırala ve Seç'in
+  hepsi bu hatayla düşüyor; düzeltmeyle hepsi geçiyor.
+- **Ek kural (aynı tarama):** PDFKit ve Acrobat not popup'ını sayfanın sağına,
+  kutunun dışına koyar (`/Open` yok). 90° dönük sayfada pay tam o kenara
+  eklendiği için kapalı popup yüzünden işlem reddediliyordu. Spec 12.5.6.14:
+  popup'ın kendi görünümü yoktur, `/Open true` değilse hiçbir şey çizmez →
+  açığa çıkamaz. Açık popup ve (spec dışı) görünüm akışlı popup çizilebilir
+  sayılır; değişmez korunur.
+- **Regresyon testleri:** `branding_does_not_refuse_annotations_that_the_gutter_cannot_reveal`,
+  `branding_tolerates_annotation_entries_a_viewer_cannot_place`,
+  `branding_still_refuses_a_visible_annotation_the_gutter_would_reveal` (değişmez;
+  dik ve 90° dönük sayfada yön), `branding_places_mark_on_nonconforming_rotation_instead_of_refusing`,
+  `branding_ignores_closed_popup_but_guards_open_popup_on_rotated_page`.
+
+### B11 — P1 · Sıkıştırmada tek bir görsel ayrıntısı bütün belgeyi düşürüyordu
+
+- **Semptom:** Sıkıştır → "Belge okunamadı"; kaydetme etkilenmiyor.
+- **Yeniden üretim:** örnek verisinin sonunda bir satır sonu baytı (Flate ya
+  da ham; bazı üreticiler `/Length`'e katar) → "Görsel çözümlenemedi: örnek
+  uzunluğu boyutla uyuşmuyor"; dolaylı `/Width` → "An object does not have
+  the expected type".
+- **Kök neden:** B7'de eklenen tam uzunluk denetimi her uyuşmazlığı ölümcül
+  hata yapıyordu (bu turun kendi gerilemesi); `decode_image` belgeyi görmediği
+  için dolaylı `Width/Height/BitsPerComponent` çözülmüyordu.
+- **Düzeltme:** sonda ≤2 bayt fazlalık (LF/CRLF) kırpılır; açıklanamayan
+  uzunluk görseli ATLATIR (baytları olduğu gibi kalır), belgeyi düşürmez;
+  boyut girdileri optimizer'da ve kalite kapısında çözülür. B7'nin koruması
+  (geri alınmamış öngörücü artığı piksel gibi kodlanamaz) ve B8'in sözleşmesi
+  (hiçbir çözücünün açamadığı görsel → Failed) aynen korundu.
+- **Regresyon testleri:** `compress_tolerates_trailing_eol_and_indirect_dimensions_with_fidelity`
+  (sıkıştırılır VE yeniden kodlanan görsel kaynağa sadık, MAE < 12),
+  `compress_skips_image_with_unexplained_length_instead_of_failing_document`.
+
+### B12 — P2 · Kabuk, belgenin okunduğu retleri "belge okunamadı" diye çeviriyordu
+
+- Motor B10'un kalan meşru reddini, "damga sığmıyor" reddini ve açıklamalı
+  sayfanın görsele dönüşüm reddini de "Bozuk veya geçersiz PDF" / "Desteklenmeyen
+  dosya biçimi" önekiyle taşıyor; kabuk bunları "Belge okunamadı; farklı bir
+  kopya deneyin" ya da "Yeniden deneyin" diye gösteriyordu — yanlış sebep,
+  işe yaramaz öneri.
+- **Düzeltme (frontend):** `describeSaveFailure`'a genel kategoriden önce üç
+  özgül kategori. Gerçekten okunamayan belge hâlâ "Belge okunamadı" der.
+- **Regresyon testi:** vitest `failure.test.ts › belge OKUNDUĞU hâlde yapılan ret…`.
+
+### B13 — P0 · Artımlı güncellenmiş belge (Word çıktısı dâhil) sıkıştırılamıyor, döndürülemiyordu
+
+- **Semptom:** belge açılıyor, önizleniyor, sayfa seçerek kaydediliyor; ama
+  Sıkıştır → "Sıkıştırma tamamlanamadı. Belge okunamadı; kopya
+  oluşturulamadı"; Döndür, Kırp, Filigran, Sayfa numarası → "İşlem
+  tamamlanamadı. Belge okunamadı". Kullanıcının ekran görüntüsündeki desenle
+  birebir.
+- **Yeniden üretim:** 15 belgelik taramada belirti yalnız son trailer'ı
+  `/Prev` taşıyan üç düzende çıktı: Word yapısında hibrit dosya (klasik xref +
+  `/XRefStm` + nesne akışında yapı öğeleri), klasik artımlı güncelleme
+  (Acrobat "Kaydet", imza, form doldurma) ve xref akışlı artımlı güncelleme
+  → `Invalid file trailer`. Tek bölümlü dosyalar (Chrome, Quartz, PDFKit,
+  tek bölümlü xref akışı) etkilenmedi.
+- **Beklenen:** açılabilen her belge bu araçlardan geçer; çıktı katı
+  okuyucuyla açılır.
+- **Gerçekleşen:** çıktı yazılıyor ama trailer'ındaki `/Prev` yeni dosyanın
+  ortasında anlamsız bir bayta işaret ediyor; `validated_pdf_bytes` onu
+  yeniden açamıyor ve yayını — doğru olarak — durduruyor.
+- **Kök neden:** lopdf 0.34 `Reader::read` son bölümün trailer'ını
+  `document.trailer` olarak tutar; `/XRefStm`'i yalnız `/Prev` döngüsünde
+  siler, `/Prev`'i hiç silmez. Tam yazıcı (`Writer::save_internal` →
+  `write_trailer`) bu trailer'ı olduğu gibi yazar: kaynağın bayt ofseti yeni
+  dosyaya taşınır. Sayfa seçerek kaydetme (`extract_page_range` +
+  `merge_documents`) ve önizleme belgeyi yeni bir trailer'la kurduğu için
+  etkilenmiyordu — belirtinin yalnız bazı araçlarda görünmesinin nedeni bu.
+- **Düzeltme:** motorun tek yükleme noktası `pdf-core::pdf::tolerant::load_pdf_tolerant`
+  yüklenen belgeyi kaynağın fiziksel yerleşiminden ayırır
+  (`detach_from_source_layout`): `/Prev`, `/XRefStm` ve eski xref akışının
+  kendi akış/kodlama girdileri silinir; `Root`, `Info`, `ID` korunur. Yayın
+  kapısı (`validated_pdf_bytes`) değişmedi — hatayı yakalayan oydu.
+- **Regresyon testi:** `incrementally_updated_documents_compress_rotate_and_number_like_any_other`.
+  Üç düzen lopdf'in yazıcısından bağımsız, bayt bayt kurulur (CoreGraphics ve
+  PDFKit üçünü de 3 sayfa + güncellemede eklenen notla açıyor). Sıkıştır
+  Failed değil; Döndür ve Sayfa numarası yayınlanır; çıktı katı okuyucuyla
+  açılır, `/Prev`/`/XRefStm` taşımaz, `/ID`'yi korur; güncellemedeki not ve
+  sayfa sırası korunur; kaynak SHA değişmez.
+
+**Kırmızı kanıt:** 8 yeni Rust testi düzeltmesiz `29ffb73` üzerinde ayrı bir
+worktree'de koşuldu — 8'i de düştü (artımlı test tam `Invalid file trailer`
+ile). Yalıtım: diğer bütün düzeltmeler varken yalnız `tolerant.rs` düzeltmesi
+çıkarılınca artımlı test, yalnız kapalı-popup kuralı çıkarılınca popup testi
+düşüyor; hepsi birlikte 44/44 geçiyor.
+
+### Gerçek üretici taraması (sentetik sözleşme, gerçek yazıcılar)
+
+| Üretici / fiziksel düzen | `29ffb73` Sıkıştır | Düzeltme: Sıkıştır · Döndür · Seçerek kaydet |
+|---|---|---|
+| Chrome/Skia, 8 s. (düz · üst/altbilgili · etiketli) | NoBenefit | NoBenefit · ✓ · ✓ |
+| Chrome/Skia + PNG logo (SMask) + JPEG tarama | Compressed 1.279.471 → 545.234 B | aynı · ✓ · ✓ |
+| macOS Quartz, 11 s., 27 bağlantı | NoBenefit | NoBenefit · ✓ · ✓ |
+| Quartz + görseller (PDFKit yeniden kaydı) | Compressed 1.175.295 → 443.409 B (1.175.558 → 443.556 B) | aynı · ✓ · ✓ |
+| PDFKit (Önizleme) + vurgu, not, popup | **Failed — B10** (kaydetme de ✗) | NoBenefit · ✓ · ✓ |
+| Word yapısı: hibrit `/XRefStm` + `/Prev` | **Failed — B13** (Döndür de ✗) | NoBenefit · ✓ · ✓ |
+| Klasik artımlı güncelleme | **Failed — B13** (Döndür de ✗) | NoBenefit · ✓ · ✓ |
+| Xref akışlı artımlı güncelleme | **Failed — B13** (Döndür de ✗) | NoBenefit · ✓ · ✓ |
+| Xref akışı, tek bölüm | NoBenefit | NoBenefit · ✓ · ✓ |
+| PDFKit yeniden kayıt — Chrome'un etiketli PDF'i | **açılamıyor — B14** | düzeltilmedi (Kalan borç 8) |
+
+Metin ağırlıklı belgede NoBenefit dürüst sonuçtur: marka payı ve lopdf'in
+yeniden yazımı birkaç KB ekler, %3 kapısı çıktı yazdırmaz.
+
 ## Bağımsız doğrulama
 
 Beş düzeltme, altı ayrı bakış açısıyla çürütülmeye çalışıldı (renk
@@ -259,6 +410,21 @@ bırakmaz.
   `apps/belge-shell/src/modules/duzenek/saveDestination.test.ts` (4),
   `qa/tests/design-system.test.mjs` (kısaltma toleransı).
 
+Kullanıcı raporu turu (B10–B13):
+
+- `crates/pdf-core/src/pdf/tolerant.rs` — `detach_from_source_layout`: yüklenen
+  belge kaynağın `/Prev`, `/XRefStm` ve xref akışı girdilerini taşımaz (B13).
+- `crates/pdf-core/src/pdf/stamp.rs` — açıklama denetimi payı ekledikten sonra
+  yalnız yeni şeride bakar; yerleştirilemeyen girdi, gizli açıklama,
+  kenarlıksız bağlantı, kapalı popup açığa çıkamaz; uyumsuz `/Rotate` 0
+  sayılır (B10).
+- `crates/pdf-core/src/optimizer.rs`, `crates/ekler-core/src/toolbox.rs` —
+  sonda ≤2 bayt fazlalık kırpılır, açıklanamayan uzunluk görseli atlatır,
+  dolaylı boyut girdileri çözülür (B11).
+- `apps/belge-shell/src/shared-ui/failure.ts` — okunmuş belgenin retleri kendi
+  sebebiyle anlatılır (B12).
+- Testler: `pdf_workspace_audit.rs` 36 → 44; `failure.test.ts` +1.
+
 ## Kalan borç
 
 1. **Ofis/UDF → PDF dönüşümü kabuğa bağlı değil** (B5). Bağımsız DüzenEk'in
@@ -272,8 +438,14 @@ bırakmaz.
 3. **PDF → görsel klasör adı `DuzenEk-Gorseller-…`** eski ürün adını taşıyor.
    "Output naming" bu turun dokunma listesinde olduğu için değiştirilmedi.
 4. `run_tool` Select/Reorder/Delete her sayfayı iki kez kopyalar
-   (`extract_page_range` → `merge_documents`); doğru ama gereksiz. Ölçülen
-   süre makul (100 sayfa < 100 ms), refactor gerekmiyor.
+   (`extract_page_range` → `merge_documents`). Süre makul (100 sayfa < 100 ms)
+   ama **boyut değil** — gerçek üretici taramasında ölçüldü: sayfa başına
+   kopyalama, sayfaların PAYLAŞTIĞI fontu/görseli her sayfaya ayrı taşıyor.
+   Sırala çıktısı Chrome 8 s. 135.205 → 507.786 B (3,8×), Quartz 11 s.
+   135.702 → 923.419 B (6,8×), aynı görseli üç sayfada kullanan Quartz
+   1.175.295 → 3.523.790 B (3,0×). `29ffb73`'te de aynı; bu turda
+   değiştirilmedi. P1: kaynak başına tek kopya haritası gerekir (madde 5 ile
+   aynı iş).
 5. **Seçimde kalan sayfalar arası bağlantılar** artık `null` (önceden ölü +
    şişkin). Doğru çözüm: `merge_documents`/`extract_page_range` içinde kaynak
    başına tek id haritası ve kopyalamadan sonra `/Dest`/`/P` yeniden bağlama.
@@ -282,3 +454,16 @@ bırakmaz.
    kopyalanır; semptomu üretemez, kayda geçti.
 7. Çok büyük DCT görselde (`image` crate 512 MiB ayırma sınırı) çözüm hatası
    Failed üretir; önceden de böyleydi.
+8. **B14 — Önizleme'de yeniden kaydedilmiş etiketli PDF hiç açılamıyor**
+   (bulundu, bu turda düzeltilmedi). Chrome/Google Docs çıktısı PDFKit ile
+   kaydedilince (Önizleme'de imza, vurgu ya da yalnız "Kaydet") PDFKit
+   `/StructTreeRoot /IDTree n 0 R` yazıyor ama nesneyi yazmıyor.
+   `validate_document` Root'tan erişilen her eksik referansı reddettiği için
+   belge yüklemede "Eksik nesne referansı" ile düşüyor; önizleme ve bütün
+   araçlar kapalı. Spec 7.3.10: tanımsız nesneye başvuru hata değildir, null
+   sayılır. Önerilen güvenli düzeltme: sayfa ağacı ve sayfa sözlüklerinden
+   erişilen — görünümü etkileyen — grafikte eksik nesne ret olarak kalır;
+   yalnız belge düzeyindeki meta yapılarda (yapı ağacı, anahat, ad ağaçları,
+   XMP) null sayılır. Bir güvenlik doğrulayıcısının anlamını değiştirdiği için
+   bilinçli karar ister; ayrı iş olarak işaretlendi. Kullanıcının belgesi bu
+   aileden değil: o belge yükleme doğrulamasından geçip önizleniyordu.

@@ -179,6 +179,23 @@ const SAVE_CATEGORIES: { match: RegExp; detail: string }[] = [
     match: /yeniden doğrulanamadı/i,
     detail: "Kaydedilen kopya yeniden açılıp doğrulanamadı. Yeniden deneyin.",
   },
+  // Aşağıdaki üç ret belgenin OKUNDUĞU durumlardır. Motor bunları "Bozuk veya
+  // geçersiz PDF" önekiyle taşır; genel kategoriden önce yakalanmazlarsa
+  // kullanıcı sağlam belgesi için "Belge okunamadı, farklı bir kopya deneyin"
+  // okur — yanlış sebep, işe yaramaz öneri.
+  {
+    match: /damga payı eklenince görünür|açıklama\/form alanı/i,
+    detail:
+      "Sayfa kenarının dışına taşan görünür bir açıklama var; marka payı eklenince görünür olacağı için kopya oluşturulmadı.",
+  },
+  {
+    match: /damga bu sayfaya sığmıyor/i,
+    detail: "Sayfa, zorunlu marka işaretinin sığamayacağı kadar küçük; kopya oluşturulmadı.",
+  },
+  {
+    match: /görsel dönüşümü bu sürümde desteklenmiyor/i,
+    detail: "Açıklama ya da form alanı içeren sayfalar bu sürümde görsele dönüştürülemiyor.",
+  },
   {
     match: /bozuk veya geçersiz|geçersiz pdf|geçersiz udf|geçersiz görsel/i,
     detail: "Belge okunamadı; kopya oluşturulamadı. Farklı bir kopya deneyin.",

@@ -120,26 +120,12 @@ fn apply_stamp_to_page(
         .and_then(|(_, o)| o.as_i64().ok())
         .unwrap_or(0)
         .rem_euclid(360);
+    // Spec /Rotate'in 90'ın katı olmasını şart koşar. Uymayan üretici
+    // değerinde pdf.js sayfayı döndürülmemiş sayar; belgeyi reddetmek yerine
+    // aynısı yapılır. Sayfanın kendi /Rotate değerine dokunulmaz, yalnız
+    // damganın yerleşimi bu kuralla hesaplanır.
+    let rotation = if rotation % 90 == 0 { rotation } else { 0 };
     let original_box = (x0, y0, x1, y1);
-    if let Ok(annots) = resolved.get(b"Annots") {
-        let (_, annots) = doc.dereference(annots).map_err(pdf_error)?;
-        for item in annots.as_array().map_err(pdf_error)? {
-            let (_, item) = doc.dereference(item).map_err(pdf_error)?;
-            let item = item.as_dict().map_err(pdf_error)?;
-            let rect = item
-                .get(b"Rect")
-                .and_then(|o| o.as_array())
-                .map_err(pdf_error)?;
-            if rect.len() != 4
-                || rect[0].as_float().map_err(pdf_error)? < x0
-                || rect[1].as_float().map_err(pdf_error)? < y0
-                || rect[2].as_float().map_err(pdf_error)? > x1
-                || rect[3].as_float().map_err(pdf_error)? > y1
-            {
-                return Err(EklerError::InvalidPdf("Görünür alan dışına taşan açıklama/form alanı var; damga payı eklenirken gizli görünümü açmamak için işlem durduruldu".into()));
-            }
-        }
-    }
 
     let gutter = config.margin_pt * 2.0 + config.font_size + 10.0;
     let top = matches!(
@@ -152,6 +138,28 @@ fn apply_stamp_to_page(
         (90, true) | (270, false) => x0 -= gutter,
         (90, false) | (270, true) => x1 += gutter,
         _ => return Err(EklerError::InvalidPdf("Geçersiz sayfa dönüşü".into())),
+    }
+
+    // Açıklama denetimi PAY EKLENDİKTEN SONRA ve yalnız yeni açılan şeride
+    // bakar. Pay tek bir kenara eklenir: sayfanın sağında duran bir vurgu
+    // popup'ı ya da sağ kenarı birkaç punto aşan bir bağlantı, alta eklenen
+    // şeritle görünür hâle GELMEZ. Eski denetim yönü hiç dikkate almıyor,
+    // okunamayan girdide (null, dolaylı /Rect, /Rect'siz açıklama) de lopdf
+    // tür hatasıyla düşüyordu: sağlam bir belge "Bozuk veya geçersiz PDF"
+    // diye reddediliyor, kullanıcı hem kaydedemiyor hem sıkıştıramıyordu.
+    if let Ok(annots) = resolved.get(b"Annots") {
+        if let Some(strip) = revealed_strip(original_box, (x0, y0, x1, y1)) {
+            let items = match doc.dereference(annots) {
+                Ok((_, Object::Array(items))) => items.clone(),
+                _ => Vec::new(),
+            };
+            if items
+                .iter()
+                .any(|item| annotation_would_be_revealed(doc, item, strip))
+            {
+                return Err(EklerError::InvalidPdf("Görünür alan dışına taşan açıklama/form alanı damga payı eklenince görünür hâle gelecekti; gizli görünümü açmamak için işlem durduruldu".into()));
+            }
+        }
     }
     let media = resolved.get(b"MediaBox").map_err(pdf_error)?;
     let (_, media) = doc.dereference(media).map_err(pdf_error)?;
@@ -397,6 +405,119 @@ fn apply_stamp_to_page(
 }
 fn pdf_error(e: lopdf::Error) -> EklerError {
     EklerError::InvalidPdf(e.to_string())
+}
+
+/// Pay eklendikten sonra YENİ görünür hâle gelen şerit, `[llx, lly, urx, ury]`.
+/// Pay tam olarak bir kenara eklenir; önceki ve sonraki kutu yalnız o kenarda
+/// ayrışır.
+fn revealed_strip(before: (f32, f32, f32, f32), after: (f32, f32, f32, f32)) -> Option<[f32; 4]> {
+    let (bx0, by0, bx1, by1) = before;
+    let (ax0, ay0, ax1, ay1) = after;
+    if ay0 < by0 {
+        Some([ax0, ay0, ax1, by0])
+    } else if ay1 > by1 {
+        Some([ax0, by1, ax1, ay1])
+    } else if ax0 < bx0 {
+        Some([ax0, ay0, bx0, ay1])
+    } else if ax1 > bx1 {
+        Some([bx1, ay0, ax1, ay1])
+    } else {
+        None
+    }
+}
+
+/// Bir açıklama, yeni açılan şerit yüzünden görünür hâle gelir mi?
+///
+/// Görüntüleyicinin yerleştiremeyeceği girdi — null, sözlük olmayan, `/Rect`'i
+/// eksik ya da sayı olmayan — açığa çıkamaz. Gizli (`/F` Hidden) ya da ekranda
+/// çizilmeyen (`/F` NoView) açıklama, kenarlıksız bağlantı ve kapalı popup
+/// zaten hiçbir şey çizmez. `/Rect` ve öğeleri dolaylı
+/// olabilir ve köşe sırası normalize edilmek zorunda değildir. Şeride saç teli
+/// kadar değen kenar sayılmaz.
+fn annotation_would_be_revealed(doc: &LopdfDoc, item: &Object, strip: [f32; 4]) -> bool {
+    const HIDDEN: i64 = 2;
+    const NO_VIEW: i64 = 32;
+    const HAIRLINE: f32 = 0.5;
+    let Ok((_, Object::Dictionary(annot))) = doc.dereference(item) else {
+        return false;
+    };
+    let flags = annot
+        .get(b"F")
+        .ok()
+        .and_then(|f| doc.dereference(f).ok())
+        .and_then(|(_, f)| f.as_i64().ok())
+        .unwrap_or(0);
+    if flags & (HIDDEN | NO_VIEW) != 0 {
+        return false;
+    }
+    // Bağlantı açıklamasının kendi görünümü yoktur; ekranda çizdiği tek şey
+    // kenarlığıdır. Görünüm akışı (/AP) taşımayan ve kenarlık kalınlığı açıkça
+    // 0 olan bir bağlantı (Word'ün yazdığı biçim) hiçbir şey çizmez — açığa
+    // çıkaracağı bir görünüm yoktur. Kalınlık /BS /W'den, yoksa /Border'ın
+    // üçüncü öğesinden okunur; ikisi de yoksa spec varsayılanı 1'dir.
+    let subtype = annot.get(b"Subtype").ok().and_then(|t| t.as_name().ok());
+    if subtype == Some(b"Link".as_slice()) && !annot.has(b"AP") {
+        let number = |o: &Object| doc.dereference(o).ok().and_then(|(_, n)| n.as_float().ok());
+        let from_bs = annot
+            .get(b"BS")
+            .ok()
+            .and_then(|bs| doc.dereference(bs).ok())
+            .and_then(|(_, bs)| bs.as_dict().ok())
+            .and_then(|bs| bs.get(b"W").ok())
+            .and_then(number);
+        let from_border = annot
+            .get(b"Border")
+            .ok()
+            .and_then(|b| doc.dereference(b).ok())
+            .and_then(|(_, b)| b.as_array().ok())
+            .and_then(|b| b.get(2))
+            .and_then(number);
+        if from_bs.or(from_border).unwrap_or(1.0) == 0.0 {
+            return false;
+        }
+    }
+    // Popup'ın kendi görünümü yoktur (spec 12.5.6.14): üst açıklaması
+    // açıldığında görüntüleyici onu pencere olarak çizer. `/Open true`
+    // taşımayan (varsayılan: kapalı) popup sayfada hiçbir şey çizmez.
+    // Önizleme ve Acrobat not popup'larını sayfanın sağına, kutunun dışına
+    // koyar; 90° dönük sayfada pay tam o kenara eklendiği için kapalı bir
+    // popup yüzünden işlem reddediliyordu. Açık popup ya da görünüm akışı
+    // taşıyan (spec dışı) popup çizilebilir sayılır ve korunur.
+    if subtype == Some(b"Popup".as_slice()) && !annot.has(b"AP") {
+        let open = annot
+            .get(b"Open")
+            .ok()
+            .and_then(|o| doc.dereference(o).ok())
+            .and_then(|(_, o)| o.as_bool().ok())
+            .unwrap_or(false);
+        if !open {
+            return false;
+        }
+    }
+    let Some(rect) = annot
+        .get(b"Rect")
+        .ok()
+        .and_then(|r| doc.dereference(r).ok())
+        .and_then(|(_, r)| r.as_array().ok())
+    else {
+        return false;
+    };
+    if rect.len() != 4 {
+        return false;
+    }
+    let mut v = [0f32; 4];
+    for (slot, n) in v.iter_mut().zip(rect) {
+        match doc.dereference(n).ok().and_then(|(_, n)| n.as_float().ok()) {
+            Some(n) if n.is_finite() => *slot = n,
+            _ => return false,
+        }
+    }
+    let (lx, ux) = (v[0].min(v[2]), v[0].max(v[2]));
+    let (ly, uy) = (v[1].min(v[3]), v[1].max(v[3]));
+    lx < strip[2] - HAIRLINE
+        && ux > strip[0] + HAIRLINE
+        && ly < strip[3] - HAIRLINE
+        && uy > strip[1] + HAIRLINE
 }
 
 pub fn apply_text_marks(doc: &mut LopdfDoc, text: Option<&str>, start: usize) -> Result<()> {

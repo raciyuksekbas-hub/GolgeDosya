@@ -1842,3 +1842,867 @@ fn compress_raw_image_with_incompressible_ballast_is_no_benefit_not_failed() {
         assert!(!out.exists());
     }
 }
+
+// ========================= "BELGE OKUNAMADI" — SAĞLAM BELGENİN REDDİ (2026-09-14)
+//
+// Kullanıcının gerçek belgesinde Sıkıştır "Belge okunamadı; kopya
+// oluşturulamadı" dedi. Belge açılıyor ve önizleniyordu: PDF sağlamdı. Motor
+// iki ayrı yerden `InvalidPdf` üretiyordu ve kabuk her `InvalidPdf`'i "belge
+// okunamadı" diye çeviriyordu. İkisi de sentetik fixture ile yeniden üretildi:
+//
+//  1. Marka payı eklenirken açıklama denetimi (her türetilmiş çıktı: kaydetme
+//     DA düşüyordu) — yön gözetmiyor, sayfanın sağındaki bir popup'ı bile
+//     reddediyor; null girdi, dolaylı /Rect, /Rect'siz açıklama ve 90'ın katı
+//     olmayan /Rotate'te lopdf tür hatasıyla düşüyordu.
+//  2. Sıkıştırmada görsel çözme — örnek verisinin sonundaki bir satır sonu
+//     baytı ve dolaylı /Width, bütün belgeyi ölümcül hatayla düşürüyordu.
+
+fn link_annot(rect: [f32; 4]) -> Dictionary {
+    dictionary! {"Type"=>"Annot","Subtype"=>"Link",
+    "Rect"=>rect.iter().map(|v| Object::Real(*v)).collect::<Vec<_>>(),
+    "Border"=>vec![0.into(),0.into(),0.into()],
+    "A"=>dictionary!{"S"=>"URI","URI"=>Object::string_literal("mailto:ornek@ornek.test")}}
+}
+
+/// Görünüm akışı olan, yani ekranda GERÇEKTEN çizilen bir açıklama.
+fn visible_square(d: &mut Document, rect: [f32; 4], flags: i64) -> ObjectId {
+    let ap = d.add_object(Stream::new(
+        dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),100.into(),20.into()]},
+        b"1 0 0 rg 0 0 100 20 re f".to_vec(),
+    ));
+    d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Square",
+    "Rect"=>rect.iter().map(|v| Object::Real(*v)).collect::<Vec<_>>(),
+    "F"=>flags,"AP"=>dictionary!{"N"=>ap}})
+}
+
+/// İki sayfalık belge; 1. sayfanın /Annots'u `build`'in döndürdüğü nesne.
+fn annotated(rotate: i64, build: impl FnOnce(&mut Document) -> Object) -> Document {
+    let mut d = vector_pdf(&[A4, A4]);
+    let annots = build(&mut d);
+    let p = d.get_pages()[&1];
+    let page = d.get_dictionary_mut(p).unwrap();
+    page.set("Annots", annots);
+    if rotate != 0 {
+        page.set("Rotate", rotate);
+    }
+    d
+}
+
+fn annot_count(doc: &Document, page: u32) -> usize {
+    let p = doc.get_dictionary(doc.get_pages()[&page]).unwrap();
+    match p.get(b"Annots").ok().map(|a| doc.dereference(a).unwrap().1) {
+        Some(Object::Array(a)) => a.len(),
+        _ => 0,
+    }
+}
+
+/// Sıkıştırma dâhil her türetmede: belge reddedilmez, çıktı yeniden açılır,
+/// açıklamalar yerinde kalır.
+fn assert_derivable(name: &str, doc: Document, annots_on_page_1: usize) {
+    let lab = Lab::new();
+    let mut doc = doc;
+    let src = lab.write(&format!("{name}.pdf"), &mut doc);
+    let (_, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Reorder { pages: vec![1, 2] },
+        "kopya.pdf",
+        false,
+    );
+    let d = reopen(&out);
+    assert_eq!(d.get_pages().len(), 2, "{name}");
+    assert_eq!(
+        annot_count(&d, 1),
+        annots_on_page_1,
+        "{name}: açıklamalar korunmalı"
+    );
+    let (o, _) = run(
+        &lab,
+        &[src],
+        ToolOperation::Compress {
+            level: Level::BalancedCompression,
+        },
+        "sikistirilmis.pdf",
+        false,
+    );
+    assert!(
+        !matches!(o, ToolOutcome::Failed { .. }),
+        "{name}: sağlam belge sıkıştırmada reddedildi: {o:?}"
+    );
+}
+
+#[test]
+fn branding_does_not_refuse_annotations_that_the_gutter_cannot_reveal() {
+    // Bağlantı sağ kenarı aşıyor — pay ALTA eklenir, sağdaki taşma görünmez.
+    assert_derivable(
+        "link-sag",
+        annotated(0, |d| {
+            vec![Object::Reference(
+                d.add_object(link_annot([400., 700., 620., 720.])),
+            )]
+            .into()
+        }),
+        1,
+    );
+    // Vurgu + sayfanın sağındaki popup: gözden geçirilmiş sözleşmelerin tipik yapısı.
+    assert_derivable(
+        "vurgu-popup",
+        annotated(0, |d| {
+            let popup = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Popup",
+            "Rect"=>vec![600.into(),600.into(),780.into(),720.into()],"Open"=>false});
+            let hl = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Highlight",
+            "Rect"=>vec![72.into(),690.into(),300.into(),724.into()],
+            "QuadPoints"=>vec![72.into(),724.into(),300.into(),724.into(),72.into(),690.into(),300.into(),690.into()],
+            "C"=>vec![1.into(),1.into(),0.into()],"Popup"=>popup});
+            vec![Object::Reference(hl), Object::Reference(popup)].into()
+        }),
+        2,
+    );
+    // Kenarlığı 0 olan, görünümsüz bağlantı alt şeride taşıyor: çizeceği bir şey yok.
+    assert_derivable(
+        "gorunumsuz-link-alt",
+        annotated(0, |d| {
+            vec![Object::Reference(
+                d.add_object(link_annot([72., -4., 300., 12.])),
+            )]
+            .into()
+        }),
+        1,
+    );
+    // Köşe sırası normalize edilmemiş Rect.
+    assert_derivable(
+        "ters-rect",
+        annotated(0, |d| {
+            vec![Object::Reference(
+                d.add_object(link_annot([300., 720., 72., 700.])),
+            )]
+            .into()
+        }),
+        1,
+    );
+    // Gizli (F=2) görünür açıklama alt şeride taşıyor: zaten gösterilmez.
+    assert_derivable(
+        "gizli-kare-alt",
+        annotated(0, |d| {
+            vec![Object::Reference(visible_square(
+                d,
+                [72., -4., 300., 12.],
+                2,
+            ))]
+            .into()
+        }),
+        1,
+    );
+}
+
+#[test]
+fn branding_tolerates_annotation_entries_a_viewer_cannot_place() {
+    assert_derivable(
+        "annots-null",
+        annotated(0, |d| {
+            vec![
+                Object::Null,
+                Object::Reference(d.add_object(link_annot([72., 700., 300., 720.]))),
+            ]
+            .into()
+        }),
+        2,
+    );
+    assert_derivable(
+        "rect-dolayli",
+        annotated(0, |d| {
+            let r = d.add_object(Object::Array(vec![
+                72.into(),
+                700.into(),
+                300.into(),
+                720.into(),
+            ]));
+            vec![Object::Reference(d.add_object(
+                dictionary! {"Type"=>"Annot","Subtype"=>"Link","Rect"=>r,
+                "Border"=>vec![0.into(),0.into(),0.into()]},
+            ))]
+            .into()
+        }),
+        1,
+    );
+    assert_derivable(
+        "rect-yok",
+        annotated(0, |d| {
+            vec![Object::Reference(
+                d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link"}),
+            )]
+            .into()
+        }),
+        1,
+    );
+    assert_derivable(
+        "annots-dolayli-dizi",
+        annotated(0, |d| {
+            let a = d.add_object(link_annot([72., 700., 300., 720.]));
+            Object::Reference(d.add_object(Object::Array(vec![Object::Reference(a)])))
+        }),
+        1,
+    );
+}
+
+#[test]
+fn branding_still_refuses_a_visible_annotation_the_gutter_would_reveal() {
+    // Değişmez korunuyor: payın açacağı şeride düşen, GERÇEKTEN çizilen bir
+    // açıklama varsa türetme durur, çıktı yazılmaz, kaynak değişmez.
+    let refuses = |name: &str, doc: Document| {
+        let lab = Lab::new();
+        let mut doc = doc;
+        let src = lab.write(&format!("{name}.pdf"), &mut doc);
+        let hash = calculate_sha256(&src).unwrap();
+        let out = lab.path("x.pdf");
+        let err = run_tool_with_outcome(
+            std::slice::from_ref(&src),
+            &ToolOperation::Reorder { pages: vec![1, 2] },
+            &out,
+            false,
+        )
+        .expect_err(name)
+        .to_string();
+        assert!(
+            !out.exists(),
+            "{name}: reddedilen türetme çıktı bırakmamalı"
+        );
+        assert_eq!(calculate_sha256(&src).unwrap(), hash);
+        // Kabuk bu cümleyi "belge okunamadı" değil, gerçek sebep olarak çevirir.
+        assert!(
+            err.contains("damga payı eklenince görünür"),
+            "{name}: {err}"
+        );
+    };
+    // Dik sayfa: pay altta.
+    refuses(
+        "kare-alt",
+        annotated(0, |d| {
+            vec![Object::Reference(visible_square(
+                d,
+                [72., -4., 300., 12.],
+                4,
+            ))]
+            .into()
+        }),
+    );
+    // 90° dönük sayfa: görsel alt kenar x ekseninde, pay SAĞA (x1) eklenir.
+    refuses(
+        "dik90-kare-sag",
+        annotated(90, |d| {
+            vec![Object::Reference(visible_square(
+                d,
+                [590., 300., 610., 400.],
+                4,
+            ))]
+            .into()
+        }),
+    );
+    // Aynı dönük sayfada alt kenarı aşan kare pay şeridinde değildir: geçer.
+    assert_derivable(
+        "dik90-kare-alt",
+        annotated(90, |d| {
+            vec![Object::Reference(visible_square(
+                d,
+                [72., -4., 300., 12.],
+                4,
+            ))]
+            .into()
+        }),
+        1,
+    );
+}
+
+#[test]
+fn branding_places_mark_on_nonconforming_rotation_instead_of_refusing() {
+    // Spec /Rotate'in 90'ın katı olmasını şart koşar; uymayan değeri pdf.js
+    // döndürülmemiş sayar. Belge reddedilmez, sayfanın kendi değerine dokunulmaz.
+    let lab = Lab::new();
+    let mut d = vector_pdf(&[A4, A4]);
+    let p = d.get_pages()[&1];
+    d.get_dictionary_mut(p).unwrap().set("Rotate", 45);
+    let src = lab.write("rotate45.pdf", &mut d);
+    let (_, out) = run(
+        &lab,
+        &[src],
+        ToolOperation::Reorder { pages: vec![1, 2] },
+        "k.pdf",
+        false,
+    );
+    let d = reopen(&out);
+    assert_eq!(rotation(&d, 1), 45, "sayfanın /Rotate değeri korunmalı");
+    let (m, _) = boxes(&d, 1);
+    assert!(
+        (m[3] - m[1] - (A4[1] + BRAND_GUTTER)).abs() < 0.05,
+        "pay alta eklenmeli: {m:?}"
+    );
+}
+
+/// Çıktıdaki tek görselin piksellerini kaynak piksellerle karşılaştırır.
+fn output_image_mae(out: &Path, reference: &image::RgbImage) -> f64 {
+    let d = reopen(out);
+    let stream = d
+        .objects
+        .values()
+        .filter_map(|o| o.as_stream().ok())
+        .find(|s| s.dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) == Some(b"Image"))
+        .expect("görsel akışı");
+    assert_eq!(
+        stream.dict.get(b"Filter").unwrap().as_name().unwrap(),
+        b"DCTDecode"
+    );
+    let got = image::load_from_memory(&stream.content).unwrap().to_rgb8();
+    assert_eq!(
+        (got.width(), got.height()),
+        (reference.width(), reference.height())
+    );
+    let sum: u64 = got
+        .as_raw()
+        .iter()
+        .zip(reference.as_raw())
+        .map(|(a, b)| a.abs_diff(*b) as u64)
+        .sum();
+    sum as f64 / got.as_raw().len() as f64
+}
+
+#[test]
+fn compress_tolerates_trailing_eol_and_indirect_dimensions_with_fidelity() {
+    let lab = Lab::new();
+    let px = scan_pixels(1200, 1600);
+    let image_stream =
+        |extra: &[u8], flate: bool, width: Object, extra_objects: Vec<(ObjectId, Object)>| {
+            let mut raw = px.as_raw().clone();
+            raw.extend_from_slice(extra);
+            let mut s = Stream::new(
+                dictionary! {"Type"=>"XObject","Subtype"=>"Image","Width"=>width,"Height"=>1600,
+                "ColorSpace"=>"DeviceRGB","BitsPerComponent"=>8},
+                raw,
+            );
+            if flate {
+                s.compress().unwrap();
+            }
+            image_pdf(s, extra_objects)
+        };
+    for (name, mut doc) in [
+        (
+            "flate-sonda-LF",
+            image_stream(b"\n", true, 1200.into(), vec![]),
+        ),
+        (
+            "ham-sonda-CRLF",
+            image_stream(b"\r\n", false, 1200.into(), vec![]),
+        ),
+        (
+            "width-dolayli",
+            image_stream(
+                b"",
+                true,
+                Object::Reference((950, 0)),
+                vec![((950, 0), Object::Integer(1200))],
+            ),
+        ),
+    ] {
+        let src = lab.write(&format!("{name}.pdf"), &mut doc);
+        let (o, out) = run(
+            &lab,
+            &[src],
+            ToolOperation::Compress {
+                level: Level::BalancedCompression,
+            },
+            &format!("{name}-out.pdf"),
+            false,
+        );
+        assert!(
+            matches!(
+                o,
+                ToolOutcome::Compressed {
+                    images_recompressed: 1,
+                    ..
+                }
+            ),
+            "{name}: sıkıştırılmalıydı, gelen {o:?}"
+        );
+        let mae = output_image_mae(&out, &px);
+        assert!(
+            mae < 12.0,
+            "{name}: yeniden kodlanan görsel kaynağa sadık değil (MAE {mae:.2})"
+        );
+    }
+}
+
+#[test]
+fn compress_skips_image_with_unexplained_length_instead_of_failing_document() {
+    // Üç bayt fazlalık satır sonu değildir; örnekleri güvenle yorumlayamayız.
+    // Görsel ATLANIR (baytları olduğu gibi kalır) — belge reddedilmez.
+    let lab = Lab::new();
+    let px = scan_pixels(400, 300);
+    let mut raw = px.as_raw().clone();
+    raw.extend_from_slice(b"\0\0\0");
+    let mut s = Stream::new(
+        dictionary! {"Type"=>"XObject","Subtype"=>"Image","Width"=>400,"Height"=>300,
+        "ColorSpace"=>"DeviceRGB","BitsPerComponent"=>8},
+        raw,
+    );
+    s.compress().unwrap();
+    let original = s.content.clone();
+    let src = lab.write("uzunluk.pdf", &mut image_pdf(s, vec![]));
+    let (o, out) = run(
+        &lab,
+        &[src],
+        ToolOperation::Compress {
+            level: Level::BalancedCompression,
+        },
+        "u.pdf",
+        false,
+    );
+    match o {
+        ToolOutcome::Failed { reason } => panic!("belge reddedilmemeliydi: {reason}"),
+        ToolOutcome::Compressed {
+            images_recompressed,
+            ..
+        } => {
+            assert_eq!(images_recompressed, 0);
+            let d = reopen(&out);
+            let kept = d
+                .objects
+                .values()
+                .filter_map(|o| o.as_stream().ok())
+                .find(|s| {
+                    s.dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) == Some(b"Image")
+                })
+                .unwrap();
+            assert_eq!(
+                kept.content, original,
+                "atlanan görselin baytları değişmemeli"
+            );
+        }
+        ToolOutcome::NoBenefit {
+            images_recompressed,
+            ..
+        } => {
+            assert_eq!(images_recompressed, 0);
+            assert!(!out.exists());
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn branding_ignores_closed_popup_but_guards_open_popup_on_rotated_page() {
+    // Önizleme ve Acrobat: not simgesi sayfada, popup'ı sayfanın SAĞINDA,
+    // kutunun dışında. 90° dönük sayfada pay tam o kenara (sağa) eklenir.
+    fn note_with_popup(d: &mut Document, open: Option<bool>) -> Object {
+        let popup_id = d.new_object_id();
+        let note = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Text",
+        "Rect"=>vec![540.into(),780.into(),560.into(),800.into()],
+        "Contents"=>Object::string_literal("Not"),"Popup"=>popup_id});
+        let mut popup = dictionary! {"Type"=>"Annot","Subtype"=>"Popup",
+        "Rect"=>vec![605.into(),580.into(),785.into(),700.into()],"Parent"=>note,"F"=>4};
+        if let Some(open) = open {
+            popup.set("Open", open);
+        }
+        d.objects.insert(popup_id, popup.into());
+        vec![Object::Reference(note), Object::Reference(popup_id)].into()
+    }
+    // Kapalı popup (varsayılan ya da açıkça) sayfada hiçbir şey çizmez.
+    assert_derivable(
+        "kapali-popup-dondurulmus",
+        annotated(90, |d| note_with_popup(d, None)),
+        2,
+    );
+    assert_derivable(
+        "acikca-kapali-popup-dondurulmus",
+        annotated(90, |d| note_with_popup(d, Some(false))),
+        2,
+    );
+    // Açık popup pay şeridine düşüyor: görünür hâle gelirdi — değişmez korunur.
+    let lab = Lab::new();
+    let mut doc = annotated(90, |d| note_with_popup(d, Some(true)));
+    let src = lab.write("acik-popup.pdf", &mut doc);
+    let before = calculate_sha256(&src).unwrap();
+    let err = run_tool_with_outcome(
+        std::slice::from_ref(&src),
+        &ToolOperation::Reorder { pages: vec![1, 2] },
+        &lab.path("kopya.pdf"),
+        false,
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("damga payı eklenince görünür"),
+        "{err}"
+    );
+    assert!(!lab.path("kopya.pdf").exists());
+    assert_eq!(calculate_sha256(&src).unwrap(), before);
+}
+
+// ================= ARTIMLI GÜNCELLENMİŞ BELGE — BAYAT /Prev OFSETİ (2026-09-14)
+//
+// Gerçek üreticilerin çıktısıyla yapılan taramada (Chrome/Skia, macOS Quartz,
+// PDFKit, Word yapısı, Acrobat tarzı güncelleme) kullanıcının belirtisi —
+// belge açılıyor, önizleniyor, sayfa seçerek kaydediliyor ama Sıkıştır
+// "Belge okunamadı" diyor — birebir yalnız ARTIMLI güncellenmiş dosyalarda
+// çıktı. Word'ün "PDF olarak kaydet" çıktısı hibrit başvurulu bir dosyadır ve
+// son trailer'ı /Prev taşır; Acrobat'ta "Kaydet", imza ve form doldurma da
+// artımlı bölüm ekler. lopdf 0.34 son trailer'ı /Prev ile birlikte tutuyordu;
+// belgeyi baştan yazan her yol (sıkıştır, döndür, kırp, filigran, numara)
+// eski dosyanın bayt ofsetini yeni dosyaya kopyalıyor, çıktı kendi içinde
+// tutarsız kalıyor ve yeniden açma doğrulaması onu haklı olarak reddediyordu.
+// Sayfa seçerek kaydetme belgeyi yeniden kurduğu için etkilenmiyordu.
+//
+// Fixture'lar lopdf'in yazıcısından bağımsız, bayt bayt elle kurulur: test,
+// düzeltilen kütüphane davranışının kendisine yaslanmamalı.
+
+#[derive(Clone, Copy, Debug)]
+enum Layout {
+    /// Klasik xref + artımlı güncelleme bölümü (Acrobat "Kaydet", imza).
+    ClassicIncremental,
+    /// Klasik xref + /XRefStm + nesne akışında yapı öğeleri, son bölümde
+    /// /Prev (Word "PDF olarak kaydet").
+    WordHybrid,
+    /// PDF 1.5 xref akışı (PNG öngörücülü) + xref akışlı güncelleme.
+    XrefStreamIncremental,
+}
+
+struct RawPdf {
+    bytes: Vec<u8>,
+    offsets: std::collections::BTreeMap<u32, usize>,
+}
+
+impl RawPdf {
+    fn new(version: &str) -> Self {
+        let mut bytes = format!("%PDF-{version}\n").into_bytes();
+        bytes.extend_from_slice(b"%\xe2\xe3\xcf\xd3\n");
+        Self {
+            bytes,
+            offsets: Default::default(),
+        }
+    }
+    fn object(&mut self, id: u32, body: &[u8]) {
+        self.offsets.insert(id, self.bytes.len());
+        self.bytes
+            .extend_from_slice(format!("{id} 0 obj\n").as_bytes());
+        self.bytes.extend_from_slice(body);
+        self.bytes.extend_from_slice(b"\nendobj\n");
+    }
+    fn stream(&mut self, id: u32, dict: &str, data: &[u8]) {
+        let mut body = format!("<<{dict}/Length {}>>stream\n", data.len()).into_bytes();
+        body.extend_from_slice(data);
+        body.extend_from_slice(b"\nendstream");
+        self.object(id, &body);
+    }
+    fn startxref(&mut self, at: usize) {
+        self.bytes
+            .extend_from_slice(format!("startxref\n{at}\n%%EOF\n").as_bytes());
+    }
+    /// 0..size aralığında klasik tablo; `live` dışındakiler serbest görünür
+    /// (hibrit dosyada nesne akışındaki nesneler böyle yazılır).
+    fn classic_table(&mut self, size: u32, live: &[u32], trailer: &str) -> usize {
+        let at = self.bytes.len();
+        let mut x = format!("xref\n0 {size}\n");
+        for n in 0..size {
+            match self.offsets.get(&n).filter(|_| live.contains(&n)) {
+                Some(off) => x.push_str(&format!("{off:010} 00000 n \n")),
+                None => x.push_str("0000000000 65535 f \n"),
+            }
+        }
+        x.push_str(&format!("trailer\n<<{trailer}>>\n"));
+        self.bytes.extend_from_slice(x.as_bytes());
+        self.startxref(at);
+        at
+    }
+    /// Güncelleme bölümü: yalnız değişen nesneler için alt bölümler.
+    fn update_table(&mut self, changed: &[u32], trailer: &str) -> usize {
+        let at = self.bytes.len();
+        let mut x = String::from("xref\n0 1\n0000000000 65535 f \n");
+        for id in changed {
+            x.push_str(&format!("{id} 1\n{:010} 00000 n \n", self.offsets[id]));
+        }
+        x.push_str(&format!("trailer\n<<{trailer}>>\n"));
+        self.bytes.extend_from_slice(x.as_bytes());
+        self.startxref(at);
+        at
+    }
+    /// W[1 3 1] xref akışı; satırlar Acrobat'ın yazdığı gibi PNG "Up"
+    /// öngörücüsüyle. `rows`: (nesne, tür, alan 2, alan 3), artan sırada.
+    fn xref_stream(&mut self, id: u32, size: u32, rows: &[(u32, u8, u32, u8)], extra: &str) {
+        let mut index: Vec<(u32, u32)> = Vec::new();
+        let mut raw = Vec::new();
+        let mut prev = [0u8; 5];
+        for &(n, kind, f2, f3) in rows {
+            match index.last_mut() {
+                Some((start, len)) if *start + *len == n => *len += 1,
+                _ => index.push((n, 1)),
+            }
+            let row = [kind, (f2 >> 16) as u8, (f2 >> 8) as u8, f2 as u8, f3];
+            raw.push(2);
+            raw.extend(row.iter().zip(prev).map(|(b, p)| b.wrapping_sub(p)));
+            prev = row;
+        }
+        let index: String = index.iter().map(|(s, l)| format!("{s} {l} ")).collect();
+        self.stream(
+            id,
+            &format!("/Type/XRef/Size {size}/W[1 3 1]/Index[{index}]/Filter/FlateDecode/DecodeParms<</Columns 5/Predictor 12>>{extra}"),
+            &zlib(&raw),
+        );
+    }
+    /// Nesne akışı: `members` sırasıyla.
+    fn object_stream(&mut self, id: u32, members: &[(u32, String)]) {
+        let (mut header, mut body) = (String::new(), String::new());
+        for (n, obj) in members {
+            header.push_str(&format!("{n} {} ", body.len()));
+            body.push_str(obj);
+            body.push('\n');
+        }
+        self.stream(
+            id,
+            &format!(
+                "/Type/ObjStm/N {}/First {}/Filter/FlateDecode",
+                members.len(),
+                header.len()
+            ),
+            &zlib(format!("{header}{body}").as_bytes()),
+        );
+    }
+}
+
+/// `pages` sayfalık sözleşme; 1. sayfada sayfanın İÇİNDE bir not açıklaması
+/// vardır. Artımlı düzenlerde bu not güncelleme bölümünde eklenir: çıktıda
+/// görünmesi, SON revizyonun okunduğunu kanıtlar.
+fn incremental_contract(layout: Layout, pages: u32) -> Vec<u8> {
+    let tagged = matches!(layout, Layout::WordHybrid);
+    let page_id = |i: u32| 10 + 2 * i;
+    let content_id = |i: u32| 11 + 2 * i;
+    let note_id = 10 + 2 * pages;
+    let kids: String = (0..pages).map(|i| format!("{} 0 R ", page_id(i))).collect();
+    let page_dict = |i: u32, with_note: bool| {
+        let tags = if tagged {
+            format!("/StructParents {i}/Tabs/S/Group<</Type/Group/S/Transparency/CS/DeviceRGB>>")
+        } else {
+            String::new()
+        };
+        let annots = if with_note {
+            format!("/Annots[{note_id} 0 R]")
+        } else {
+            String::new()
+        };
+        format!(
+            "<</Type/Page/Parent 2 0 R/MediaBox[0 0 595.28 841.89]/Resources<</Font<</F1 3 0 R>>>>/Contents {} 0 R{tags}{annots}>>",
+            content_id(i)
+        )
+    };
+    let content = |i: u32| {
+        let text = format!("BT /F1 24 Tf 72 720 Td (Sayfa {}) Tj ET", i + 1);
+        let text = if tagged {
+            format!("/P <</MCID 0>> BDC {text} EMC")
+        } else {
+            text
+        };
+        zlib(text.as_bytes())
+    };
+    let catalog = if tagged {
+        "<</Type/Catalog/Pages 2 0 R/Lang(tr-TR)/MarkInfo<</Marked true>>/StructTreeRoot 9 0 R>>"
+            .to_string()
+    } else {
+        "<</Type/Catalog/Pages 2 0 R>>".to_string()
+    };
+    let pages_dict = format!("<</Type/Pages/Count {pages}/Kids[{kids}]>>");
+    let font = "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>".to_string();
+    let note = b"<</Type/Annot/Subtype/Text/Rect[500 780 520 800]/Contents(Not)/F 4>>";
+    let id = "/ID[<0A1B2C3D4E5F60718293A4B5C6D7E8F9><0A1B2C3D4E5F60718293A4B5C6D7E8F9>]";
+
+    let mut pdf = RawPdf::new(match layout {
+        Layout::XrefStreamIncremental => "1.5",
+        _ => "1.7",
+    });
+    match layout {
+        Layout::ClassicIncremental => {
+            pdf.object(1, catalog.as_bytes());
+            pdf.object(2, pages_dict.as_bytes());
+            pdf.object(3, font.as_bytes());
+            for i in 0..pages {
+                pdf.object(page_id(i), page_dict(i, false).as_bytes());
+                pdf.stream(content_id(i), "/Filter/FlateDecode", &content(i));
+            }
+            let live: Vec<u32> = pdf.offsets.keys().copied().collect();
+            let base =
+                pdf.classic_table(note_id, &live, &format!("/Size {note_id}/Root 1 0 R{id}"));
+            // Acrobat "Kaydet": 1. sayfa yeniden yazılır, not eklenir.
+            pdf.object(page_id(0), page_dict(0, true).as_bytes());
+            pdf.object(note_id, note);
+            pdf.update_table(
+                &[page_id(0), note_id],
+                &format!("/Size {}/Root 1 0 R/Prev {base}{id}", note_id + 1),
+            );
+        }
+        Layout::WordHybrid => {
+            pdf.object(1, catalog.as_bytes());
+            pdf.object(2, pages_dict.as_bytes());
+            pdf.object(3, font.as_bytes());
+            for i in 0..pages {
+                pdf.object(page_id(i), page_dict(i, i == 0).as_bytes());
+                pdf.stream(content_id(i), "/Filter/FlateDecode", &content(i));
+            }
+            pdf.object(note_id, note);
+            pdf.object(8, b"<</Nums[0[6 0 R]]>>");
+            pdf.object(
+                9,
+                b"<</Type/StructTreeRoot/K 5 0 R/ParentTree 8 0 R/ParentTreeNextKey 1>>",
+            );
+            // Yapı öğeleri nesne akışında; klasik tablo onları serbest gösterir.
+            pdf.object_stream(
+                7,
+                &[
+                    (5, "<</Type/StructElem/S/Document/P 9 0 R/K[6 0 R]>>".into()),
+                    (
+                        6,
+                        format!("<</Type/StructElem/S/P/P 5 0 R/Pg {} 0 R/K 0>>", page_id(0)),
+                    ),
+                ],
+            );
+            let stm_id = note_id + 1;
+            let size = stm_id + 1;
+            let stm_at = pdf.bytes.len();
+            pdf.xref_stream(
+                stm_id,
+                size,
+                &[(5, 2, 7, 0), (6, 2, 7, 1), (stm_id, 1, stm_at as u32, 0)],
+                "",
+            );
+            let live: Vec<u32> = pdf.offsets.keys().copied().collect();
+            let base = pdf.classic_table(size, &live, &format!("/Size {size}/Root 1 0 R{id}"));
+            // Word'ün son bölümü: boş tablo, /Prev ve /XRefStm.
+            let at = pdf.bytes.len();
+            pdf.bytes.extend_from_slice(
+                format!("xref\n0 0\ntrailer\n<</Size {size}/Root 1 0 R/Prev {base}/XRefStm {stm_at}{id}>>\n").as_bytes(),
+            );
+            pdf.startxref(at);
+        }
+        Layout::XrefStreamIncremental => {
+            for i in 0..pages {
+                pdf.stream(content_id(i), "/Filter/FlateDecode", &content(i));
+            }
+            let mut members = vec![(1, catalog), (2, pages_dict), (3, font)];
+            for i in 0..pages {
+                members.push((page_id(i), page_dict(i, false)));
+            }
+            let stm_id = note_id + 1;
+            pdf.object_stream(stm_id, &members);
+            let xs1 = stm_id + 1;
+            let at1 = pdf.bytes.len();
+            let mut rows = vec![(0, 0, 0, 255)];
+            rows.extend(
+                members
+                    .iter()
+                    .enumerate()
+                    .map(|(k, (n, _))| (*n, 2, stm_id, k as u8)),
+            );
+            rows.extend(
+                (0..pages).map(|i| (content_id(i), 1, pdf.offsets[&content_id(i)] as u32, 0)),
+            );
+            rows.push((stm_id, 1, pdf.offsets[&stm_id] as u32, 0));
+            rows.push((xs1, 1, at1 as u32, 0));
+            rows.sort_by_key(|r| r.0);
+            pdf.xref_stream(xs1, xs1 + 1, &rows, &format!("/Root 1 0 R{id}"));
+            pdf.startxref(at1);
+            // Güncelleme: 1. sayfa düz nesne olarak yeniden yazılır, not eklenir.
+            pdf.object(page_id(0), page_dict(0, true).as_bytes());
+            pdf.object(note_id, note);
+            let xs2 = xs1 + 1;
+            let at2 = pdf.bytes.len();
+            let rows = [
+                (page_id(0), 1, pdf.offsets[&page_id(0)] as u32, 0),
+                (note_id, 1, pdf.offsets[&note_id] as u32, 0),
+                (xs2, 1, at2 as u32, 0),
+            ];
+            pdf.xref_stream(xs2, xs2 + 1, &rows, &format!("/Root 1 0 R/Prev {at1}{id}"));
+            pdf.startxref(at2);
+        }
+    }
+    pdf.bytes
+}
+
+/// Açılan her belge, belgeyi baştan yazan her yoldan geçer: çıktı katı
+/// okuyucuyla açılır, bayat ofset taşımaz, son revizyonu ve kimliğini korur.
+fn assert_incremental_derivable(name: &str, bytes: &[u8], pages: usize) {
+    assert!(
+        bytes.windows(5).any(|w| w == b"/Prev"),
+        "{name}: fixture artımlı değil — test anlamını yitirir"
+    );
+    // Kaynak açılıyor ve önizleniyor: kullanıcının gördüğü durum.
+    let loaded = load_pdf_tolerant(bytes, "kaynak.pdf").unwrap();
+    assert!(!loaded.is_repaired, "{name}");
+    assert_eq!(loaded.document.get_pages().len(), pages, "{name}");
+    assert_eq!(
+        annot_count(&loaded.document, 1),
+        1,
+        "{name}: son revizyon okunmalı"
+    );
+    let lab = Lab::new();
+    let src = lab.write_bytes(&format!("{name}.pdf"), bytes);
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Compress {
+            level: Level::AggressiveCompression,
+        },
+        "sikistirilmis.pdf",
+        false,
+    );
+    match &o {
+        ToolOutcome::NoBenefit { .. } => assert!(!out.exists(), "{name}"),
+        ToolOutcome::Compressed { .. } => {
+            reopen(&out);
+        }
+        other => panic!("{name}: açılan belge sıkıştırmada reddedildi: {other:?}"),
+    }
+    for (label, op) in [
+        ("dondur", ToolOperation::Rotate { degrees: 90 }),
+        ("numara", ToolOperation::Number { start: 1 }),
+    ] {
+        let (o, out) = run(
+            &lab,
+            std::slice::from_ref(&src),
+            op,
+            &format!("{label}.pdf"),
+            false,
+        );
+        published(&o);
+        let raw = std::fs::read(&out).unwrap();
+        let strict = Document::load_mem(&raw)
+            .unwrap_or_else(|e| panic!("{name}/{label}: çıktı katı okuyucuyla açılmıyor: {e}"));
+        assert!(
+            !strict.trailer.has(b"Prev") && !strict.trailer.has(b"XRefStm"),
+            "{name}/{label}: kaynağın bayt ofseti çıktıya taşındı: {:?}",
+            strict.trailer
+        );
+        assert!(
+            strict.trailer.has(b"ID"),
+            "{name}/{label}: belge kimliği korunmalı"
+        );
+        let d = reopen(&out);
+        assert_eq!(d.get_pages().len(), pages, "{name}/{label}");
+        assert_eq!(
+            annot_count(&d, 1),
+            1,
+            "{name}/{label}: güncellemede eklenen not korunmalı"
+        );
+        assert_eq!(
+            markers(&d),
+            (1..=pages)
+                .map(|i| format!("Sayfa {i}"))
+                .collect::<Vec<_>>(),
+            "{name}/{label}"
+        );
+    }
+}
+
+#[test]
+fn incrementally_updated_documents_compress_rotate_and_number_like_any_other() {
+    for layout in [
+        Layout::ClassicIncremental,
+        Layout::WordHybrid,
+        Layout::XrefStreamIncremental,
+    ] {
+        assert_incremental_derivable(&format!("{layout:?}"), &incremental_contract(layout, 3), 3);
+    }
+}

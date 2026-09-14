@@ -544,7 +544,14 @@ fn validate_compression_quality(
         }
         let resolve = |doc: &LopdfDoc, stream: &lopdf::Stream| -> Result<lopdf::Stream> {
             let mut s = stream.clone();
-            for key in [b"Filter".as_slice(), b"DecodeParms"] {
+            // Optimizer ile aynı çözümleme; dolaylı boyut girdisi dâhil.
+            for key in [
+                b"Filter".as_slice(),
+                b"DecodeParms",
+                b"Width",
+                b"Height",
+                b"BitsPerComponent",
+            ] {
                 if let Ok(v) = s.dict.get(key).cloned() {
                     s.dict
                         .set(key, doc.dereference(&v).map_err(|_| fail())?.1.clone());

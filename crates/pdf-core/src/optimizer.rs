@@ -130,10 +130,18 @@ pub fn decode_image(stream: &lopdf::Stream) -> Result<Option<image::DynamicImage
             .decompressed_content()
             .map_err(|e| fail(e.to_string()))?
     };
-    // Tam uzunluk: `from_raw` fazla baytı kabul eder; geri alınmamış satır
-    // başlığı ya da öngörücü artığı piksel gibi geçemez.
-    if raw.len() != (w as usize) * (h as usize) * channels {
-        return Err(fail("örnek uzunluğu boyutla uyuşmuyor".into()));
+    // Örnek uzunluğu. Tam eşleşme çözülür. Sonda en çok iki bayt fazlalık —
+    // bazı üreticilerin /Length'e kattığı satır sonu (LF/CRLF) — kırpılır.
+    // Başka her uyuşmazlık "bu örnekleri güvenle yorumlayamıyoruz" demektir:
+    // görsel ATLANIR, baytları olduğu gibi kalır. Geri alınmamış satır başlığı
+    // ya da öngörücü artığı piksel gibi kodlanamaz; ama görüntüleyicinin
+    // sorunsuz gösterdiği bir görsel yüzünden bütün belge de reddedilmez.
+    let expected = (w as usize) * (h as usize) * channels;
+    let mut raw = raw;
+    match raw.len().checked_sub(expected) {
+        Some(0) => {}
+        Some(extra) if extra <= 2 => raw.truncate(expected),
+        _ => return Ok(None),
     }
     if channels == 3 {
         image::RgbImage::from_raw(w, h, raw)
@@ -238,13 +246,27 @@ pub fn optimize_pdf(doc: &mut LopdfDoc, level: OptimizationLevel) -> Result<Opti
             continue;
         }
         let mut stream = original.clone();
-        for key in [b"Filter".as_slice(), b"DecodeParms"] {
+        // Görsel sözlüğünün her sayısal/ad girdisi dolaylı olabilir; çözücü
+        // belgeyi görmez, bu yüzden hepsi burada çözülür. Dolaylı /Width
+        // yüzünden görselin — ve belgenin — reddedilmesi kabul edilemez.
+        // Çözülemeyen referans görseli atlatır, belgeyi düşürmez.
+        let mut unresolved = false;
+        for key in [
+            b"Filter".as_slice(),
+            b"DecodeParms",
+            b"Width",
+            b"Height",
+            b"BitsPerComponent",
+        ] {
             if let Ok(value) = stream.dict.get(key).cloned() {
-                let (_, resolved) = doc
-                    .dereference(&value)
-                    .map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
-                stream.dict.set(key, resolved.clone());
+                match doc.dereference(&value) {
+                    Ok((_, resolved)) => stream.dict.set(key, resolved.clone()),
+                    Err(_) => unresolved = true,
+                }
             }
+        }
+        if unresolved {
+            continue;
         }
         // Renk uzayı yalnız ÇÖZMEK için Device adına indirgenir; yazılan akış
         // özgün `/ColorSpace` nesnesini (ör. ICC profili) korur.

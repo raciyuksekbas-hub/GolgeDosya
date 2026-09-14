@@ -25,7 +25,8 @@ pub enum RepairStrategy {
 /// Unknown damage is rejected; object-scanning reconstruction is intentionally disabled.
 pub fn load_pdf_tolerant(bytes: &[u8], file_name: &str) -> Result<TolerantLoadResult> {
     // Tier 1: Doğrudan ve müdahalesiz hızlı yükleme
-    if let Ok(doc) = LopdfDoc::load_mem(bytes) {
+    if let Ok(mut doc) = LopdfDoc::load_mem(bytes) {
+        detach_from_source_layout(&mut doc);
         super::validate_document(&doc)?;
         return Ok(TolerantLoadResult {
             strategy: RepairStrategy::Strict,
@@ -46,7 +47,8 @@ pub fn load_pdf_tolerant(bytes: &[u8], file_name: &str) -> Result<TolerantLoadRe
     // Tier 2: Toleranslı normalizasyon ve onarım denemeleri
     // Adım 2.1: Xref ve startxref normalizasyonu
     if let Ok(normalized_bytes) = normalize_xref_and_startxref(bytes) {
-        if let Ok(doc) = LopdfDoc::load_mem(&normalized_bytes) {
+        if let Ok(mut doc) = LopdfDoc::load_mem(&normalized_bytes) {
+            detach_from_source_layout(&mut doc);
             super::validate_document(&doc)?;
             return Ok(TolerantLoadResult {
                 strategy: RepairStrategy::XrefNormalization,
@@ -63,6 +65,39 @@ pub fn load_pdf_tolerant(bytes: &[u8], file_name: &str) -> Result<TolerantLoadRe
         "'{}' standart PDF yapısında okunamadı. Dosya şifreli, eksik veya ağır hasarlı olabilir.",
         file_name
     )))
+}
+
+/// Yükleyicinin verdiği belge BÜTÜN bir belgedir; kaynak dosyanın fiziksel
+/// yerleşimine ait trailer girdilerini taşımaz.
+///
+/// lopdf 0.34, artımlı güncellenmiş bir dosyanın — Word'ün hibrit başvurulu
+/// "PDF olarak kaydet" çıktısı, Acrobat'ta "Kaydet", imza, form doldurma —
+/// SON bölümündeki trailer'ı olduğu gibi tutar. Oradaki `/Prev` eski dosyada
+/// bir bayt ofsetidir. Belge baştan yazıldığında (sıkıştır, döndür, kırp,
+/// filigran, sayfa numarası) bu ofset yeni dosyaya kopyalanıyor ve anlamsız
+/// bir yeri gösteriyordu: çıktı kendi içinde tutarsızdı, yeniden açma
+/// doğrulaması onu haklı olarak reddediyor, kullanıcı açılan ve önizlenen
+/// belgesi için "Belge okunamadı" görüyordu. `/XRefStm` (hibrit akışın eski
+/// ofseti) ve eski xref akışının kendi akış/kodlama girdileri aynı sınıftandır;
+/// yazıcı yeni dosya için gerekenleri kendisi üretir. `Root`, `Info`, `ID`
+/// belgeye aittir ve korunur.
+fn detach_from_source_layout(doc: &mut LopdfDoc) {
+    for key in [
+        b"Prev".as_slice(),
+        b"XRefStm",
+        b"Type",
+        b"W",
+        b"Index",
+        b"Length",
+        b"Filter",
+        b"DecodeParms",
+        b"F",
+        b"FFilter",
+        b"FDecodeParms",
+        b"DL",
+    ] {
+        doc.trailer.remove(key);
+    }
 }
 
 /// Xref tablosundaki satır sonlarını ve startxref konumunu standart 20-baytlık PDF biçimine normalize eder.

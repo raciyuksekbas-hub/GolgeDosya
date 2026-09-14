@@ -59,6 +59,31 @@ describe("kaydetme hatalarının sunumu", () => {
     expect(new Set(mapped).size).toBeGreaterThanOrEqual(7);
   });
 
+  it("belge OKUNDUĞU hâlde yapılan ret 'belge okunamadı' diye çevrilmez", () => {
+    // Motor bu retleri "Bozuk veya geçersiz PDF" önekiyle taşır. Genel
+    // kategoriden önce yakalanmadıklarında kullanıcı açıp önizlediği sağlam
+    // belge için "Belge okunamadı, farklı bir kopya deneyin" okuyordu —
+    // gerçek bir kullanıcı raporunda (sıkıştırma) tam olarak bu görüldü.
+    const readable = [
+      "Error: Bozuk veya geçersiz PDF dosyası: Görünür alan dışına taşan açıklama/form alanı damga payı eklenince görünür hâle gelecekti; gizli görünümü açmamak için işlem durduruldu",
+      "Error: Bozuk veya geçersiz PDF dosyası: Damga bu sayfaya sığmıyor; boyut/kenar boşluğunu azaltın",
+      "Error: Desteklenmeyen dosya biçimi: Açıklama veya form içeren PDF'nin görsel dönüşümü bu sürümde desteklenmiyor; görünüm kaybını önlemek için işlem durduruldu",
+    ];
+    const details = readable.map(describeSaveFailure);
+    expect(details[0]).toMatch(/açıklama/);
+    expect(details[1]).toMatch(/marka işaretinin sığamayacağı/);
+    expect(details[2]).toMatch(/görsele dönüştürülemiyor/);
+    for (const d of details) {
+      expect(d).not.toMatch(/okunamadı|farklı bir kopya/i);
+      expect(d).not.toBe(SAVE_FAILURE_FALLBACK);
+      for (const leak of LEAKS) expect(d).not.toContain(leak);
+    }
+    // Gerçekten okunamayan belge hâlâ "okunamadı" der.
+    expect(describeSaveFailure("Error: Bozuk veya geçersiz PDF dosyası: 'x.pdf' standart PDF yapısında okunamadı.")).toMatch(
+      /Belge okunamadı/,
+    );
+  });
+
   it("tanınmayan hata güvenli yedeğe düşer", () => {
     expect(describeSaveFailure(new Error("¿?"))).toBe(SAVE_FAILURE_FALLBACK);
     expect(describeSaveFailure(null)).toBe(SAVE_FAILURE_FALLBACK);
