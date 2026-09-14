@@ -57,7 +57,12 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     label: "Düzenle",
     emptyTitle: "PDF üzerinde çalışın",
     extensions: ["pdf", "docx", "doc", "udf", "jpg", "jpeg", "png", "tiff", "heic"],
-    hint: "Sayfaları düzenlemek, döndürmek, sıralamak veya dışa aktarmak için bir PDF açın.",
+    // Kip gerçekten Word, UYAP ve görselleri de açıyor (motor onları PDF'ye
+    // çeviriyor). Liste bu türleri gösterdiğine göre yüzey de bunu söylemeli:
+    // "yalnız PDF" demek verilmeyen bir söz olurdu.
+    hint:
+      "Sayfaları düzenlemek, döndürmek, sıralamak veya dışa aktarmak için bir PDF açın. " +
+      "Word, UYAP ve görsel dosyaları açılırken PDF'ye dönüştürülür.",
     openLabel: "PDF Aç",
     // Liste PDF dışı türleri de taşır (Düzenle onları da açar), bu yüzden
     // başlık "Son PDF'ler" olamaz: etiketin listeyle uyuşması, sloganın

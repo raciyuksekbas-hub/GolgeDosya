@@ -129,7 +129,7 @@ describe("durum sözleşmesi", () => {
     expect(markup).toContain("13 paragraf · 84 kelime");
     // Düzeltilebilir bulgu varsa birincil eylem barda.
     expect(markup).toContain('class="toolbar-actions"');
-    expect(markup).toContain("Kopyaya uygula…");
+    expect(markup).toContain("Kopyaya uygula");
   });
 
   it("workspace iki durumu da tek yerden seçer", () => {

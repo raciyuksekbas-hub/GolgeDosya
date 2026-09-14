@@ -45,11 +45,11 @@ function SelectedDetail({ change }: { change: ComparisonChange }) {
         </p>
       )}
       <div className="detail-block removed">
-        <span>TEMEL SÜRÜM</span>
+        <span>Eski</span>
         <p>{change.leftText ?? "—"}</p>
       </div>
       <div className="detail-block added">
-        <span>DEĞİŞİK SÜRÜM</span>
+        <span>Yeni</span>
         <p>{change.rightText ?? "—"}</p>
       </div>
       {/* Özet satırları burada TEKRARLANMAZ: aynı üç satır hemen aşağıdaki

@@ -75,8 +75,8 @@ describe("karşılaştırma akışı: motordan raya, panele ve rapora", () => {
         onSelect={() => undefined}
       />,
     );
-    expect(markup).toContain("TEMEL SÜRÜM");
-    expect(markup).toContain("DEĞİŞİK SÜRÜM");
+    expect(markup).toContain("Eski");
+    expect(markup).toContain("Yeni");
     // Seçili farkın özeti hemen altındaki listede zaten yazılıyor; panel aynı
     // üç satırı ikinci kez çizmez (gerçek pencerede iki kez okunuyordu).
     expect(markup).not.toContain("detail-summary");

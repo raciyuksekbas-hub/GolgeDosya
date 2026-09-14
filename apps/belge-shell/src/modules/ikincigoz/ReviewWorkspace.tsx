@@ -88,7 +88,7 @@ export function ReviewChrome({
       {fixable.length > 0 ? (
         <ToolbarActions>
           <Button variant="primary" onClick={onApply} disabled={selected.size === 0}>
-            Kopyaya uygula…
+            Kopyaya uygula
           </Button>
         </ToolbarActions>
       ) : null}
@@ -120,15 +120,20 @@ export function ReviewChrome({
 
         {fixable.length > 0 ? (
           <InspectorSection title="Düzeltmeler">
-            <p className="tool-count">
-              {selected.size} / {fixable.length} düzeltme seçildi.
+            <p className="fix-count">
+              {selected.size} / {fixable.length} seçili
             </p>
             <div className="row">
               <Button className="btn-sm" onClick={onSelectAll} disabled={selected.size === fixable.length}>
                 Tümünü seç
               </Button>
-              <Button className="btn-sm" onClick={onClearSelection} disabled={selected.size === 0}>
-                Seçimi kaldır
+              <Button
+                className="btn-sm"
+                variant="quiet"
+                onClick={onClearSelection}
+                disabled={selected.size === 0}
+              >
+                Seçimi temizle
               </Button>
             </div>
             <p className="tool-hint">
@@ -210,40 +215,51 @@ export function FindingList({
               </button>
               {isActive ? (
                 <div className="finding-body">
-                  <p className="finding-message">{f.message}</p>
+                  {/* Üç okunur blok: ne yanlış, belgede nerede, ne öneriliyor.
+                      Etiket ve boşlukla ayrılır; iç içe kart eklenmez. */}
+                  <div className="finding-block">
+                    <span className="finding-block-label">Sorun</span>
+                    <p className="finding-message">{f.message}</p>
+                    <p className="finding-why">{f.explanation}</p>
+                  </div>
                   {/* Belgenin kendisi: bulgunun geçtiği paragrafın TAMAMI,
                       işaretli aralık vurgulu. Kırpılmış ±40 karakterlik
                       pencere, bulguyu bağlamından koparıyordu. */}
                   {text ? (
-                    <p className="finding-excerpt selectable">
-                      {range ? (
-                        <>
-                          {[...text].slice(0, range[0]).join("")}
-                          <mark>{[...text].slice(range[0], range[1]).join("")}</mark>
-                          {[...text].slice(range[1]).join("")}
-                        </>
-                      ) : (
-                        text
-                      )}
-                    </p>
+                    <div className="finding-block">
+                      <span className="finding-block-label">Belgede</span>
+                      <p className="finding-excerpt selectable">
+                        {range ? (
+                          <>
+                            {[...text].slice(0, range[0]).join("")}
+                            <mark>{[...text].slice(range[0], range[1]).join("")}</mark>
+                            {[...text].slice(range[1]).join("")}
+                          </>
+                        ) : (
+                          text
+                        )}
+                      </p>
+                    </div>
                   ) : null}
-                  <p className="finding-why">{f.explanation}</p>
-                  {f.fix ? (
-                    <label className="finding-fix">
-                      <input
-                        type="checkbox"
-                        checked={selectedKeys.has(k)}
-                        onChange={() => onToggleFix(f)}
-                      />
-                      <span>
-                        Önerilen düzeltme: <code>{visibleText(f.fix.original)}</code> →{" "}
-                        <code>{visibleText(f.fix.replacement)}</code>
-                        <span className="finding-fixnote"> ({f.fix.description})</span>
-                      </span>
-                    </label>
-                  ) : (
-                    <p className="finding-nofix">Bu bulgu için otomatik düzeltme önerilmiyor.</p>
-                  )}
+                  <div className="finding-block">
+                    <span className="finding-block-label">Önerilen düzeltme</span>
+                    {f.fix ? (
+                      <label className="finding-fix">
+                        <input
+                          type="checkbox"
+                          checked={selectedKeys.has(k)}
+                          onChange={() => onToggleFix(f)}
+                        />
+                        <span>
+                          <code>{visibleText(f.fix.original)}</code> →{" "}
+                          <code>{visibleText(f.fix.replacement)}</code>
+                          <span className="finding-fixnote"> ({f.fix.description})</span>
+                        </span>
+                      </label>
+                    ) : (
+                      <p className="finding-nofix">Bu bulgu için otomatik düzeltme önerilmiyor.</p>
+                    )}
+                  </div>
                 </div>
               ) : null}
             </li>

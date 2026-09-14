@@ -398,3 +398,37 @@ dayanıyor.
    "yeni backend icat etme, var olan capability neyse onu kullan" —
    gönderme düğmesini imkânsız kılıyor. Ölü bir düğme yerine gerçekten
    çalışan bir eylem kondu; yüzey durumu açıkça yazıyor.
+
+---
+
+## Olgunlaştırma turu — değişenler
+
+Sistem yeniden kurulmadı; üç zayıf alan ürün seviyesine çekildi.
+
+**Düzenle.** Sayfa şeridi bir gezgine döndü: üç yüzey artık tonla ayrılıyor —
+gezgin (`--surface-app`) · önizleme kuyusu (`--surface-sunken`) · kâğıt
+(`--surface-document`, iki temada da aynı). Görüntülenen sayfa tonal yüzey +
+2 px işaret, çıktıya dahil edilen sayfa kâğıdın kendi üzerindeki ince
+çerçeve. Onay kutuları sistemin mavisini değil ürünün nötr tonunu kullanıyor.
+Bekleme, dev kutunun ortasındaki tek kelime değil; küçük döner + kısa etiket.
+Panel başlığı `Araçlar`, seçili araç bloğu kısaldı, `Sil` seçiliyken yıkıcı
+karakterini metin ve ince işaretle taşıyor — kırmızı dolgu yok.
+
+**Dönüştür.** Akış 680 px'lik sütunda, üstten 72 px içeride. Ok artık
+adların satırında (biçim satırının yanına düşüyordu). **Tamamlandığında akış
+kaybolmuyor**: aynı iki durak duruyor, hedef bir biçim adı yerine üretilen
+dosya oluyor; altında ✓ satırı, amber tek satırlık uyarı, çıktının yeri ve
+tek birincil eylem.
+
+**Karşılaştır ve Denetle.** Yalnız mikro-hiyerarşi: panel başlıkları cümle
+düzeninde (`Farklar`, `Denetim özeti`), sayılar sağda ve küçük noktalarla,
+seçili fark kart değil solda vurgulu hafif yüzey, `Eski`/`Yeni` etiketleri,
+kompakt filtre segmenti, 46 px fark satırı. Açık bulgu üç okunur bloğa
+ayrıldı — `Sorun` · `Belgede` · `Önerilen düzeltme` — ve arka planı
+hafifledi; vurgu solda ciddiyet renginde ince bir işaret.
+
+**Ortak.** Boşluk ölçeğine 20 px eklendi (4 · 8 · 12 · 16 · 20 · 24 · 32).
+Arayüzde büyük harf zorlaması kalmadı; kullanılmayan `Pill` ilkeli kaldırıldı.
+Düzenle'nin karşılama metni artık Word/UYAP/görsel dosyalarının PDF'ye
+dönüştürüldüğünü söylüyor — liste bu türleri gösterdiğine göre vaat de
+dürüst olmalı.

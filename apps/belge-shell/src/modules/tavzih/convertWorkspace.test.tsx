@@ -55,7 +55,14 @@ const flow = renderToStaticMarkup(
   />,
 );
 const done = renderToStaticMarkup(
-  <ConvertDone items={RESULT} canReveal onReveal={noop} onAgain={noop} />,
+  <ConvertDone
+    items={RESULT}
+    from="Word (.docx)"
+    to="UYAP (.udf)"
+    folder={FOLDER}
+    onReveal={noop}
+    onAgain={noop}
+  />,
 );
 
 describe("durum sözleşmesi", () => {
@@ -71,10 +78,10 @@ describe("durum sözleşmesi", () => {
     expect(flow).toContain("UYAP");
     expect(flow).toContain(".udf");
     // Çıktı klasörü: adı görünür, tam yol ipucunda. Monospace bir yol bloğu değil.
-    expect(flow).toContain("Çıktı konumu");
+    expect(flow).toContain("Çıktı");
     expect(flow).toMatch(/title="[^"]*Dönüştürülen Belgeler"[^>]*>Dönüştürülen Belgeler</);
     expect(flow).not.toContain("folder-path");
-    expect(flow).toContain("Değiştir…");
+    expect(flow).toContain("Değiştir");
     // Varsayılan klasörde "Varsayılana dön" anlamsız.
     expect(flow).not.toContain("Varsayılana dön");
   });
@@ -87,15 +94,21 @@ describe("durum sözleşmesi", () => {
     expect(source).not.toContain("ToolbarActions");
   });
 
-  it("tamamlandı: akışın yerini alır, üstüne binmez", () => {
+  it("tamamlandı: akış kaybolmaz, hedefi dosyaya döner", () => {
+    // "Az önce ne dönüştürdüm?" sorusunun cevabı ekranda kalmalı: iki durak
+    // aynı yerde durur, hedef artık biçim adı değil üretilen dosyadır.
+    expect(done).toContain("flow-pair");
+    expect(done).toContain("Kaynak");
+    expect(done).toContain("Hedef");
+    expect(done).toContain("ornek-dilekce.docx");
+    expect(done).toContain("ornek-dilekce.udf");
+    expect(done).toContain("Word (.docx)");
+    expect(done).toContain("UYAP (.udf)");
     expect(done).toContain("Dönüştürme tamamlandı");
-    expect(done).toContain("ornek-dilekce.docx → ornek-dilekce.udf");
-    expect(done).toContain("✓ Tamamlandı");
     expect(done).toContain("Kaynak belge değiştirilmedi.");
-    // Soru artık "neye dönüşecek" değil: akış çizilmez.
-    expect(done).not.toContain("flow-pair");
-    expect(done).not.toContain("flow-arrow");
-    expect(done).not.toContain("flow-dest");
+    // Çıktının yeri de görünür kalır.
+    expect(done).toContain("Çıktı");
+    expect(done).toContain("Dönüştürülen Belgeler");
     // Tek baskın eylem; ikincisi sessiz.
     expect(done).toMatch(/Finder(&#x27;|')da Göster/);
     expect((done.match(/class="btn btn-primary"/g) ?? []).length).toBe(1);
@@ -115,7 +128,7 @@ describe("durum sözleşmesi", () => {
 
   it("durumlar birbirini dışlar", () => {
     expect(source).toMatch(
-      /\{done \? \(\s*<ConvertDone[\s\S]{0,260}?\) : selected\.length > 0 \? \(\s*<ConvertFlow/,
+      /\{done \? \(\s*<ConvertDone[\s\S]{0,400}?\) : selected\.length > 0 \? \(\s*<ConvertFlow/,
     );
   });
 

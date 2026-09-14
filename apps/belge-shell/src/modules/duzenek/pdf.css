@@ -24,27 +24,47 @@
 
 /* Sayfa varken şerit açılır. Boşken sütun hiç çizilmez. */
 .pdf-root .pdf-workspace-layout[data-pages="true"] {
-  grid-template-columns: 132px minmax(0, 1fr);
+  grid-template-columns: 124px minmax(0, 1fr);
 }
 
-/* -- Sayfa şeridi --------------------------------------------------------- */
+/* -- Sayfa gezgini -------------------------------------------------------
+   "Yan panel" değil, belgenin içinde gezinilen yer. Yüzey tonu chrome'a
+   yakın, önizleme kuyusundan bir kademe açık: üç yüzey birbirinden tonla
+   ayrılır (chrome · kuyu · sayfa). */
 .pdf-root .thumbnail-list {
   min-width: 0;
   overflow: auto;
-  padding: var(--space-3);
-  background: var(--surface-sunken);
+  padding: var(--space-3) var(--space-2);
+  background: var(--surface-app);
 }
 .pdf-root .thumbnail {
-  padding: var(--space-1);
-  margin-bottom: var(--space-3);
-  border: 1px solid transparent;
+  position: relative;
+  padding: var(--space-2) var(--space-1) 6px;
+  margin-bottom: var(--space-2);
+  border: 0;
   border-radius: var(--radius);
-  font-size: var(--text-label);
+  font-size: var(--text-meta);
   text-align: center;
+  transition: background var(--motion-fast) var(--ease);
 }
-.pdf-root .thumbnail.current { border-color: var(--accent); }
-.pdf-root .thumbnail.selected { background: var(--surface-selected); }
-.pdf-root .thumbnail.removed { opacity: 0.5; }
+.pdf-root .thumbnail:hover { background: var(--surface-hover); }
+/* Görüntülenen sayfa: tonal yüzey ve solda ince işaret — kalın çerçeve değil. */
+.pdf-root .thumbnail.current { background: var(--surface-selected); }
+.pdf-root .thumbnail.current::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+/* Çıktıya dahil edilen sayfa: işaret sayfanın KENDİSİNDE, ayrı bir kutuda
+   değil. Onay kutusu sessizleşti; ağırlık sayfa görselinde. */
+.pdf-root .thumbnail.selected .pdf-page-surface { outline: 2px solid var(--accent); }
+.pdf-root .thumbnail.removed { opacity: 0.45; }
+.pdf-root .thumbnail.removed .pdf-page-surface { outline-color: var(--danger); }
 .pdf-root .thumbnail-image-button {
   display: block;
   width: 100%;
@@ -55,18 +75,22 @@
 }
 .pdf-root .thumbnail-no {
   display: block;
-  padding-top: var(--space-1);
+  padding-top: 6px;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
+.pdf-root .thumbnail.current .thumbnail-no { color: var(--text-primary); }
 .pdf-root .thumbnail-pick {
   display: flex;
-  gap: 4px;
+  gap: 5px;
   align-items: center;
   justify-content: center;
-  padding-top: 2px;
-  color: var(--text-secondary);
+  padding-top: 3px;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
 }
+.pdf-root .thumbnail-pick input { width: 12px; height: 12px; margin: 0; }
+.pdf-root .thumbnail.selected .thumbnail-pick { color: var(--text-secondary); }
 .pdf-root .thumbnail-move { display: flex; justify-content: center; }
 
 /* -- Belge alanı ---------------------------------------------------------- */
@@ -96,7 +120,7 @@
 }
 .pdf-root .segment {
   min-height: 24px;
-  padding: 0 var(--space-3);
+  padding: 0 10px;
   color: var(--text-secondary);
   font: inherit;
   background: var(--surface-hover);
@@ -109,10 +133,22 @@
   color: var(--text-primary);
   font-weight: 500;
   background: var(--surface-selected);
-  box-shadow: inset 0 -2px 0 var(--accent);
+}
+/* Sil yıkıcı bir kiptir; kırmızı DOLGU değil, seçiliyken kırmızı metin ve
+   altında ince bir işaret. Diğer üç kip nötr kalır. */
+.pdf-root .segment[data-tool="delete"][aria-pressed="true"] {
+  color: var(--danger);
+  box-shadow: inset 0 -2px 0 var(--danger);
 }
 .pdf-root .segment:disabled { color: var(--text-muted); }
-.pdf-root .zoom { display: flex; gap: var(--space-2); align-items: center; color: var(--text-secondary); }
+.pdf-root .zoom {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+}
+.pdf-root .zoom select { font-size: var(--text-body); }
 
 .pdf-root .status { margin: var(--space-3) var(--space-4) 0; white-space: pre-wrap; }
 
@@ -126,6 +162,8 @@
   padding: var(--space-4);
 }
 .pdf-root .page-line { flex: none; margin: 0 0 var(--space-3); color: var(--text-secondary); }
+/* Önizleme kuyusu: chrome'dan bir kademe çukur. Sayfanın kendisi tema
+   nedeniyle KARARTILMAZ — kâğıt kâğıttır (Preview mantığı). */
 .pdf-root .pdf-page-viewport {
   flex: 1;
   min-width: 0;
@@ -134,6 +172,18 @@
   background: var(--surface-sunken);
   border-radius: var(--radius);
 }
+
+/* Bekleme: dev kutunun ortasında kaybolan bir kelime değil, küçük bir
+   dönerle sakin tek satır. */
+.pdf-root .pdf-wait {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+}
+.pdf-root .pdf-wait[data-tone="error"] { color: var(--danger); }
 .pdf-root .preview-note {
   flex: none;
   max-width: var(--measure);
@@ -154,9 +204,16 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 130px;
+  height: 112px;
 }
-.pdf-root .pdf-page-surface { position: relative; flex: none; background: var(--surface-document); }
+.pdf-root .pdf-page-surface {
+  position: relative;
+  flex: none;
+  background: var(--surface-document);
+  border-radius: 2px;
+  outline: 1px solid var(--border-subtle);
+  outline-offset: 0;
+}
 .pdf-root .pdf-page-surface img { position: absolute; top: 50%; left: 50%; display: block; max-width: none; max-height: none; }
 
 /* -- Araç paneli (kabuğun sağ paneli içinde) ----------------------------- */
@@ -164,11 +221,17 @@
 .pdf-root .tool-group + .tool-group { margin-top: var(--space-4); }
 .pdf-root .tool-group > .inspector-label { margin: 0 0 var(--space-2); }
 .pdf-root .tool-group > summary {
-  padding: var(--space-1) 0;
+  min-height: var(--row-h);
+  padding: 0 var(--space-2);
   color: var(--text-secondary);
-  font-size: var(--text-meta);
-  font-weight: 500;
+  font-size: var(--text-body);
+  line-height: var(--row-h);
+  border-radius: var(--radius);
 }
+.pdf-root .tool-group > summary:hover { color: var(--text-primary); background: var(--surface-hover); }
+/* Açık disclosure içeriği ebeveynine göre hafif girintilidir; iç içe kutu
+   değil. */
+.pdf-root details.tool-group[open] > .tool-grid { padding-left: var(--space-3); }
 /* Katlı grup kapalıyken hemen altındaki bölüm etiketine yapışıyordu. */
 .pdf-root details.tool-group { margin-bottom: var(--space-4); }
 .pdf-root .tool-grid { display: grid; gap: 1px; }
@@ -206,7 +269,13 @@
 }
 .pdf-root .tool-name { margin: 0; font-weight: 500; }
 .pdf-root .tool-hint { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
-.pdf-root .tool-count { margin: var(--space-3) 0 var(--space-2); color: var(--text-secondary); font-size: var(--text-meta); }
+.pdf-root .tool-count {
+  margin: var(--space-4) 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+.pdf-root .tool-safe { margin: var(--space-4) 0 0; color: var(--text-muted); font-size: var(--text-meta); }
 .pdf-root .pdf-controls label {
   display: flex;
   flex-wrap: wrap;
@@ -240,5 +309,5 @@
 
 /* Dar pencerede sayfa şeridi daralır; belge alanı korunur. */
 @media (max-width: 1099px) {
-  .pdf-root .pdf-workspace-layout[data-pages="true"] { grid-template-columns: 108px minmax(0, 1fr); }
+  .pdf-root .pdf-workspace-layout[data-pages="true"] { grid-template-columns: 104px minmax(0, 1fr); }
 }

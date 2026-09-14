@@ -180,7 +180,8 @@ try {
           current: 'tavzih', context: cnvChip, actions: el(Button, { variant: 'quiet' }, 'Kapat'),
         }, el('div', { className: 'surface convert' }, el('div', { className: 'convert-body' },
           el(ConvertDone, {
-            canReveal: true, onReveal: noop, onAgain: noop,
+            from: 'Word (.docx)', to: 'UYAP (.udf)', folder: cnvFolder,
+            onReveal: noop, onAgain: noop,
             items: [{ source: '/a/x.docx', source_name: 'Baris_Dogan_itiraz_dilekcesi.docx',
               output_name: 'Baris_Dogan_itiraz_dilekcesi.udf', status: 'success', source_unchanged: true, warnings: [
                 { code: 'W1', severity: 'APPROXIMATION', title: 'Tablo hücre kenarlıkları yaklaşık aktarıldı', location: 's. 2' },
@@ -200,7 +201,8 @@ try {
         // yeniden yazıldı (sözleşme testleri bileşenin kendisini denetler).
         const thumb = (n, state) => el('div', { key: n, className: 'thumbnail ' + state },
           el('button', { className: 'thumbnail-image-button', 'aria-label': 'sayfa ' + n },
-            el('div', { className: 'pdf-thumbnail-stage' }, el('p', { role: 'status' }, 'Önizleme…'))),
+            el('div', { className: 'pdf-thumbnail-stage' },
+              el('div', { className: 'pdf-page-surface', style: { width: 80, height: 106 } }))),
           el('span', { className: 'thumbnail-no' }, String(n)),
           el('label', { className: 'thumbnail-pick' },
             el('input', { type: 'checkbox', defaultChecked: state.includes('selected'), readOnly: true }), 'Dahil et'));
@@ -212,15 +214,16 @@ try {
             el('aside', { className: 'pdf-preview-panel', 'aria-label': 'PDF önizleme çalışma alanı' },
               el('div', { className: 'pdf-strip' },
                 el('div', { className: 'tool-segment', role: 'group', 'aria-label': 'Sayfa araçları' },
-                  ['Seç','Sırala','Sil','Döndür'].map((t, i) =>
-                    el('button', { key: t, type: 'button', className: 'segment', 'aria-pressed': i === 0 }, t))),
+                  [['select','Seç'],['reorder','Sırala'],['delete','Sil'],['rotate','Döndür']].map(([k, t], i) =>
+                    el('button', { key: k, type: 'button', 'data-tool': k, className: 'segment', 'aria-pressed': i === 0 }, t))),
                 el('div', { className: 'toolbar-spacer' }),
                 el('label', { className: 'zoom' }, 'Yakınlaştır',
                   el('select', { defaultValue: 'fit', readOnly: true }, el('option', { value: 'fit' }, 'Sayfaya sığdır')))),
               el('div', { className: 'pdf-canvas' },
                 el('p', { className: 'page-line' }, 'ek-3 bilirkişi raporu.pdf · Kaynak sayfa 3 / 8 · İşaretli'),
                 el('div', { className: 'pdf-page-viewport', tabIndex: 0, role: 'region', 'aria-label': 'Kaydırılabilir PDF sayfası' },
-                  el('div', { className: 'pdf-preview-stage' }, el('p', { role: 'status' }, 'Önizleme…'))),
+                  el('div', { className: 'pdf-preview-stage' },
+                    el('div', { className: 'pdf-page-surface', style: { width: 464, height: 600 } }))),
                 el('p', { className: 'preview-note' }, 'Kaynak sayfanın önizlemesi. Yeni PDF’nin her sayfasına içerik dışında sağ alt logo payı eklenir. Açıklama/form görünümleri bu önizlemede eksik olabilir; son kopyayı ayrıca inceleyin.')))));
 
         const editPanel = renderToStaticMarkup(el('div', { className: 'pdf-controls', 'aria-label': 'PDF işlem kontrolleri' },
@@ -233,15 +236,15 @@ try {
             el('p', { className: 'tool-count' }, '8 kaynak sayfası · 2 işaretli · Çıktı: 2 sayfa'),
             el('div', { className: 'row' },
               el(Button, { className: 'btn-sm' }, 'Tümünü işaretle'),
-              el(Button, { className: 'btn-sm' }, 'Seçimi temizle')),
-            el('p', { className: 'tool-hint' }, 'Yeni bir kopya oluşturulur; kaynak belgeleriniz korunur.'))));
+              el(Button, { className: 'btn-sm', variant: 'quiet' }, 'Seçimi temizle')),
+            el('p', { className: 'tool-safe' }, 'Yeni bir kopya oluşturulur; kaynak belgeleriniz korunur.'))));
 
         export const editPages = withPanel(withActions(withStatus(renderToStaticMarkup(shell({
           current: 'duzenek', context: editChip,
           actions: el(Button, { variant: 'quiet' }, 'Kapat'),
         }, editBody)), '8 sayfa · 2 işaretli'),
           secondary('Klasör seçerek kaydet') + primary('Yeni PDF kaydet')),
-          editPanel, 'Araç', 'pdf-root');
+          editPanel, 'Araçlar', 'pdf-root');
 
         /* ---------------------------------------------------------- Denetle */
         const doc8 = { fileName: 'dava-dilekcesi.docx', format: 'docx', blockCount: 26, wordCount: 178, charCount: 1140 };
@@ -308,7 +311,7 @@ try {
             findings: findings8, blockText: blockText8, activeKey: 'r1:p7:62',
             selectedKeys: new Set(), onSetActive(){}, onToggleFix(){},
           })))), '5 kesin hata · 2 uyarı · 1 incele'),
-          primary('Kopyaya uygula…')), reviewPanel, 'Denetim özeti');
+          primary('Kopyaya uygula')), reviewPanel, 'Denetim özeti');
 
         /* --------------------------------------------------------- Ayarlar */
         // Çıktı klasörü satırı motor çağrısına bağlıdır ve statik çizimde

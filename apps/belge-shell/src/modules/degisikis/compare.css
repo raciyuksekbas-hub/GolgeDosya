@@ -168,7 +168,7 @@
 .document-row.kind-removed::before { background: var(--diff-removed-rest); }
 .document-row.kind-modified::before { background: var(--surface-document); box-shadow: inset 0 0 0 1.5px var(--diff-modified-rest); }
 
-.row-gutter { padding-top: 3px; color: var(--text-faint); font-family: var(--font-mono); font-size: 9px; text-align: center; user-select: none; }
+.row-gutter { padding-top: 3px; color: var(--text-muted); opacity: .6; font-family: var(--font-mono); font-size: 9px; text-align: center; user-select: none; }
 .row-content { min-width: 0; }
 .row-.document-row.block-heading .row-body { color: var(--text-primary); font-size: 13px; font-weight: 700; letter-spacing: .005em; }
 .document-row.block-article .row-body { font-weight: 550; }
@@ -199,8 +199,9 @@
 /* == Merkezî fark rayı =====================================================
    Logodaki merkez hattının arayüzdeki karşılığı. Düğümler belge içindeki
    konuma göre yerleşir; tıklama ilgili değişikliği seçer. */
-.change-rail { display: flex; flex-direction: column; min-width: 0; background: var(--surface-panel); border-right: 1px solid var(--border-hairline); border-left: 1px solid var(--border-hairline); }
-.rail-head { flex: 0 0 34px; display: grid; place-items: center; background: var(--surface-shell); border-bottom: 1px solid var(--border-hairline); }
+/* Ray yalnız KONUM gösterir: iki dikey çizgi yerine tonal fark yeter. */
+.change-rail { display: flex; flex-direction: column; min-width: 0; background: var(--surface-panel); }
+.rail-head { flex: 0 0 34px; display: grid; place-items: center; background: var(--surface-shell); }
 .rail-swap { display: grid; place-items: center; width: 26px; height: 24px; padding: 0; color: var(--text-secondary); border: 1px solid var(--border-hairline); border-radius: var(--radius-xs); background: var(--surface-raised); cursor: pointer; transition: color var(--fast), background var(--fast), border-color var(--fast); }
 .rail-swap:hover:not(:disabled) { color: var(--text-primary); border-color: var(--accent-chrome-line); background: var(--surface-hover); }
 .rail-swap:disabled { opacity: .3; cursor: not-allowed; }
@@ -213,14 +214,15 @@
 .rail-track { position: absolute; inset: 0; }
 .rail-axis { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--border-subtle); transform: translateX(-50%); }
 .rail-node { position: absolute; top: 0; left: 50%; display: grid; place-items: center; width: 34px; height: 20px; padding: 0; border: 0; background: transparent; cursor: pointer; transform: translate(-50%, -50%); transition: opacity var(--fast); }
-.rail-node-index { display: grid; place-items: center; width: 28px; height: 17px; color: var(--text-muted); border-radius: var(--radius-xs); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--border-subtle); font-family: var(--font-mono); font-size: 9px; font-variant-numeric: tabular-nums; transition: color var(--fast), background var(--fast), box-shadow var(--fast); }
+.rail-node-index { display: grid; place-items: center; width: 26px; height: 16px; color: var(--text-muted); border-radius: var(--radius-xs); background: var(--surface-raised); font-family: var(--font-mono); font-size: 9px; font-variant-numeric: tabular-nums; transition: color var(--fast), background var(--fast), box-shadow var(--fast); }
 .rail-node i { display: none; width: 5px; height: 5px; border-radius: 50%; background: var(--diff-modified-rest); }
-.rail-node.added .rail-node-index { color: var(--diff-added-text); box-shadow: inset 0 0 0 1px var(--diff-added-rest); }
-.rail-node.removed .rail-node-index { color: var(--diff-removed-text); box-shadow: inset 0 0 0 1px var(--diff-removed-rest); }
-.rail-node.modified .rail-node-index { box-shadow: inset 0 0 0 1px var(--diff-modified-rest); }
+.rail-node.added .rail-node-index { color: var(--diff-added-text); }
+.rail-node.removed .rail-node-index { color: var(--diff-removed-text); }
+
 .rail-node:hover .rail-node-index { background: var(--surface-hover); }
 .rail-node.is-active { z-index: 3; }
-.rail-node.is-active .rail-node-index { width: 32px; height: 19px; color: var(--text-on-accent); font-size: 9.5px; font-weight: 700; }
+/* Seçili düğüm rayın tek vurgusudur: dinlenen düğümler halkasız ve sönük. */
+.rail-node.is-active .rail-node-index { width: 30px; height: 18px; color: var(--text-on-accent); font-size: 9.5px; font-weight: 600; }
 .rail-node.is-active.added .rail-node-index { background: var(--diff-added); box-shadow: 0 0 0 3px var(--diff-added-focus); }
 .rail-node.is-active.removed .rail-node-index { background: var(--diff-removed); box-shadow: 0 0 0 3px var(--diff-removed-focus); }
 .rail-node.is-active.modified .rail-node-index { color: var(--surface-shell); background: var(--diff-modified); box-shadow: 0 0 0 3px var(--diff-modified-wash); }
@@ -238,8 +240,10 @@
 .compare-root .inspector-total strong { color: var(--text-primary); font-size: var(--text-title); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .compare-root .summary-legend { display: grid; gap: var(--space-1); padding: 0; margin: 0; list-style: none; }
-.compare-root .summary-legend li { display: flex; align-items: center; gap: var(--space-2); min-height: 22px; }
-.compare-root .summary-legend i { flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--text-muted); }
+.compare-root .summary-legend li { display: flex; align-items: center; gap: var(--space-2); min-height: 24px; }
+.compare-root .summary-legend i { flex: none; width: 6px; height: 6px; border-radius: 2px; background: var(--text-muted); }
+.compare-root .summary-legend .legend-label { flex: 1; min-width: 0; color: var(--text-secondary); }
+.compare-root .summary-legend .legend-count { flex: none; font-variant-numeric: tabular-nums; }
 .compare-root .summary-legend .added i { background: var(--diff-added); }
 .compare-root .summary-legend .removed i { background: var(--diff-removed); }
 .compare-root .summary-legend .modified i { background: var(--diff-modified); }
@@ -249,15 +253,17 @@
 .compare-root .inspector-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
 .compare-root .filter-note { color: var(--text-secondary); font-size: var(--text-meta); }
 
+/* Panelin içinde ikinci bir koyu kart değil: çerçevesiz, çok hafif tonal
+   yüzey ve solda ince vurgu. */
 .compare-root .inspector-detail {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) 10px;
   overflow: auto;
   max-height: 40vh;
-  background: var(--surface-sunken);
+  background: var(--surface-hover);
   border-left: 2px solid var(--diff-modified);
-  border-radius: var(--radius-sm);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 .compare-root .inspector-detail.added { border-left-color: var(--diff-added); }
 .compare-root .inspector-detail.removed { border-left-color: var(--diff-removed); }
@@ -265,7 +271,7 @@
 .compare-root .inspector-detail header { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
 .compare-root .inspector-detail header .change-location { margin-left: auto; }
 .compare-root .detail-block { display: grid; gap: 2px; }
-.compare-root .detail-block > span { color: var(--text-secondary); font-size: var(--text-label); font-weight: 600; letter-spacing: var(--tracking-label); }
+.compare-root .detail-block > span { color: var(--text-muted); font-size: var(--text-meta); }
 .compare-root .detail-block p { margin: 0; color: var(--text-primary); }
 .compare-root .detail-block.removed p { color: var(--diff-removed-text); }
 .compare-root .detail-block.added p { color: var(--diff-added-text); }
@@ -274,12 +280,12 @@
 .compare-root .filters { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .compare-root .filters button {
   min-height: 24px;
-  padding: 0 6px;
+  padding: 0 8px;
   color: var(--text-secondary);
-  font-size: var(--text-meta);
   font: inherit;
+  font-size: 12px;
   background: none;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-sm);
 }
 .compare-root .filters button:hover { color: var(--text-primary); background: var(--surface-hover); }
@@ -289,7 +295,9 @@
 .compare-root .change-row {
   display: grid;
   gap: 2px;
-  padding: var(--space-2);
+  align-content: center;
+  min-height: 46px;
+  padding: var(--space-2) var(--space-2) var(--space-2) 10px;
   color: inherit;
   font: inherit;
   text-align: left;

@@ -59,6 +59,7 @@
   /* Marka işareti. Vurgu token'ından ayrıdır: arayüz nötrleşirken markanın
      kendi kimliği ayrı bir karardır ve brand/ varlıkları değişmedi. */
   --brand-mark: rgb(28 28 30 / 26%);
+  --checkbox-accent: #3a3a3e;
 
   /* Birincil eylem: sistem düğmesi karakteri — mürekkep yüzey, açık metin. */
   --primary-surface: #1f1f21;
@@ -78,14 +79,16 @@
   --focus: #0a84ff;
 
   /* ------------------------------------------------------------- Ölçü ritmi
-     4'ün katları. Ma: boşluk keyfî değil, ölçülü. */
+     4'ün katları. Ma: boşluk keyfî değil, ölçülü. Yüzeye göre yoğunluk:
+     kenar çubuğu 8–12 · toolbar 12–16 · workspace 16–24 · panel 12–16. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-7: 48px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
 
   /* Radius: 4 küçük, 6 kontrol, 8 panel. Pill yok. */
   --radius-sm: 4px;
@@ -162,6 +165,7 @@
   --on-accent: #1c1c1e;
 
   --brand-mark: rgb(255 255 255 / 26%);
+  --checkbox-accent: #c9c7c2;
 
   /* Koyu temada sistem düğmesi açık nötrdür; altın değil. */
   --primary-surface: #eceae5;

@@ -93,14 +93,14 @@ describe("yerleşim sözleşmesi", () => {
     );
     for (const width of [1120, 1440]) {
       const rules = declarations('.pdf-root .pdf-workspace-layout[data-pages="true"]', width);
-      expect(rules["grid-template-columns"]).toBe("132px minmax(0, 1fr)");
+      expect(rules["grid-template-columns"]).toBe("124px minmax(0, 1fr)");
     }
     // Dar pencerede şerit daralır ama kaybolmaz: sayfa seçimi Düzenle'nin işi.
     expect(
       declarations('.pdf-root .pdf-workspace-layout[data-pages="true"]', 1000)[
         "grid-template-columns"
       ],
-    ).toBe("108px minmax(0, 1fr)");
+    ).toBe("104px minmax(0, 1fr)");
   });
 
   it("document_area_is_the_widest_surface", () => {
@@ -121,7 +121,7 @@ describe("yerleşim sözleşmesi", () => {
 
   it("araçlar panelde, kaydetme barda, sonuç workspace'te", () => {
     // Araç grupları kabuğun sağ paneline çizilir.
-    expect(source).toMatch(/<InspectorPanel title="Araç" scope="pdf-root">/);
+    expect(source).toMatch(/<InspectorPanel title="Araçlar" scope="pdf-root">/);
     expect(source).toMatch(/<div className="pdf-controls"/);
     // Kaydetme eylemleri yardımcı barda.
     const bar = source.slice(source.indexOf("<ToolbarActions>"), source.indexOf("</ToolbarActions>"));
@@ -134,7 +134,7 @@ describe("yerleşim sözleşmesi", () => {
     expect(source).toMatch(/PAGE_TOOLS: Kind\[\] = \['select', 'reorder', 'delete', 'rotate'\]/);
     expect(source).toMatch(/className="tool-segment" role="group"/);
     // Birleştir ve Görseller → PDF için ikinci belge yolu duruyor.
-    expect(source).toContain("Belge ekle…");
+    expect(source).toContain("Belge ekle");
   });
 });
 
@@ -185,7 +185,7 @@ describe("durum sözleşmesi", () => {
     // Bileşen üç yüzeyi de bu karara bağlar.
     expect(source).toContain("const surfaces = workspaceSurfaces(docState, order.length);");
     expect(source).toMatch(/\{surfaces\.tools && <ToolbarActions>/);
-    expect(source).toMatch(/\{surfaces\.tools && <InspectorPanel title="Araç" scope="pdf-root">/);
+    expect(source).toMatch(/\{surfaces\.tools && <InspectorPanel title="Araçlar" scope="pdf-root">/);
     expect(source).toMatch(
       /data-pages=\{surfaces\.strip\}>\s*\{surfaces\.strip && <aside className="thumbnail-list"/,
     );
@@ -194,7 +194,7 @@ describe("durum sözleşmesi", () => {
       declarations('.pdf-root .pdf-workspace-layout[data-pages="true"]', 1440)[
         "grid-template-columns"
       ],
-    ).toBe("132px minmax(0, 1fr)");
+    ).toBe("124px minmax(0, 1fr)");
   });
 });
 

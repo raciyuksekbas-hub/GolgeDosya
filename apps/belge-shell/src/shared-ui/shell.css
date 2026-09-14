@@ -133,7 +133,7 @@
   gap: var(--space-3);
   align-items: center;
   min-width: 0;
-  padding: 0 var(--space-4) 0 var(--space-5);
+  padding: 0 var(--space-4) 0 var(--space-6);
   background: var(--surface-app);
 }
 
@@ -221,16 +221,16 @@
   border-radius: var(--radius-lg);
 }
 
-.inspector-head { flex: none; padding: var(--space-4) var(--space-4) var(--space-2); }
+.inspector-head { flex: none; padding: var(--space-4) var(--space-4) var(--space-3); }
 
-/* Büyük harf etiket YALNIZ burada kaldı. */
+/* Panel başlığı cümle düzeninde. BÜYÜK HARF etiket teknik duruyordu:
+   "DENETİM ÖZETİ" bir sistem çıktısı gibi okunuyor, "Denetim özeti" ise
+   panelin neyi gösterdiğini söylüyor. */
 .inspector-title {
   margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-label);
-  font-weight: 600;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  color: var(--text-primary);
+  font-size: var(--text-section);
+  font-weight: 500;
 }
 
 .inspector-label {
@@ -250,7 +250,7 @@
 
 /* Bölümler boşlukla ayrılır. */
 .inspector-section + .inspector-section,
-.inspector-section { margin-top: var(--space-5); }
+.inspector-section { margin-top: var(--space-6); }
 
 .kv {
   display: flex;
@@ -268,7 +268,7 @@
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  padding: var(--space-5) var(--space-5) var(--space-6);
+  padding: var(--space-6) var(--space-6) var(--space-7);
 }
 
 /* ==========================================================================
@@ -328,24 +328,6 @@
 .icon-btn[aria-pressed="true"] { color: var(--text-primary); background: var(--surface-selected); }
 .icon-btn svg { width: 16px; height: 16px; }
 
-/* ------------------------------------------------------------------ Pill
-   Yalnız gerçekten rozet gereken yerde. Liste satırlarında tür artık künye
-   satırında metindir. */
-
-.pill {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  height: 17px;
-  padding: 0 5px;
-  color: var(--text-secondary);
-  font-size: var(--text-label);
-  font-weight: 500;
-  text-transform: uppercase;
-  background: var(--surface-hover);
-  border-radius: var(--radius-sm);
-}
-
 /* --------------------------------------------------------- Section title
    Cümle düzeni, 13.5/500. Büyük harf etiket değil. */
 
@@ -385,7 +367,7 @@
   line-height: 1.45;
 }
 .empty-meta { margin: var(--space-4) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
-.empty-action { margin-top: var(--space-5); }
+.empty-action { margin-top: var(--space-6); }
 
 /* ------------------------------------------------------- Karşılama yüzeyi
    Kipin görevi üstte, gerçek içerik (son kullanılanlar) hemen altında.
@@ -414,7 +396,7 @@
 
 /* Kayıt yokken: "henüz yok" değil, ekranın ne kabul ettiği. */
 .welcome-formats {
-  margin: var(--space-7) 0 0;
+  margin: var(--space-8) 0 0;
   color: var(--text-muted);
   font-size: var(--text-meta);
 }
@@ -429,7 +411,7 @@
   gap: var(--space-3);
   align-items: center;
   max-width: 520px;
-  margin-top: var(--space-5);
+  margin-top: var(--space-6);
 }
 
 .slot {
@@ -468,7 +450,7 @@
 
 .slot-join { color: var(--text-muted); }
 
-.recents { display: flex; flex-direction: column; min-height: 0; margin-top: var(--space-7); }
+.recents { display: flex; flex-direction: column; min-height: 0; margin-top: var(--space-8); }
 .recents .file-list { min-height: 0; overflow: auto; }
 /* Üçüncül eylem başlığın YANINDA durur. Sağ uca itilince aralarında 500 px
    boşluk kalıyor ve hangi listeyi temizlediği okunmuyordu. */
@@ -565,8 +547,8 @@ button.file-row:hover { background: var(--surface-hover); }
 }
 
 .sheet {
-  width: min(460px, calc(100vw - var(--space-6)));
-  max-height: calc(100vh - var(--space-7));
+  width: min(460px, calc(100vw - var(--space-7)));
+  max-height: calc(100vh - var(--space-8));
   overflow: auto;
   background: var(--surface-raised);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
@@ -577,17 +559,17 @@ button.file-row:hover { background: var(--surface-hover); }
 @keyframes sheet-veil { from { opacity: 0; } }
 @keyframes sheet-in { from { transform: translateY(-10px); opacity: 0; } }
 
-.sheet-head { padding: var(--space-5) var(--space-5) var(--space-4); }
+.sheet-head { padding: var(--space-6) var(--space-6) var(--space-4); }
 .sheet-head h2,
 .sheet > h2 { margin: 0; font-size: var(--text-title); font-weight: 600; }
-.sheet > h2 { padding: var(--space-5) var(--space-5) var(--space-3); }
-.sheet > .selectable, .sheet > p { padding: 0 var(--space-5); }
-.sheet-body { padding: 0 var(--space-5) var(--space-4); }
+.sheet > h2 { padding: var(--space-6) var(--space-6) var(--space-3); }
+.sheet > .selectable, .sheet > p { padding: 0 var(--space-6); }
+.sheet-body { padding: 0 var(--space-6) var(--space-4); }
 .sheet-actions {
   display: flex;
   gap: var(--space-2);
   justify-content: flex-end;
-  padding: var(--space-3) var(--space-5) var(--space-5);
+  padding: var(--space-3) var(--space-6) var(--space-6);
 }
 
 /* --------------------------------------------------------- Form control
@@ -618,6 +600,10 @@ button.file-row:hover { background: var(--surface-hover); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Onay kutusu sistemin mavisini değil ürünün nötr tonunu kullanır: sayfa
+   şeridinde sekiz mavi kare, ekrandaki en yüksek kontrastlı öğe oluyordu. */
+input[type="checkbox"] { accent-color: var(--checkbox-accent); }
 
 select,
 input[type="text"],
@@ -650,6 +636,18 @@ textarea {
 
 .findings { padding: 0; margin: 0; max-width: 720px; list-style: none; }
 
+/* Açık bulgu: ağır bir blok değil. Çok hafif tonal yüzey ve solda ciddiyet
+   renginde ince bir işaret — vurgu 720 px'lik koyu bir bant değil. */
+.finding {
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  transition: background var(--motion-fast) var(--ease);
+}
+.finding[data-active="true"] { background: var(--surface-hover); }
+.finding[data-active="true"][data-severity="error"] { border-left-color: var(--danger); }
+.finding[data-active="true"][data-severity="warning"] { border-left-color: var(--warning); }
+.finding[data-active="true"][data-severity="review"] { border-left-color: var(--review); }
+
 .finding-head {
   display: flex;
   flex-wrap: wrap;
@@ -657,7 +655,7 @@ textarea {
   align-items: baseline;
   width: 100%;
   min-height: 44px;
-  padding: var(--space-2) var(--space-2);
+  padding: var(--space-2) var(--space-3);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -666,8 +664,7 @@ textarea {
   border-radius: var(--radius);
   transition: background var(--motion-fast) var(--ease);
 }
-.finding-head:hover { background: var(--surface-hover); }
-.finding[data-active="true"] .finding-head { background: var(--surface-selected); }
+.finding:not([data-active="true"]) .finding-head:hover { background: var(--surface-hover); }
 
 .finding-mark { flex: none; width: 1em; font-size: var(--text-meta); text-align: center; }
 .finding-sev { flex: none; font-size: var(--text-meta); font-weight: 500; }
@@ -688,10 +685,16 @@ textarea {
 .finding[data-severity="review"] .finding-mark,
 .finding[data-severity="review"] .finding-sev { color: var(--review); }
 
-.finding-body { padding: 0 var(--space-2) var(--space-4) calc(1em + var(--space-2) * 2); }
-.finding-body > * + * { margin-top: var(--space-2); }
+.finding-body { padding: 0 var(--space-3) var(--space-4) calc(1em + var(--space-3) + var(--space-2)); }
+.finding-body > * + * { margin-top: var(--space-4); }
+
+/* Üç okunur blok: etiket künye ölçüsünde, içerik gövdede. Kutu yok. */
+.finding-block { display: grid; gap: var(--space-1); }
+.finding-block-label { color: var(--text-muted); font-size: var(--text-meta); }
+.finding-block > * + * { margin-top: 0; }
+
 .finding-message { max-width: var(--measure); margin: 0; }
-.finding-why { max-width: var(--measure); margin: 0; color: var(--text-secondary); font-size: var(--text-meta); }
+.finding-why { max-width: var(--measure); margin: 2px 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
 
 .finding-excerpt {
   max-width: var(--measure);
@@ -720,6 +723,14 @@ textarea {
 .finding-fixnote { color: var(--text-muted); }
 .finding-nofix { margin: 0; color: var(--text-muted); font-size: var(--text-meta); }
 
+/* Panelin düzeltme sayacı: künye, sayılar sabit genişlikte. */
+.fix-count {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ==========================================================================
    Kip yüzeylerinde ortaklaşan küçük parçalar
    ========================================================================== */
@@ -734,18 +745,27 @@ textarea {
    ekranda tek baskın eylem olur (§10, §22).
    ========================================================================== */
 
-.surface.convert { padding-top: calc(var(--band-top) + var(--space-5)); }
-.convert-body { width: 100%; max-width: 560px; }
+/* Üstten 72 px içeride, 680 px okuma genişliği: akış ekranın sol üst
+   köşesine yapışmaz, ortasında da yüzmez. */
+.surface.convert { padding-top: 72px; }
+.convert-body { width: 100%; max-width: 680px; }
 
+/* İki durak tek ızgarada: etiket · ad · biçim satırları hizalı, ok ADLARIN
+   arasında durur. Ok kendi satırını bulamayınca biçim satırının yanına
+   düşüyor ve neyin neye döndüğü okunmuyordu. */
 .flow-pair {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) auto minmax(0, 1fr);
-  gap: var(--space-4);
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  column-gap: var(--space-4);
+  align-items: baseline;
 }
-.flow-end { min-width: 0; }
-.flow-label { margin: 0; color: var(--text-muted); font-size: var(--text-meta); }
+.flow-end { display: contents; }
+.flow-end:first-of-type > * { grid-column: 1; }
+.flow-end:last-of-type > * { grid-column: 3; }
+.flow-label { grid-row: 1; margin: 0; color: var(--text-muted); font-size: var(--text-meta); }
 .flow-name {
+  grid-row: 2;
   overflow: hidden;
   margin: var(--space-1) 0 0;
   font-size: var(--text-title);
@@ -753,11 +773,37 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.flow-kind { margin: 2px 0 0; color: var(--text-secondary); }
-.flow-arrow { color: var(--text-muted); font-size: var(--text-title); }
+.flow-kind { grid-row: 3; margin: 2px 0 0; color: var(--text-secondary); }
+/* Ok yön gösterir, süs değildir: gövde ölçüsünde, sönük, adların satırında. */
+.flow-arrow { grid-area: 2 / 2; color: var(--text-muted); }
 
 .flow-note { margin: var(--space-3) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
 .flow-note[data-tone="error"] { color: var(--danger); }
+
+/* Sonuç satırı: kutu değil, işaretli tek satır. */
+.flow-result {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin: var(--space-5) 0 0;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.flow-result[data-tone="error"] { color: var(--danger); }
+.flow-result-mark { flex: none; }
+
+/* Uyarı: dev kart değil, künye ölçüsünde tek satır. */
+.flow-warn {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  max-width: var(--measure);
+  margin: var(--space-3) 0 0;
+  color: var(--warning);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
+.flow-warn-mark { flex: none; }
 
 .flow-dest { margin: var(--space-6) 0 0; }
 .flow-dest-row {
@@ -775,29 +821,11 @@ textarea {
 
 .flow-action { display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-6); }
 
-/* Sonuç akışın yerini alır, üstüne binmez. */
+/* Sonuç akışın yerini ALMAZ: aynı iki durak, aynı yerde. */
 .convert-done > h1 { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 600; }
-.convert-done .flow-pair { margin-bottom: var(--space-4); }
-.convert-action { display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-6); }
-.result-done { display: flex; gap: var(--space-3); align-items: baseline; margin: 0; }
-.result-done > .result-line { flex: 1; min-width: 0; color: var(--text-primary); }
-.result-ok { flex: none; color: var(--text-secondary); font-size: var(--text-meta); }
-
-.result { padding: var(--space-1) 0; }
-.result-line { color: var(--text-secondary); }
-.result[data-tone="error"] .result-line { color: var(--danger); }
-
-.warn-list {
-  max-width: var(--measure);
-  padding-left: var(--space-4);
-  margin: var(--space-1) 0 0;
-  color: var(--text-muted);
-  font-size: var(--text-meta);
-}
-.warn-list strong { font-weight: 500; }
 
 /* Ayarlar bölümleri: boşlukla ayrılır, kutu yok. */
-.settings-group + .settings-group { margin-top: var(--space-6); }
+.settings-group + .settings-group { margin-top: var(--space-7); }
 .settings-group > h3 {
   margin: 0 0 var(--space-2);
   color: var(--text-primary);
@@ -817,15 +845,15 @@ textarea {
 .sheet.prefs {
   display: grid;
   grid-template-columns: 160px minmax(0, 1fr);
-  width: min(660px, calc(100vw - var(--space-6)));
-  height: min(460px, calc(100vh - var(--space-7)));
+  width: min(660px, calc(100vw - var(--space-7)));
+  height: min(460px, calc(100vh - var(--space-8)));
   overflow: hidden;
 }
 
 .prefs-tabs {
   display: flex;
   flex-direction: column;
-  padding: var(--space-5) 10px var(--space-5);
+  padding: var(--space-6) 10px var(--space-6);
   background: var(--surface-sidebar);
   border-radius: 0 0 0 var(--radius-lg);
 }
@@ -834,11 +862,11 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: var(--space-5) var(--space-5) var(--space-4);
+  padding: var(--space-6) var(--space-6) var(--space-4);
   overflow: auto;
 }
 .prefs-title { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 600; }
-.prefs-body > .sheet-actions { margin-top: auto; padding: var(--space-5) 0 0; }
+.prefs-body > .sheet-actions { margin-top: auto; padding: var(--space-6) 0 0; }
 
 /* -- Hakkında ----------------------------------------------------------- */
 .about-mark { width: 32px; height: 32px; }
@@ -854,7 +882,7 @@ textarea {
 .about-line > span { display: inline-block; min-width: 9ch; color: var(--text-secondary); }
 
 /* -- Genel -------------------------------------------------------------- */
-.prefs-group + .prefs-group { margin-top: var(--space-6); }
+.prefs-group + .prefs-group { margin-top: var(--space-7); }
 .prefs-group > .section-head { margin-bottom: var(--space-1); }
 .prefs-hint { margin: var(--space-1) 0 0; color: var(--text-muted); font-size: var(--text-meta); }
 
@@ -880,7 +908,7 @@ textarea {
 .legal > p { margin: 0 0 var(--space-3); }
 .legal-strong { color: var(--text-primary); font-weight: 500; }
 .legal-muted { color: var(--text-muted); font-size: var(--text-meta); }
-.legal > .section-head { margin-top: var(--space-5); }
+.legal > .section-head { margin-top: var(--space-6); }
 
 .notices { margin: 0 0 var(--space-3); font-size: var(--text-meta); }
 .notices > div { display: flex; gap: var(--space-3); padding: 3px 0; }

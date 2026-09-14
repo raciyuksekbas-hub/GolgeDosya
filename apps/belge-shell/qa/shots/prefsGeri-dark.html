@@ -168,7 +168,7 @@
 .document-row.kind-removed::before { background: var(--diff-removed-rest); }
 .document-row.kind-modified::before { background: var(--surface-document); box-shadow: inset 0 0 0 1.5px var(--diff-modified-rest); }
 
-.row-gutter { padding-top: 3px; color: var(--text-faint); font-family: var(--font-mono); font-size: 9px; text-align: center; user-select: none; }
+.row-gutter { padding-top: 3px; color: var(--text-muted); opacity: .6; font-family: var(--font-mono); font-size: 9px; text-align: center; user-select: none; }
 .row-content { min-width: 0; }
 .row-.document-row.block-heading .row-body { color: var(--text-primary); font-size: 13px; font-weight: 700; letter-spacing: .005em; }
 .document-row.block-article .row-body { font-weight: 550; }
@@ -199,8 +199,9 @@
 /* == Merkezî fark rayı =====================================================
    Logodaki merkez hattının arayüzdeki karşılığı. Düğümler belge içindeki
    konuma göre yerleşir; tıklama ilgili değişikliği seçer. */
-.change-rail { display: flex; flex-direction: column; min-width: 0; background: var(--surface-panel); border-right: 1px solid var(--border-hairline); border-left: 1px solid var(--border-hairline); }
-.rail-head { flex: 0 0 34px; display: grid; place-items: center; background: var(--surface-shell); border-bottom: 1px solid var(--border-hairline); }
+/* Ray yalnız KONUM gösterir: iki dikey çizgi yerine tonal fark yeter. */
+.change-rail { display: flex; flex-direction: column; min-width: 0; background: var(--surface-panel); }
+.rail-head { flex: 0 0 34px; display: grid; place-items: center; background: var(--surface-shell); }
 .rail-swap { display: grid; place-items: center; width: 26px; height: 24px; padding: 0; color: var(--text-secondary); border: 1px solid var(--border-hairline); border-radius: var(--radius-xs); background: var(--surface-raised); cursor: pointer; transition: color var(--fast), background var(--fast), border-color var(--fast); }
 .rail-swap:hover:not(:disabled) { color: var(--text-primary); border-color: var(--accent-chrome-line); background: var(--surface-hover); }
 .rail-swap:disabled { opacity: .3; cursor: not-allowed; }
@@ -213,14 +214,15 @@
 .rail-track { position: absolute; inset: 0; }
 .rail-axis { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--border-subtle); transform: translateX(-50%); }
 .rail-node { position: absolute; top: 0; left: 50%; display: grid; place-items: center; width: 34px; height: 20px; padding: 0; border: 0; background: transparent; cursor: pointer; transform: translate(-50%, -50%); transition: opacity var(--fast); }
-.rail-node-index { display: grid; place-items: center; width: 28px; height: 17px; color: var(--text-muted); border-radius: var(--radius-xs); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--border-subtle); font-family: var(--font-mono); font-size: 9px; font-variant-numeric: tabular-nums; transition: color var(--fast), background var(--fast), box-shadow var(--fast); }
+.rail-node-index { display: grid; place-items: center; width: 26px; height: 16px; color: var(--text-muted); border-radius: var(--radius-xs); background: var(--surface-raised); font-family: var(--font-mono); font-size: 9px; font-variant-numeric: tabular-nums; transition: color var(--fast), background var(--fast), box-shadow var(--fast); }
 .rail-node i { display: none; width: 5px; height: 5px; border-radius: 50%; background: var(--diff-modified-rest); }
-.rail-node.added .rail-node-index { color: var(--diff-added-text); box-shadow: inset 0 0 0 1px var(--diff-added-rest); }
-.rail-node.removed .rail-node-index { color: var(--diff-removed-text); box-shadow: inset 0 0 0 1px var(--diff-removed-rest); }
-.rail-node.modified .rail-node-index { box-shadow: inset 0 0 0 1px var(--diff-modified-rest); }
+.rail-node.added .rail-node-index { color: var(--diff-added-text); }
+.rail-node.removed .rail-node-index { color: var(--diff-removed-text); }
+
 .rail-node:hover .rail-node-index { background: var(--surface-hover); }
 .rail-node.is-active { z-index: 3; }
-.rail-node.is-active .rail-node-index { width: 32px; height: 19px; color: var(--text-on-accent); font-size: 9.5px; font-weight: 700; }
+/* Seçili düğüm rayın tek vurgusudur: dinlenen düğümler halkasız ve sönük. */
+.rail-node.is-active .rail-node-index { width: 30px; height: 18px; color: var(--text-on-accent); font-size: 9.5px; font-weight: 600; }
 .rail-node.is-active.added .rail-node-index { background: var(--diff-added); box-shadow: 0 0 0 3px var(--diff-added-focus); }
 .rail-node.is-active.removed .rail-node-index { background: var(--diff-removed); box-shadow: 0 0 0 3px var(--diff-removed-focus); }
 .rail-node.is-active.modified .rail-node-index { color: var(--surface-shell); background: var(--diff-modified); box-shadow: 0 0 0 3px var(--diff-modified-wash); }
@@ -238,8 +240,10 @@
 .compare-root .inspector-total strong { color: var(--text-primary); font-size: var(--text-title); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .compare-root .summary-legend { display: grid; gap: var(--space-1); padding: 0; margin: 0; list-style: none; }
-.compare-root .summary-legend li { display: flex; align-items: center; gap: var(--space-2); min-height: 22px; }
-.compare-root .summary-legend i { flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--text-muted); }
+.compare-root .summary-legend li { display: flex; align-items: center; gap: var(--space-2); min-height: 24px; }
+.compare-root .summary-legend i { flex: none; width: 6px; height: 6px; border-radius: 2px; background: var(--text-muted); }
+.compare-root .summary-legend .legend-label { flex: 1; min-width: 0; color: var(--text-secondary); }
+.compare-root .summary-legend .legend-count { flex: none; font-variant-numeric: tabular-nums; }
 .compare-root .summary-legend .added i { background: var(--diff-added); }
 .compare-root .summary-legend .removed i { background: var(--diff-removed); }
 .compare-root .summary-legend .modified i { background: var(--diff-modified); }
@@ -249,15 +253,17 @@
 .compare-root .inspector-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
 .compare-root .filter-note { color: var(--text-secondary); font-size: var(--text-meta); }
 
+/* Panelin içinde ikinci bir koyu kart değil: çerçevesiz, çok hafif tonal
+   yüzey ve solda ince vurgu. */
 .compare-root .inspector-detail {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) 10px;
   overflow: auto;
   max-height: 40vh;
-  background: var(--surface-sunken);
+  background: var(--surface-hover);
   border-left: 2px solid var(--diff-modified);
-  border-radius: var(--radius-sm);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 .compare-root .inspector-detail.added { border-left-color: var(--diff-added); }
 .compare-root .inspector-detail.removed { border-left-color: var(--diff-removed); }
@@ -265,7 +271,7 @@
 .compare-root .inspector-detail header { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
 .compare-root .inspector-detail header .change-location { margin-left: auto; }
 .compare-root .detail-block { display: grid; gap: 2px; }
-.compare-root .detail-block > span { color: var(--text-secondary); font-size: var(--text-label); font-weight: 600; letter-spacing: var(--tracking-label); }
+.compare-root .detail-block > span { color: var(--text-muted); font-size: var(--text-meta); }
 .compare-root .detail-block p { margin: 0; color: var(--text-primary); }
 .compare-root .detail-block.removed p { color: var(--diff-removed-text); }
 .compare-root .detail-block.added p { color: var(--diff-added-text); }
@@ -274,12 +280,12 @@
 .compare-root .filters { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .compare-root .filters button {
   min-height: 24px;
-  padding: 0 6px;
+  padding: 0 8px;
   color: var(--text-secondary);
-  font-size: var(--text-meta);
   font: inherit;
+  font-size: 12px;
   background: none;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-sm);
 }
 .compare-root .filters button:hover { color: var(--text-primary); background: var(--surface-hover); }
@@ -289,7 +295,9 @@
 .compare-root .change-row {
   display: grid;
   gap: 2px;
-  padding: var(--space-2);
+  align-content: center;
+  min-height: 46px;
+  padding: var(--space-2) var(--space-2) var(--space-2) 10px;
   color: inherit;
   font: inherit;
   text-align: left;
@@ -374,27 +382,47 @@
 
 /* Sayfa varken şerit açılır. Boşken sütun hiç çizilmez. */
 .pdf-root .pdf-workspace-layout[data-pages="true"] {
-  grid-template-columns: 132px minmax(0, 1fr);
+  grid-template-columns: 124px minmax(0, 1fr);
 }
 
-/* -- Sayfa şeridi --------------------------------------------------------- */
+/* -- Sayfa gezgini -------------------------------------------------------
+   "Yan panel" değil, belgenin içinde gezinilen yer. Yüzey tonu chrome'a
+   yakın, önizleme kuyusundan bir kademe açık: üç yüzey birbirinden tonla
+   ayrılır (chrome · kuyu · sayfa). */
 .pdf-root .thumbnail-list {
   min-width: 0;
   overflow: auto;
-  padding: var(--space-3);
-  background: var(--surface-sunken);
+  padding: var(--space-3) var(--space-2);
+  background: var(--surface-app);
 }
 .pdf-root .thumbnail {
-  padding: var(--space-1);
-  margin-bottom: var(--space-3);
-  border: 1px solid transparent;
+  position: relative;
+  padding: var(--space-2) var(--space-1) 6px;
+  margin-bottom: var(--space-2);
+  border: 0;
   border-radius: var(--radius);
-  font-size: var(--text-label);
+  font-size: var(--text-meta);
   text-align: center;
+  transition: background var(--motion-fast) var(--ease);
 }
-.pdf-root .thumbnail.current { border-color: var(--accent); }
-.pdf-root .thumbnail.selected { background: var(--surface-selected); }
-.pdf-root .thumbnail.removed { opacity: 0.5; }
+.pdf-root .thumbnail:hover { background: var(--surface-hover); }
+/* Görüntülenen sayfa: tonal yüzey ve solda ince işaret — kalın çerçeve değil. */
+.pdf-root .thumbnail.current { background: var(--surface-selected); }
+.pdf-root .thumbnail.current::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+/* Çıktıya dahil edilen sayfa: işaret sayfanın KENDİSİNDE, ayrı bir kutuda
+   değil. Onay kutusu sessizleşti; ağırlık sayfa görselinde. */
+.pdf-root .thumbnail.selected .pdf-page-surface { outline: 2px solid var(--accent); }
+.pdf-root .thumbnail.removed { opacity: 0.45; }
+.pdf-root .thumbnail.removed .pdf-page-surface { outline-color: var(--danger); }
 .pdf-root .thumbnail-image-button {
   display: block;
   width: 100%;
@@ -405,18 +433,22 @@
 }
 .pdf-root .thumbnail-no {
   display: block;
-  padding-top: var(--space-1);
+  padding-top: 6px;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
+.pdf-root .thumbnail.current .thumbnail-no { color: var(--text-primary); }
 .pdf-root .thumbnail-pick {
   display: flex;
-  gap: 4px;
+  gap: 5px;
   align-items: center;
   justify-content: center;
-  padding-top: 2px;
-  color: var(--text-secondary);
+  padding-top: 3px;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
 }
+.pdf-root .thumbnail-pick input { width: 12px; height: 12px; margin: 0; }
+.pdf-root .thumbnail.selected .thumbnail-pick { color: var(--text-secondary); }
 .pdf-root .thumbnail-move { display: flex; justify-content: center; }
 
 /* -- Belge alanı ---------------------------------------------------------- */
@@ -446,7 +478,7 @@
 }
 .pdf-root .segment {
   min-height: 24px;
-  padding: 0 var(--space-3);
+  padding: 0 10px;
   color: var(--text-secondary);
   font: inherit;
   background: var(--surface-hover);
@@ -459,10 +491,22 @@
   color: var(--text-primary);
   font-weight: 500;
   background: var(--surface-selected);
-  box-shadow: inset 0 -2px 0 var(--accent);
+}
+/* Sil yıkıcı bir kiptir; kırmızı DOLGU değil, seçiliyken kırmızı metin ve
+   altında ince bir işaret. Diğer üç kip nötr kalır. */
+.pdf-root .segment[data-tool="delete"][aria-pressed="true"] {
+  color: var(--danger);
+  box-shadow: inset 0 -2px 0 var(--danger);
 }
 .pdf-root .segment:disabled { color: var(--text-muted); }
-.pdf-root .zoom { display: flex; gap: var(--space-2); align-items: center; color: var(--text-secondary); }
+.pdf-root .zoom {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+}
+.pdf-root .zoom select { font-size: var(--text-body); }
 
 .pdf-root .status { margin: var(--space-3) var(--space-4) 0; white-space: pre-wrap; }
 
@@ -476,6 +520,8 @@
   padding: var(--space-4);
 }
 .pdf-root .page-line { flex: none; margin: 0 0 var(--space-3); color: var(--text-secondary); }
+/* Önizleme kuyusu: chrome'dan bir kademe çukur. Sayfanın kendisi tema
+   nedeniyle KARARTILMAZ — kâğıt kâğıttır (Preview mantığı). */
 .pdf-root .pdf-page-viewport {
   flex: 1;
   min-width: 0;
@@ -484,6 +530,18 @@
   background: var(--surface-sunken);
   border-radius: var(--radius);
 }
+
+/* Bekleme: dev kutunun ortasında kaybolan bir kelime değil, küçük bir
+   dönerle sakin tek satır. */
+.pdf-root .pdf-wait {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+}
+.pdf-root .pdf-wait[data-tone="error"] { color: var(--danger); }
 .pdf-root .preview-note {
   flex: none;
   max-width: var(--measure);
@@ -504,9 +562,16 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 130px;
+  height: 112px;
 }
-.pdf-root .pdf-page-surface { position: relative; flex: none; background: var(--surface-document); }
+.pdf-root .pdf-page-surface {
+  position: relative;
+  flex: none;
+  background: var(--surface-document);
+  border-radius: 2px;
+  outline: 1px solid var(--border-subtle);
+  outline-offset: 0;
+}
 .pdf-root .pdf-page-surface img { position: absolute; top: 50%; left: 50%; display: block; max-width: none; max-height: none; }
 
 /* -- Araç paneli (kabuğun sağ paneli içinde) ----------------------------- */
@@ -514,11 +579,17 @@
 .pdf-root .tool-group + .tool-group { margin-top: var(--space-4); }
 .pdf-root .tool-group > .inspector-label { margin: 0 0 var(--space-2); }
 .pdf-root .tool-group > summary {
-  padding: var(--space-1) 0;
+  min-height: var(--row-h);
+  padding: 0 var(--space-2);
   color: var(--text-secondary);
-  font-size: var(--text-meta);
-  font-weight: 500;
+  font-size: var(--text-body);
+  line-height: var(--row-h);
+  border-radius: var(--radius);
 }
+.pdf-root .tool-group > summary:hover { color: var(--text-primary); background: var(--surface-hover); }
+/* Açık disclosure içeriği ebeveynine göre hafif girintilidir; iç içe kutu
+   değil. */
+.pdf-root details.tool-group[open] > .tool-grid { padding-left: var(--space-3); }
 /* Katlı grup kapalıyken hemen altındaki bölüm etiketine yapışıyordu. */
 .pdf-root details.tool-group { margin-bottom: var(--space-4); }
 .pdf-root .tool-grid { display: grid; gap: 1px; }
@@ -556,7 +627,13 @@
 }
 .pdf-root .tool-name { margin: 0; font-weight: 500; }
 .pdf-root .tool-hint { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
-.pdf-root .tool-count { margin: var(--space-3) 0 var(--space-2); color: var(--text-secondary); font-size: var(--text-meta); }
+.pdf-root .tool-count {
+  margin: var(--space-4) 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+.pdf-root .tool-safe { margin: var(--space-4) 0 0; color: var(--text-muted); font-size: var(--text-meta); }
 .pdf-root .pdf-controls label {
   display: flex;
   flex-wrap: wrap;
@@ -590,7 +667,7 @@
 
 /* Dar pencerede sayfa şeridi daralır; belge alanı korunur. */
 @media (max-width: 1099px) {
-  .pdf-root .pdf-workspace-layout[data-pages="true"] { grid-template-columns: 108px minmax(0, 1fr); }
+  .pdf-root .pdf-workspace-layout[data-pages="true"] { grid-template-columns: 104px minmax(0, 1fr); }
 }
 
 /*
@@ -654,6 +731,7 @@
   /* Marka işareti. Vurgu token'ından ayrıdır: arayüz nötrleşirken markanın
      kendi kimliği ayrı bir karardır ve brand/ varlıkları değişmedi. */
   --brand-mark: rgb(28 28 30 / 26%);
+  --checkbox-accent: #3a3a3e;
 
   /* Birincil eylem: sistem düğmesi karakteri — mürekkep yüzey, açık metin. */
   --primary-surface: #1f1f21;
@@ -673,14 +751,16 @@
   --focus: #0a84ff;
 
   /* ------------------------------------------------------------- Ölçü ritmi
-     4'ün katları. Ma: boşluk keyfî değil, ölçülü. */
+     4'ün katları. Ma: boşluk keyfî değil, ölçülü. Yüzeye göre yoğunluk:
+     kenar çubuğu 8–12 · toolbar 12–16 · workspace 16–24 · panel 12–16. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-7: 48px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
 
   /* Radius: 4 küçük, 6 kontrol, 8 panel. Pill yok. */
   --radius-sm: 4px;
@@ -757,6 +837,7 @@
   --on-accent: #1c1c1e;
 
   --brand-mark: rgb(255 255 255 / 26%);
+  --checkbox-accent: #c9c7c2;
 
   /* Koyu temada sistem düğmesi açık nötrdür; altın değil. */
   --primary-surface: #eceae5;
@@ -974,7 +1055,7 @@ body { user-select: none; -webkit-user-select: none; }
   gap: var(--space-3);
   align-items: center;
   min-width: 0;
-  padding: 0 var(--space-4) 0 var(--space-5);
+  padding: 0 var(--space-4) 0 var(--space-6);
   background: var(--surface-app);
 }
 
@@ -1062,16 +1143,16 @@ body { user-select: none; -webkit-user-select: none; }
   border-radius: var(--radius-lg);
 }
 
-.inspector-head { flex: none; padding: var(--space-4) var(--space-4) var(--space-2); }
+.inspector-head { flex: none; padding: var(--space-4) var(--space-4) var(--space-3); }
 
-/* Büyük harf etiket YALNIZ burada kaldı. */
+/* Panel başlığı cümle düzeninde. BÜYÜK HARF etiket teknik duruyordu:
+   "DENETİM ÖZETİ" bir sistem çıktısı gibi okunuyor, "Denetim özeti" ise
+   panelin neyi gösterdiğini söylüyor. */
 .inspector-title {
   margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-label);
-  font-weight: 600;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  color: var(--text-primary);
+  font-size: var(--text-section);
+  font-weight: 500;
 }
 
 .inspector-label {
@@ -1091,7 +1172,7 @@ body { user-select: none; -webkit-user-select: none; }
 
 /* Bölümler boşlukla ayrılır. */
 .inspector-section + .inspector-section,
-.inspector-section { margin-top: var(--space-5); }
+.inspector-section { margin-top: var(--space-6); }
 
 .kv {
   display: flex;
@@ -1109,7 +1190,7 @@ body { user-select: none; -webkit-user-select: none; }
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  padding: var(--space-5) var(--space-5) var(--space-6);
+  padding: var(--space-6) var(--space-6) var(--space-7);
 }
 
 /* ==========================================================================
@@ -1169,24 +1250,6 @@ body { user-select: none; -webkit-user-select: none; }
 .icon-btn[aria-pressed="true"] { color: var(--text-primary); background: var(--surface-selected); }
 .icon-btn svg { width: 16px; height: 16px; }
 
-/* ------------------------------------------------------------------ Pill
-   Yalnız gerçekten rozet gereken yerde. Liste satırlarında tür artık künye
-   satırında metindir. */
-
-.pill {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  height: 17px;
-  padding: 0 5px;
-  color: var(--text-secondary);
-  font-size: var(--text-label);
-  font-weight: 500;
-  text-transform: uppercase;
-  background: var(--surface-hover);
-  border-radius: var(--radius-sm);
-}
-
 /* --------------------------------------------------------- Section title
    Cümle düzeni, 13.5/500. Büyük harf etiket değil. */
 
@@ -1226,7 +1289,7 @@ body { user-select: none; -webkit-user-select: none; }
   line-height: 1.45;
 }
 .empty-meta { margin: var(--space-4) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
-.empty-action { margin-top: var(--space-5); }
+.empty-action { margin-top: var(--space-6); }
 
 /* ------------------------------------------------------- Karşılama yüzeyi
    Kipin görevi üstte, gerçek içerik (son kullanılanlar) hemen altında.
@@ -1255,7 +1318,7 @@ body { user-select: none; -webkit-user-select: none; }
 
 /* Kayıt yokken: "henüz yok" değil, ekranın ne kabul ettiği. */
 .welcome-formats {
-  margin: var(--space-7) 0 0;
+  margin: var(--space-8) 0 0;
   color: var(--text-muted);
   font-size: var(--text-meta);
 }
@@ -1270,7 +1333,7 @@ body { user-select: none; -webkit-user-select: none; }
   gap: var(--space-3);
   align-items: center;
   max-width: 520px;
-  margin-top: var(--space-5);
+  margin-top: var(--space-6);
 }
 
 .slot {
@@ -1309,7 +1372,7 @@ body { user-select: none; -webkit-user-select: none; }
 
 .slot-join { color: var(--text-muted); }
 
-.recents { display: flex; flex-direction: column; min-height: 0; margin-top: var(--space-7); }
+.recents { display: flex; flex-direction: column; min-height: 0; margin-top: var(--space-8); }
 .recents .file-list { min-height: 0; overflow: auto; }
 /* Üçüncül eylem başlığın YANINDA durur. Sağ uca itilince aralarında 500 px
    boşluk kalıyor ve hangi listeyi temizlediği okunmuyordu. */
@@ -1406,8 +1469,8 @@ button.file-row:hover { background: var(--surface-hover); }
 }
 
 .sheet {
-  width: min(460px, calc(100vw - var(--space-6)));
-  max-height: calc(100vh - var(--space-7));
+  width: min(460px, calc(100vw - var(--space-7)));
+  max-height: calc(100vh - var(--space-8));
   overflow: auto;
   background: var(--surface-raised);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
@@ -1418,17 +1481,17 @@ button.file-row:hover { background: var(--surface-hover); }
 @keyframes sheet-veil { from { opacity: 0; } }
 @keyframes sheet-in { from { transform: translateY(-10px); opacity: 0; } }
 
-.sheet-head { padding: var(--space-5) var(--space-5) var(--space-4); }
+.sheet-head { padding: var(--space-6) var(--space-6) var(--space-4); }
 .sheet-head h2,
 .sheet > h2 { margin: 0; font-size: var(--text-title); font-weight: 600; }
-.sheet > h2 { padding: var(--space-5) var(--space-5) var(--space-3); }
-.sheet > .selectable, .sheet > p { padding: 0 var(--space-5); }
-.sheet-body { padding: 0 var(--space-5) var(--space-4); }
+.sheet > h2 { padding: var(--space-6) var(--space-6) var(--space-3); }
+.sheet > .selectable, .sheet > p { padding: 0 var(--space-6); }
+.sheet-body { padding: 0 var(--space-6) var(--space-4); }
 .sheet-actions {
   display: flex;
   gap: var(--space-2);
   justify-content: flex-end;
-  padding: var(--space-3) var(--space-5) var(--space-5);
+  padding: var(--space-3) var(--space-6) var(--space-6);
 }
 
 /* --------------------------------------------------------- Form control
@@ -1459,6 +1522,10 @@ button.file-row:hover { background: var(--surface-hover); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Onay kutusu sistemin mavisini değil ürünün nötr tonunu kullanır: sayfa
+   şeridinde sekiz mavi kare, ekrandaki en yüksek kontrastlı öğe oluyordu. */
+input[type="checkbox"] { accent-color: var(--checkbox-accent); }
 
 select,
 input[type="text"],
@@ -1491,6 +1558,18 @@ textarea {
 
 .findings { padding: 0; margin: 0; max-width: 720px; list-style: none; }
 
+/* Açık bulgu: ağır bir blok değil. Çok hafif tonal yüzey ve solda ciddiyet
+   renginde ince bir işaret — vurgu 720 px'lik koyu bir bant değil. */
+.finding {
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  transition: background var(--motion-fast) var(--ease);
+}
+.finding[data-active="true"] { background: var(--surface-hover); }
+.finding[data-active="true"][data-severity="error"] { border-left-color: var(--danger); }
+.finding[data-active="true"][data-severity="warning"] { border-left-color: var(--warning); }
+.finding[data-active="true"][data-severity="review"] { border-left-color: var(--review); }
+
 .finding-head {
   display: flex;
   flex-wrap: wrap;
@@ -1498,7 +1577,7 @@ textarea {
   align-items: baseline;
   width: 100%;
   min-height: 44px;
-  padding: var(--space-2) var(--space-2);
+  padding: var(--space-2) var(--space-3);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -1507,8 +1586,7 @@ textarea {
   border-radius: var(--radius);
   transition: background var(--motion-fast) var(--ease);
 }
-.finding-head:hover { background: var(--surface-hover); }
-.finding[data-active="true"] .finding-head { background: var(--surface-selected); }
+.finding:not([data-active="true"]) .finding-head:hover { background: var(--surface-hover); }
 
 .finding-mark { flex: none; width: 1em; font-size: var(--text-meta); text-align: center; }
 .finding-sev { flex: none; font-size: var(--text-meta); font-weight: 500; }
@@ -1529,10 +1607,16 @@ textarea {
 .finding[data-severity="review"] .finding-mark,
 .finding[data-severity="review"] .finding-sev { color: var(--review); }
 
-.finding-body { padding: 0 var(--space-2) var(--space-4) calc(1em + var(--space-2) * 2); }
-.finding-body > * + * { margin-top: var(--space-2); }
+.finding-body { padding: 0 var(--space-3) var(--space-4) calc(1em + var(--space-3) + var(--space-2)); }
+.finding-body > * + * { margin-top: var(--space-4); }
+
+/* Üç okunur blok: etiket künye ölçüsünde, içerik gövdede. Kutu yok. */
+.finding-block { display: grid; gap: var(--space-1); }
+.finding-block-label { color: var(--text-muted); font-size: var(--text-meta); }
+.finding-block > * + * { margin-top: 0; }
+
 .finding-message { max-width: var(--measure); margin: 0; }
-.finding-why { max-width: var(--measure); margin: 0; color: var(--text-secondary); font-size: var(--text-meta); }
+.finding-why { max-width: var(--measure); margin: 2px 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
 
 .finding-excerpt {
   max-width: var(--measure);
@@ -1561,6 +1645,14 @@ textarea {
 .finding-fixnote { color: var(--text-muted); }
 .finding-nofix { margin: 0; color: var(--text-muted); font-size: var(--text-meta); }
 
+/* Panelin düzeltme sayacı: künye, sayılar sabit genişlikte. */
+.fix-count {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ==========================================================================
    Kip yüzeylerinde ortaklaşan küçük parçalar
    ========================================================================== */
@@ -1575,18 +1667,27 @@ textarea {
    ekranda tek baskın eylem olur (§10, §22).
    ========================================================================== */
 
-.surface.convert { padding-top: calc(var(--band-top) + var(--space-5)); }
-.convert-body { width: 100%; max-width: 560px; }
+/* Üstten 72 px içeride, 680 px okuma genişliği: akış ekranın sol üst
+   köşesine yapışmaz, ortasında da yüzmez. */
+.surface.convert { padding-top: 72px; }
+.convert-body { width: 100%; max-width: 680px; }
 
+/* İki durak tek ızgarada: etiket · ad · biçim satırları hizalı, ok ADLARIN
+   arasında durur. Ok kendi satırını bulamayınca biçim satırının yanına
+   düşüyor ve neyin neye döndüğü okunmuyordu. */
 .flow-pair {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) auto minmax(0, 1fr);
-  gap: var(--space-4);
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  column-gap: var(--space-4);
+  align-items: baseline;
 }
-.flow-end { min-width: 0; }
-.flow-label { margin: 0; color: var(--text-muted); font-size: var(--text-meta); }
+.flow-end { display: contents; }
+.flow-end:first-of-type > * { grid-column: 1; }
+.flow-end:last-of-type > * { grid-column: 3; }
+.flow-label { grid-row: 1; margin: 0; color: var(--text-muted); font-size: var(--text-meta); }
 .flow-name {
+  grid-row: 2;
   overflow: hidden;
   margin: var(--space-1) 0 0;
   font-size: var(--text-title);
@@ -1594,11 +1695,37 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.flow-kind { margin: 2px 0 0; color: var(--text-secondary); }
-.flow-arrow { color: var(--text-muted); font-size: var(--text-title); }
+.flow-kind { grid-row: 3; margin: 2px 0 0; color: var(--text-secondary); }
+/* Ok yön gösterir, süs değildir: gövde ölçüsünde, sönük, adların satırında. */
+.flow-arrow { grid-area: 2 / 2; color: var(--text-muted); }
 
 .flow-note { margin: var(--space-3) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
 .flow-note[data-tone="error"] { color: var(--danger); }
+
+/* Sonuç satırı: kutu değil, işaretli tek satır. */
+.flow-result {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin: var(--space-5) 0 0;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.flow-result[data-tone="error"] { color: var(--danger); }
+.flow-result-mark { flex: none; }
+
+/* Uyarı: dev kart değil, künye ölçüsünde tek satır. */
+.flow-warn {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  max-width: var(--measure);
+  margin: var(--space-3) 0 0;
+  color: var(--warning);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
+.flow-warn-mark { flex: none; }
 
 .flow-dest { margin: var(--space-6) 0 0; }
 .flow-dest-row {
@@ -1616,29 +1743,11 @@ textarea {
 
 .flow-action { display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-6); }
 
-/* Sonuç akışın yerini alır, üstüne binmez. */
+/* Sonuç akışın yerini ALMAZ: aynı iki durak, aynı yerde. */
 .convert-done > h1 { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 600; }
-.convert-done .flow-pair { margin-bottom: var(--space-4); }
-.convert-action { display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-6); }
-.result-done { display: flex; gap: var(--space-3); align-items: baseline; margin: 0; }
-.result-done > .result-line { flex: 1; min-width: 0; color: var(--text-primary); }
-.result-ok { flex: none; color: var(--text-secondary); font-size: var(--text-meta); }
-
-.result { padding: var(--space-1) 0; }
-.result-line { color: var(--text-secondary); }
-.result[data-tone="error"] .result-line { color: var(--danger); }
-
-.warn-list {
-  max-width: var(--measure);
-  padding-left: var(--space-4);
-  margin: var(--space-1) 0 0;
-  color: var(--text-muted);
-  font-size: var(--text-meta);
-}
-.warn-list strong { font-weight: 500; }
 
 /* Ayarlar bölümleri: boşlukla ayrılır, kutu yok. */
-.settings-group + .settings-group { margin-top: var(--space-6); }
+.settings-group + .settings-group { margin-top: var(--space-7); }
 .settings-group > h3 {
   margin: 0 0 var(--space-2);
   color: var(--text-primary);
@@ -1658,15 +1767,15 @@ textarea {
 .sheet.prefs {
   display: grid;
   grid-template-columns: 160px minmax(0, 1fr);
-  width: min(660px, calc(100vw - var(--space-6)));
-  height: min(460px, calc(100vh - var(--space-7)));
+  width: min(660px, calc(100vw - var(--space-7)));
+  height: min(460px, calc(100vh - var(--space-8)));
   overflow: hidden;
 }
 
 .prefs-tabs {
   display: flex;
   flex-direction: column;
-  padding: var(--space-5) 10px var(--space-5);
+  padding: var(--space-6) 10px var(--space-6);
   background: var(--surface-sidebar);
   border-radius: 0 0 0 var(--radius-lg);
 }
@@ -1675,11 +1784,11 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: var(--space-5) var(--space-5) var(--space-4);
+  padding: var(--space-6) var(--space-6) var(--space-4);
   overflow: auto;
 }
 .prefs-title { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 600; }
-.prefs-body > .sheet-actions { margin-top: auto; padding: var(--space-5) 0 0; }
+.prefs-body > .sheet-actions { margin-top: auto; padding: var(--space-6) 0 0; }
 
 /* -- Hakkında ----------------------------------------------------------- */
 .about-mark { width: 32px; height: 32px; }
@@ -1695,7 +1804,7 @@ textarea {
 .about-line > span { display: inline-block; min-width: 9ch; color: var(--text-secondary); }
 
 /* -- Genel -------------------------------------------------------------- */
-.prefs-group + .prefs-group { margin-top: var(--space-6); }
+.prefs-group + .prefs-group { margin-top: var(--space-7); }
 .prefs-group > .section-head { margin-bottom: var(--space-1); }
 .prefs-hint { margin: var(--space-1) 0 0; color: var(--text-muted); font-size: var(--text-meta); }
 
@@ -1721,10 +1830,10 @@ textarea {
 .legal > p { margin: 0 0 var(--space-3); }
 .legal-strong { color: var(--text-primary); font-weight: 500; }
 .legal-muted { color: var(--text-muted); font-size: var(--text-meta); }
-.legal > .section-head { margin-top: var(--space-5); }
+.legal > .section-head { margin-top: var(--space-6); }
 
 .notices { margin: 0 0 var(--space-3); font-size: var(--text-meta); }
 .notices > div { display: flex; gap: var(--space-3); padding: 3px 0; }
 .notices dt { flex: none; min-width: 13ch; color: var(--text-primary); }
 .notices dd { margin: 0; color: var(--text-secondary); }
-</style></head><body><div style="height:100vh"><div class="shell" data-wide="true" data-fullscreen="false"><a class="skip-link" href="#icerik">İçeriğe geç</a><aside class="sidebar" data-tauri-drag-region="true"><div class="sidebar-head" data-tauri-drag-region="true"><svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true" class="sidebar-mark"><defs><clipPath id="gd-sidebar-mark"><rect x="12" y="8" width="40" height="48" rx="7"></rect></clipPath></defs><g clip-path="url(#gd-sidebar-mark)"><rect x="12" y="8" width="40" height="48" fill="var(--brand-mark)"></rect><path d="M12 8 H52 V32 L28 56 H12 Z" fill="currentColor"></path></g></svg><span class="sidebar-brand" title="GölgeDosya">GölgeDosya</span></div><nav class="sidebar-nav" aria-label="Çalışma kipleri"><button type="button" class="sidebar-item" data-feature="duzenek" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M9.5 1.8H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V8"></path><path d="M13.9 2.4a1.2 1.2 0 0 0-1.7-1.7L8.6 4.3l-.5 2.2 2.2-.5z"></path></svg><span>Düzenle</span></button><button type="button" class="sidebar-item" data-feature="tavzih"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M2.4 5.6h9.1M9.3 3.4l2.2 2.2-2.2 2.2"></path><path d="M13.6 10.4H4.5m2.2-2.2-2.2 2.2 2.2 2.2"></path></svg><span>Dönüştür</span></button><button type="button" class="sidebar-item" data-feature="degisikis"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><rect x="1.7" y="2.4" width="5.2" height="11.2" rx="1"></rect><rect x="9.1" y="2.4" width="5.2" height="11.2" rx="1"></rect><path d="M3.3 5.6h2M3.3 8h2M10.7 5.6h2M10.7 8h2M10.7 10.4h2"></path></svg><span>Karşılaştır</span></button><button type="button" class="sidebar-item" data-feature="ikincigoz"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M12.6 7.4V2.8a1 1 0 0 0-1-1H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h4"></path><path d="M4.9 4.8h5.2M4.9 7.2h3.4"></path><circle cx="11.1" cy="11.1" r="2.4"></circle><path d="m12.9 12.9 1.4 1.4"></path></svg><span>Denetle</span></button></nav><div class="sidebar-spacer" data-tauri-drag-region="true"></div><div class="sidebar-footer"><button type="button" class="sidebar-item" title="Ayarlar  ⌘,"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5"></path></svg><span>Ayarlar</span></button><button type="button" class="sidebar-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="6.2"></circle><path d="M8 7.2v4M8 4.9h.01"></path></svg><span>Hakkında</span></button><button type="button" class="sidebar-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M13.6 9.8a1 1 0 0 1-1 1H6.2L3.4 13.2V4.2a1 1 0 0 1 1-1h8.2a1 1 0 0 1 1 1z"></path></svg><span>Geri bildirim</span></button></div></aside><section class="content"><div class="titlebar-band" data-tauri-drag-region="true"></div><div class="toolbar" data-empty="false" data-tauri-drag-region="true"><div class="toolbar-context"><span class="toolbar-mode">Düzenle</span></div><div class="toolbar-status"></div><div class="toolbar-spacer" data-tauri-drag-region="true"></div><div class="toolbar-actions"></div><div class="toolbar-shell"></div></div><main id="icerik" class="content-body" tabindex="-1"><div class="surface home" data-over="false"><div class="welcome"><h1 class="welcome-title">PDF üzerinde çalışın</h1><p class="welcome-note">Sayfaları düzenlemek, döndürmek, sıralamak veya dışa aktarmak için bir PDF açın.</p><div class="welcome-action"><button type="button" class="btn btn-primary" title="PDF Aç  ⌘O">PDF Aç</button><span class="welcome-hint">veya belgeyi buraya sürükleyin</span></div><section class="recents" aria-labelledby="son-baslik"><div class="recents-head"><h2 class="section-head" id="son-baslik">Son Belgeler</h2><button type="button" class="btn btn-quiet btn-sm">Listeyi temizle</button></div><ul class="file-list"><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">Baris_Dogan_itiraz_dilekcesi.docx</span><span class="file-meta">DOCX · 6 sa önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">ek-3 bilirkişi raporu.pdf</span><span class="file-meta">PDF · dün</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">İŞ SÖZLEŞMESİ.udf</span><span class="file-meta">UDF · 3 gün önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">kesif-tutanagi.pdf</span><span class="file-meta">PDF · 5 gün önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">sozlesme-v2.docx</span><span class="file-meta">DOCX · 5 Eyl</span></span></button></li></ul></section></div></div></main><div class="inspector-slot" hidden=""></div></section><div aria-live="polite" aria-atomic="true" class="sr-only" data-testid="announcer"></div></div><div class="sheet-backdrop"><div class="sheet prefs" role="dialog" aria-modal="true" aria-labelledby="ayar-baslik"><nav class="prefs-tabs" aria-label="Tercih bölümleri"><button type="button" class="sidebar-item"><span>Genel</span></button><button type="button" class="sidebar-item"><span>Görünüm</span></button><button type="button" class="sidebar-item"><span>Erişilebilirlik</span></button><button type="button" class="sidebar-item"><span>Hakkında</span></button><button type="button" class="sidebar-item"><span>Telif</span></button><button type="button" class="sidebar-item" aria-current="page"><span>Geri bildirim</span></button></nav><div class="prefs-body"><h2 id="ayar-baslik" class="prefs-title">Geri bildirim</h2><div class="feedback"><p class="feedback-note">Sorun, öneri veya genel görüşünüzü yazın. Yazdığınız metin uygulamadan kendiliğinden çıkmaz; GölgeDosya ağ bağlantısı kurmaz ve belge içeriğiniz hiçbir zaman gönderilmez.</p><label class="sr-only" for="geri-metin">Geri bildirim metni</label><textarea id="geri-metin" class="selectable" placeholder="Ne oldu, ne bekliyordunuz?"></textarea><div class="feedback-actions"><button type="button" class="btn btn-primary" disabled="">Metni Kopyala</button><span class="feedback-limit" role="status">Bu sürümde uygulama içinden gönderim yoktur.</span></div></div><div class="sheet-actions"><button type="button" class="btn">Bitti</button></div></div></div></div></div></body></html>
+</style></head><body><div style="height:100vh"><div class="shell" data-wide="true" data-fullscreen="false"><a class="skip-link" href="#icerik">İçeriğe geç</a><aside class="sidebar" data-tauri-drag-region="true"><div class="sidebar-head" data-tauri-drag-region="true"><svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true" class="sidebar-mark"><defs><clipPath id="gd-sidebar-mark"><rect x="12" y="8" width="40" height="48" rx="7"></rect></clipPath></defs><g clip-path="url(#gd-sidebar-mark)"><rect x="12" y="8" width="40" height="48" fill="var(--brand-mark)"></rect><path d="M12 8 H52 V32 L28 56 H12 Z" fill="currentColor"></path></g></svg><span class="sidebar-brand" title="GölgeDosya">GölgeDosya</span></div><nav class="sidebar-nav" aria-label="Çalışma kipleri"><button type="button" class="sidebar-item" data-feature="duzenek" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M9.5 1.8H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V8"></path><path d="M13.9 2.4a1.2 1.2 0 0 0-1.7-1.7L8.6 4.3l-.5 2.2 2.2-.5z"></path></svg><span>Düzenle</span></button><button type="button" class="sidebar-item" data-feature="tavzih"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M2.4 5.6h9.1M9.3 3.4l2.2 2.2-2.2 2.2"></path><path d="M13.6 10.4H4.5m2.2-2.2-2.2 2.2 2.2 2.2"></path></svg><span>Dönüştür</span></button><button type="button" class="sidebar-item" data-feature="degisikis"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><rect x="1.7" y="2.4" width="5.2" height="11.2" rx="1"></rect><rect x="9.1" y="2.4" width="5.2" height="11.2" rx="1"></rect><path d="M3.3 5.6h2M3.3 8h2M10.7 5.6h2M10.7 8h2M10.7 10.4h2"></path></svg><span>Karşılaştır</span></button><button type="button" class="sidebar-item" data-feature="ikincigoz"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M12.6 7.4V2.8a1 1 0 0 0-1-1H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h4"></path><path d="M4.9 4.8h5.2M4.9 7.2h3.4"></path><circle cx="11.1" cy="11.1" r="2.4"></circle><path d="m12.9 12.9 1.4 1.4"></path></svg><span>Denetle</span></button></nav><div class="sidebar-spacer" data-tauri-drag-region="true"></div><div class="sidebar-footer"><button type="button" class="sidebar-item" title="Ayarlar  ⌘,"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5"></path></svg><span>Ayarlar</span></button><button type="button" class="sidebar-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="6.2"></circle><path d="M8 7.2v4M8 4.9h.01"></path></svg><span>Hakkında</span></button><button type="button" class="sidebar-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M13.6 9.8a1 1 0 0 1-1 1H6.2L3.4 13.2V4.2a1 1 0 0 1 1-1h8.2a1 1 0 0 1 1 1z"></path></svg><span>Geri bildirim</span></button></div></aside><section class="content"><div class="titlebar-band" data-tauri-drag-region="true"></div><div class="toolbar" data-empty="false" data-tauri-drag-region="true"><div class="toolbar-context"><span class="toolbar-mode">Düzenle</span></div><div class="toolbar-status"></div><div class="toolbar-spacer" data-tauri-drag-region="true"></div><div class="toolbar-actions"></div><div class="toolbar-shell"></div></div><main id="icerik" class="content-body" tabindex="-1"><div class="surface home" data-over="false"><div class="welcome"><h1 class="welcome-title">PDF üzerinde çalışın</h1><p class="welcome-note">Sayfaları düzenlemek, döndürmek, sıralamak veya dışa aktarmak için bir PDF açın. Word, UYAP ve görsel dosyaları açılırken PDF&#x27;ye dönüştürülür.</p><div class="welcome-action"><button type="button" class="btn btn-primary" title="PDF Aç  ⌘O">PDF Aç</button><span class="welcome-hint">veya belgeyi buraya sürükleyin</span></div><section class="recents" aria-labelledby="son-baslik"><div class="recents-head"><h2 class="section-head" id="son-baslik">Son Belgeler</h2><button type="button" class="btn btn-quiet btn-sm">Listeyi temizle</button></div><ul class="file-list"><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">Baris_Dogan_itiraz_dilekcesi.docx</span><span class="file-meta">DOCX · 6 sa önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">ek-3 bilirkişi raporu.pdf</span><span class="file-meta">PDF · dün</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">İŞ SÖZLEŞMESİ.udf</span><span class="file-meta">UDF · 3 gün önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">kesif-tutanagi.pdf</span><span class="file-meta">PDF · 5 gün önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">sozlesme-v2.docx</span><span class="file-meta">DOCX · 5 Eyl</span></span></button></li></ul></section></div></div></main><div class="inspector-slot" hidden=""></div></section><div aria-live="polite" aria-atomic="true" class="sr-only" data-testid="announcer"></div></div><div class="sheet-backdrop"><div class="sheet prefs" role="dialog" aria-modal="true" aria-labelledby="ayar-baslik"><nav class="prefs-tabs" aria-label="Tercih bölümleri"><button type="button" class="sidebar-item"><span>Genel</span></button><button type="button" class="sidebar-item"><span>Görünüm</span></button><button type="button" class="sidebar-item"><span>Erişilebilirlik</span></button><button type="button" class="sidebar-item"><span>Hakkında</span></button><button type="button" class="sidebar-item"><span>Telif</span></button><button type="button" class="sidebar-item" aria-current="page"><span>Geri bildirim</span></button></nav><div class="prefs-body"><h2 id="ayar-baslik" class="prefs-title">Geri bildirim</h2><div class="feedback"><p class="feedback-note">Sorun, öneri veya genel görüşünüzü yazın. Yazdığınız metin uygulamadan kendiliğinden çıkmaz; GölgeDosya ağ bağlantısı kurmaz ve belge içeriğiniz hiçbir zaman gönderilmez.</p><label class="sr-only" for="geri-metin">Geri bildirim metni</label><textarea id="geri-metin" class="selectable" placeholder="Ne oldu, ne bekliyordunuz?"></textarea><div class="feedback-actions"><button type="button" class="btn btn-primary" disabled="">Metni Kopyala</button><span class="feedback-limit" role="status">Bu sürümde uygulama içinden gönderim yoktur.</span></div></div><div class="sheet-actions"><button type="button" class="btn">Bitti</button></div></div></div></div></div></body></html>

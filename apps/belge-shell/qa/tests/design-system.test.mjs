@@ -435,3 +435,36 @@ test("tipografi dört ölçü: 18 · 14 · 13 · 11.5", () => {
     assert.ok(line?.includes(px), `${name} ${px} olmalı — bulunan: ${line?.trim()}`);
   }
 });
+
+test("panel başlığı cümle düzeninde: teknik BÜYÜK HARF etiket yok", () => {
+  // "DENETİM ÖZETİ" bir sistem çıktısı gibi okunuyordu. Başlık artık panelin
+  // neyi gösterdiğini söyler ve bölüm başlığıyla aynı ölçüdedir.
+  const rule = shell.match(/^\.inspector-title \{[^}]*\}/mu);
+  assert.ok(rule, ".inspector-title tanımlı olmalı");
+  assert.ok(!/text-transform/u.test(rule[0]), "panel başlığı büyük harfe çevrilmemeli");
+  assert.match(rule[0], /font-size: var\(--text-section\)/u);
+  // Arayüzde hiçbir yerde büyük harf zorlaması kalmadı.
+  assert.ok(!/text-transform:\s*uppercase/u.test(shell), "kabukta uppercase kalmamalı");
+});
+
+test("belge sayfası tema yüzünden karartılmaz", () => {
+  // Apple Preview mantığı: chrome koyulaşır, KÂĞIT koyulaşmaz. Koyu temada
+  // gerçek PDF sayfasının rengi değişirse kullanıcı belgeyi yanlış görür.
+  const pdf = readFileSync("src/modules/duzenek/pdf.css", "utf8");
+  assert.match(pdf, /\.pdf-page-surface \{[^}]*background: var\(--surface-document\)/su);
+  // İki temada da belge yüzeyi aynı: kâğıt kâğıttır.
+  const values = [...tokens.matchAll(/--surface-document:\s*([^;]+);/g)].map((m) => m[1].trim());
+  assert.ok(values.length >= 2, "belge yüzeyi iki temada da tanımlı olmalı");
+  assert.equal(new Set(values).size, 1, `belge yüzeyi temayla değişmemeli: ${values.join(" / ")}`);
+  // Üç yüzey tonla ayrılır: gezgin · kuyu · sayfa.
+  assert.match(pdf, /\.thumbnail-list \{[^}]*background: var\(--surface-app\)/su);
+  assert.match(pdf, /\.pdf-page-viewport \{[^}]*background: var\(--surface-sunken\)/su);
+});
+
+test("boşluk ölçeği sistematik: 4 · 8 · 12 · 16 · 20 · 24 · 32", () => {
+  const scale = [4, 8, 12, 16, 20, 24, 32];
+  scale.forEach((px, i) => {
+    const line = tokens.split("\n").find((l) => l.includes(`--space-${i + 1}:`));
+    assert.ok(line?.includes(`${px}px`), `--space-${i + 1} ${px}px olmalı — ${line?.trim()}`);
+  });
+});

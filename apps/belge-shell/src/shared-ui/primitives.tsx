@@ -112,13 +112,6 @@ export function Status({
   );
 }
 
-/* ------------------------------------------------------------------- Pill
-   Tür rozeti: hairline çerçeve, tek renk, BÜYÜK HARF. Renkli rozet değil. */
-
-export function Pill({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={`pill${className ? ` ${className}` : ""}`}>{children}</span>;
-}
-
 /* ------------------------------------------------------------------ Field */
 
 export function Field({

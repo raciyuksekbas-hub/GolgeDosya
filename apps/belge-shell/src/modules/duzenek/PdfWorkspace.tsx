@@ -24,7 +24,7 @@
  */
 import { rotatePages, previewGeometry, workspaceSurfaces, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { copyDestination } from './copyDestination';
-import { describeOpenFailure, describeSaveFailure, logFailure, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
+import { describeOpenFailure, describeSaveFailure, logFailure, safeMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
 import React, { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -128,9 +128,15 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
         return () => { alive = false; observer.disconnect(); /* URL remains visible while a sharper bitmap loads. */ urls.forEach(url => deferredUrls.add(url)); };
     }, [item.key, dpi]);
     useEffect(() => () => { deferredUrls.forEach(url => URL.revokeObjectURL(url)); deferredUrls.clear(); }, []);
+    // Bekleme, dev bir kutunun ortasındaki tek kelime değil: küçük bir döner
+    // ve kısa bir etiket. Hata olursa kategorisinin tek cümlesi gösterilir;
+    // ham motor metni kullanıcı yüzeyine çıkmaz.
+    const wait = error
+        ? <p className="pdf-wait" data-tone="error" role="status">{safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}</p>
+        : <p className="pdf-wait" role="status"><span className="spinner" aria-hidden="true"/>Önizleme hazırlanıyor</p>;
     return <div ref={ref} className={large ? 'pdf-preview-stage' : 'pdf-thumbnail-stage'} style={large && geometry ? {width: Math.max(viewport.width, geometry.width + 16), minHeight: Math.max(viewport.height, geometry.height + 16)} : undefined}>
-        {bitmap && geometry ? <div className="pdf-page-surface" style={{width: geometry.width, height: geometry.height}}><img src={bitmap.url} alt={`${item.source.file_name}, sayfa ${item.page}`} style={{width: geometry.imageWidth, height: geometry.imageHeight, transform: `translate(-50%, -50%) rotate(${rotation}deg)`}}/></div> : <p role="status">{error || 'Önizleme…'}</p>}
-        {bitmap && error && <p role="status">{error}</p>}
+        {bitmap && geometry ? <div className="pdf-page-surface" style={{width: geometry.width, height: geometry.height}}><img src={bitmap.url} alt={`${item.source.file_name}, sayfa ${item.page}`} style={{width: geometry.imageWidth, height: geometry.imageHeight, transform: `translate(-50%, -50%) rotate(${rotation}deg)`}}/></div> : wait}
+        {bitmap && error && wait}
     </div>;
 }
 /**
@@ -352,7 +358,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             </Button>
         </ToolbarActions>}
 
-        {surfaces.tools && <InspectorPanel title="Araç" scope="pdf-root">
+        {surfaces.tools && <InspectorPanel title="Araçlar" scope="pdf-root">
             <div className="pdf-controls" aria-label="PDF işlem kontrolleri">
                 <ToolGroups kind={kind} busy={busy} onPick={pick}/>
 
@@ -361,7 +367,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     <p className="tool-hint">{tools[kind][1]}</p>
                     {settingField}
                     {(kind === 'merge' || kind === 'images') &&
-                        <Button onClick={choose} disabled={busy}>Belge ekle…</Button>}
+                        <Button onClick={choose} disabled={busy}>Belge ekle</Button>}
                     {sources.length > 0 && <ol className="source-list">{sources.map((s, i) => <li key={s.path}>
                         <span>{s.file_name} · {s.page_count} sayfa</span>
                         {sources.length > 1 && <IconButton label={`${i + 1}. belgeyi yukarı taşı`} disabled={busy || i === 0} onClick={() => moveSource(i)}>
@@ -372,11 +378,11 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                         <p className="tool-count">{order.length} kaynak sayfası{pageSelection ? ` · ${selected.length} işaretli` : ''} · Çıktı: {outputCount} sayfa</p>
                         {pageSelection && <div className="row">
                             <Button className="btn-sm" disabled={busy} onClick={() => setSelected(order.map(p => p.key))}>Tümünü işaretle</Button>
-                            <Button className="btn-sm" disabled={busy} onClick={() => setSelected([])}>Seçimi temizle</Button>
+                            <Button className="btn-sm" variant="quiet" disabled={busy} onClick={() => setSelected([])}>Seçimi temizle</Button>
                         </div>}
                     </>}
                     {sources.some(s => s.is_signed) && <label className="approval"><input type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)}/>İmza işareti bulundu. Türetilmiş PDF kaynak elektronik imzanın doğrulanabilirliğini taşımaz; onaylıyorum.</label>}
-                    <p className="tool-hint">Yeni bir kopya oluşturulur; kaynak belgeleriniz korunur.</p>
+                    <p className="tool-safe">Yeni bir kopya oluşturulur; kaynak belgeleriniz korunur.</p>
                 </InspectorSection>
             </div>
         </InspectorPanel>}
@@ -401,7 +407,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             <aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">{surfaces.strip && kind !== 'images' ? <>
                 <div className="pdf-strip">
                     <div className="tool-segment" role="group" aria-label="Sayfa araçları">
-                        {PAGE_TOOLS.map(key => <button key={key} type="button" className={`segment ${kind === key ? 'is-current' : ''}`} title={tools[key][1]} aria-label={tools[key][0]} aria-pressed={kind === key} disabled={busy} onClick={() => pick(key)}>{SHORT[key]}</button>)}
+                        {PAGE_TOOLS.map(key => <button key={key} type="button" data-tool={key} className={`segment ${kind === key ? 'is-current' : ''}`} title={tools[key][1]} aria-label={tools[key][0]} aria-pressed={kind === key} disabled={busy} onClick={() => pick(key)}>{SHORT[key]}</button>)}
                     </div>
                     {kind === 'rotate' && <div className="row">
                         <Button className="btn-sm" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, -90))}>↶ Sola 90°</Button>

@@ -35,6 +35,63 @@ export function formatParts(label: string | null | undefined): { name: string; e
 }
 
 /**
+ * Akışın iki durağı — kaynak ve hedef.
+ *
+ * Hazır ve tamamlandı durumları bunu PAYLAŞIR: iş bitince kullanıcı "az önce
+ * ne dönüştürdüm" sorusunun cevabını hâlâ ekranda görmeli. Eskiden sonuç ayrı
+ * bir ekran gibi açılıyor ve model kayboluyordu.
+ */
+export function FlowPair({ fromName, fromKind, toName, toKind }: {
+  fromName: string;
+  fromKind: string;
+  toName: string;
+  toKind: string;
+}) {
+  return (
+    <div className="flow-pair">
+      <div className="flow-end">
+        <p className="flow-label">Kaynak</p>
+        <p className="flow-name" title={fromName}>{fromName}</p>
+        <p className="flow-kind">{fromKind}</p>
+      </div>
+      <span className="flow-arrow" aria-hidden="true">→</span>
+      <div className="flow-end">
+        <p className="flow-label">Hedef</p>
+        <p className="flow-name" title={toName}>{toName}</p>
+        <p className="flow-kind">{toKind}</p>
+      </div>
+    </div>
+  );
+}
+
+/** Çıktının yeri: adı önde, tam yol ipucunda. */
+export function FlowDestination({ folder, onChoose, onReset }: {
+  folder: OutputFolder;
+  onChoose?: () => void;
+  onReset?: () => void;
+}) {
+  const name = folder.path.split("/").filter(Boolean).pop() ?? folder.path;
+  return (
+    <div className="flow-dest">
+      <p className="flow-label">Çıktı</p>
+      <p className="flow-dest-row">
+        <span title={folder.path}>{name}</span>
+        {onChoose ? (
+          <Button className="btn-sm" variant="quiet" onClick={onChoose}>
+            Değiştir
+          </Button>
+        ) : null}
+        {onReset && !folder.is_default ? (
+          <Button className="btn-sm" variant="quiet" onClick={onReset}>
+            Varsayılana dön
+          </Button>
+        ) : null}
+      </p>
+    </div>
+  );
+}
+
+/**
  * Dönüşüm akışı — KAYNAK, yön, HEDEF, çıktı konumu ve tek eylem.
  *
  * Form değil, kart yığını da değil: iki durak aynı taban çizgisinde, aralarında
@@ -61,7 +118,6 @@ export function ConvertFlow({
   onChooseFolder: () => void;
   onResetFolder: () => void;
 }) {
-  const folderName = folder ? folder.path.split("/").filter(Boolean).pop() ?? folder.path : "";
   const source = selected[0];
   const sourceName = source?.info?.name ?? source?.path.split("/").pop() ?? "—";
   const to = formatParts(target);
@@ -69,23 +125,12 @@ export function ConvertFlow({
 
   return (
     <div className="flow">
-      <div className="flow-pair">
-        <div className="flow-end">
-          <p className="flow-label">Kaynak</p>
-          <p className="flow-name" title={sourceName}>
-            {sourceName}
-          </p>
-          <p className="flow-kind">{source?.info?.source_format ?? "—"}</p>
-        </div>
-        <span className="flow-arrow" aria-hidden="true">
-          →
-        </span>
-        <div className="flow-end">
-          <p className="flow-label">Hedef</p>
-          <p className="flow-name">{to.name}</p>
-          <p className="flow-kind">{to.ext || " "}</p>
-        </div>
-      </div>
+      <FlowPair
+        fromName={sourceName}
+        fromKind={source?.info?.source_format ?? "—"}
+        toName={to.name}
+        toKind={to.ext || "—"}
+      />
 
       {selected.length > 1 ? (
         <p className="flow-note">{selected.length} belge dönüştürülecek.</p>
@@ -97,20 +142,7 @@ export function ConvertFlow({
       ) : null}
 
       {folder ? (
-        <div className="flow-dest">
-          <p className="flow-label">Çıktı konumu</p>
-          <p className="flow-dest-row">
-            <span title={folder.path}>{folderName}</span>
-            <Button className="btn-sm" variant="quiet" onClick={onChooseFolder}>
-              Değiştir…
-            </Button>
-            {!folder.is_default ? (
-              <Button className="btn-sm" variant="quiet" onClick={onResetFolder}>
-                Varsayılana dön
-              </Button>
-            ) : null}
-          </p>
-        </div>
+        <FlowDestination folder={folder} onChoose={onChooseFolder} onReset={onResetFolder} />
       ) : null}
 
       <div className="flow-action">
@@ -125,50 +157,82 @@ export function ConvertFlow({
 /**
  * Tamamlandı — ne üretildi, nerede, sırada ne var.
  *
- * Akışın yerini alır, üstüne binmez: iş bitince kullanıcının sorusu artık
- * "neye dönüşecek" değil "ne çıktı ve nerede" sorusudur. Kaynağın
- * değişmediği her sonuçta açıkça yazılır; motor bunu hash'le kanıtlar.
+ * Akış KAYBOLMAZ: iki durak aynı yerde durur, yalnız hedef artık bir biçim
+ * adı değil üretilen dosyadır. Kullanıcının "az önce ne dönüştürdüm"
+ * sorusunun cevabı ekranda kalır; sonuç ayrı bir ekran gibi açılmaz.
+ *
+ * Kaynağın değişmediği her sonuçta açıkça yazılır; motor bunu hash'le kanıtlar.
  */
-export function ConvertDone({ items, canReveal, onReveal, onAgain }: {
+export function ConvertDone({ items, from, to, folder, onReveal, onAgain }: {
   items: ConversionResult[];
-  canReveal: boolean;
+  /** Kaynağın biçim etiketi — akışın sol durağı için. */
+  from: string | null;
+  /** Hedefin biçim etiketi — akışın sağ durağı için. */
+  to: string | null;
+  folder: OutputFolder | null;
   onReveal: () => void;
   onAgain: () => void;
 }) {
   const failed = items.filter((r) => r.status === "failure").length;
+  const single = items.length === 1 ? items[0] : null;
+  const unchanged = items.every((r) => r.source_unchanged);
+
   return (
     <section className="convert-done" aria-labelledby="sonuc-baslik">
-      <h1 id="sonuc-baslik">
-        {failed > 0 ? "Dönüştürme tamamlandı, hatalar var" : "Dönüştürme tamamlandı"}
-      </h1>
-      {items.map((r) => (
-        <div key={r.source} className="result" data-tone={r.status === "failure" ? "error" : undefined}>
-          <p className="result-done">
-            <span className="result-line">
+      {single ? (
+        <FlowPair
+          fromName={single.source_name}
+          fromKind={from ?? "—"}
+          toName={single.output_name ?? "—"}
+          toKind={to ?? "—"}
+        />
+      ) : null}
+
+      <p className="flow-result" id="sonuc-baslik" data-tone={failed > 0 ? "error" : undefined}>
+        <span className="flow-result-mark" aria-hidden="true">{failed > 0 ? "✕" : "✓"}</span>
+        {failed > 0
+          ? `Dönüştürme tamamlandı, ${failed} belge başarısız`
+          : items.length > 1
+            ? `${items.length} belge dönüştürüldü`
+            : "Dönüştürme tamamlandı"}
+      </p>
+
+      {items.length > 1
+        ? items.map((r) => (
+            <p key={r.source} className="flow-note" data-tone={r.status === "failure" ? "error" : undefined}>
               {r.source_name} → {r.output_name ?? "—"}
-            </span>
-            <span className="result-ok">
-              {r.status === "failure" ? "✕ Başarısız" : "✓ Tamamlandı"}
+            </p>
+          ))
+        : null}
+
+      {items.flatMap((r) =>
+        r.warnings.map((w, i) => (
+          <p className="flow-warn" key={`${r.source}-${w.code}-${i}`}>
+            <span className="flow-warn-mark" aria-hidden="true">▲</span>
+            <span>
+              {SEVERITY_LABEL[w.severity] ?? w.severity}: {w.title}
+              {w.location ? ` (${w.location})` : ""}
             </span>
           </p>
-          {r.error ? <p className="flow-note" data-tone="error">{r.error.message}</p> : null}
-          {r.warnings.length > 0 ? (
-            <ul className="warn-list">
-              {r.warnings.map((w, i) => (
-                <li key={`${w.code}-${i}`}>
-                  <strong>{SEVERITY_LABEL[w.severity] ?? w.severity}:</strong> {w.title}
-                  {w.location ? ` (${w.location})` : ""}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {r.source_unchanged ? <p className="flow-note">Kaynak belge değiştirilmedi.</p> : null}
-        </div>
-      ))}
-      <div className="convert-action">
-        {canReveal ? (
+        )),
+      )}
+
+      {items.map((r) =>
+        r.error ? (
+          <p className="flow-note" data-tone="error" key={`${r.source}-hata`}>
+            {r.error.message}
+          </p>
+        ) : null,
+      )}
+
+      {unchanged ? <p className="flow-note">Kaynak belge değiştirilmedi.</p> : null}
+
+      {folder ? <FlowDestination folder={folder} /> : null}
+
+      <div className="flow-action">
+        {folder ? (
           <Button variant="primary" onClick={onReveal}>
-            Finder'da Göster
+            Finder&apos;da Göster
           </Button>
         ) : null}
         <Button variant="quiet" onClick={onAgain}>
@@ -278,7 +342,9 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
           {done ? (
             <ConvertDone
               items={items}
-              canReveal={folder !== null}
+              from={usable[0]?.info?.source_format ?? null}
+              to={target}
+              folder={folder}
               onReveal={() => api.revealOutputFolder()}
               onAgain={() => setPhase("idle")}
             />
