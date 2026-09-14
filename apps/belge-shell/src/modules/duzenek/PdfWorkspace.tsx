@@ -29,7 +29,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { ScanBatchResult, SourceFile } from './types';
-import { InspectorPanel, InspectorSection, ToolbarActions } from '../../shell/chrome';
+import { InspectorPanel, InspectorSection, ToolbarActions, ToolbarStatus } from '../../shell/chrome';
 import { Button, EmptyState, IconButton, Status } from '../../shared-ui/primitives';
 import { announce } from '../../shared-ui/Announcer';
 import './pdf.css';
@@ -339,6 +339,12 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         : null;
 
     return <section className="pdf-root" aria-busy={busy}>
+        {/* Barın ortası: açık belgenin ölçüsü. "8 sayfa · 2 işaretli" —
+            kullanıcının "şu an neye bakıyorum" sorusunun ikinci yarısı. */}
+        {order.length > 0 && <ToolbarStatus>
+            {order.length} sayfa{pageSelection && selected.length > 0 ? ` · ${selected.length} işaretli` : ''}
+        </ToolbarStatus>}
+
         {surfaces.tools && <ToolbarActions>
             {kind !== 'raster' && <Button disabled={cannotSave} onClick={() => run(true)}>Klasör seçerek kaydet</Button>}
             <Button variant="primary" disabled={cannotSave} onClick={() => run()}>

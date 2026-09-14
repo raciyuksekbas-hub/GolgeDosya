@@ -5,7 +5,7 @@ import type { AnalysisResult, Finding, Fix, Severity } from "./types";
 import { announce } from "../../shared-ui/Announcer";
 import { logFailure, safeMessage } from "../../shared-ui/failure";
 import { Button, EmptyState, Status } from "../../shared-ui/primitives";
-import { InspectorPanel, InspectorSection, ToolbarActions } from "../../shell/chrome";
+import { InspectorPanel, InspectorSection, ToolbarActions, ToolbarStatus } from "../../shell/chrome";
 
 /**
  * Severity'nin metin karşılığı.
@@ -376,6 +376,12 @@ export function ReviewWorkspace({ path }: { path: string }) {
 
   return (
     <>
+      {/* Barın ortası: denetimin ölçüsü. Bulgu YOKKEN de yazılır — belge
+          bağlamı ekranda kalsın diye (§12); yalnız üçüncü kolon açılmaz. */}
+      <ToolbarStatus>
+        {result.findings.length === 0 ? "Bulgu yok" : summary(result)}
+      </ToolbarStatus>
+
       <ReviewChrome
         result={result}
         fixable={fixable}

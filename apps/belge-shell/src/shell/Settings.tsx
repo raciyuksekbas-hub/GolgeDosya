@@ -1,8 +1,10 @@
-import { useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { PrefTab, Settings } from "./types";
 import { useFocusTrap } from "../shared-ui/useFocusTrap";
 import { AppMark } from "./icons";
+import { announce } from "../shared-ui/Announcer";
 import { Button, Field } from "../shared-ui/primitives";
+import { OutputFolderField } from "../modules/tavzih/OutputFolderField";
 
 interface Props {
   settings: Settings;
@@ -11,10 +13,13 @@ interface Props {
   tab: PrefTab;
   onTab: (tab: PrefTab) => void;
   onChange: (next: Settings) => void;
+  /** Son kullanılanlar listesini unut — kabuğun kendi eylemi. */
+  onForget: () => void;
   onClose: () => void;
 }
 
 const TABS: { id: PrefTab; label: string }[] = [
+  { id: "genel", label: "Genel" },
   { id: "gorunum", label: "Görünüm" },
   { id: "erisim", label: "Erişilebilirlik" },
   { id: "hakkinda", label: "Hakkında" },
@@ -37,21 +42,101 @@ const NOTICES: { license: string; packages: string }[] = [
 ];
 
 /**
+ * Geri bildirim yüzeyi.
+ *
+ * Ürünün **ağ izni yoktur**, bildirilmiş bir iletişim uç noktası yoktur ve
+ * `opener` izni yalnız Dönüştür'ün çıktı klasörünü Finder'da göstermesi
+ * içindir. Bu yüzden bir gönderme uç noktası uydurulmadı: ne sahte bir
+ * "gönderildi" onayı, ne de hiçbir şey yapmayan bir düğme.
+ *
+ * Var olan kapasiteyle çalışan tek dürüst eylem metni panoya almaktır:
+ * kullanıcı yazdığını kendi kanalına taşır. Pano reddedilirse sessizce
+ * geçilmez, metin seçilir ve ne yapılacağı söylenir.
+ */
+function FeedbackPane() {
+  const [text, setText] = useState("");
+  const [state, setState] = useState<"idle" | "copied" | "manual">("idle");
+  const area = useRef<HTMLTextAreaElement>(null);
+
+  const copy = useCallback(async () => {
+    const value = text.trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setState("copied");
+      announce("Geri bildirim metni panoya kopyalandı.");
+    } catch {
+      area.current?.select();
+      setState("manual");
+      announce("Metin seçildi. Kopyalamak için ⌘C kullanın.");
+    }
+  }, [text]);
+
+  return (
+    <div className="feedback">
+      <p className="feedback-note">
+        Sorun, öneri veya genel görüşünüzü yazın. Yazdığınız metin uygulamadan
+        kendiliğinden çıkmaz; GölgeDosya ağ bağlantısı kurmaz ve belge
+        içeriğiniz hiçbir zaman gönderilmez.
+      </p>
+      <label className="sr-only" htmlFor="geri-metin">
+        Geri bildirim metni
+      </label>
+      <textarea
+        id="geri-metin"
+        ref={area}
+        className="selectable"
+        value={text}
+        placeholder="Ne oldu, ne bekliyordunuz?"
+        onChange={(e) => {
+          setText(e.target.value);
+          setState("idle");
+        }}
+      />
+      <div className="feedback-actions">
+        <Button variant="primary" disabled={text.trim().length === 0} onClick={copy}>
+          Metni Kopyala
+        </Button>
+        <span className="feedback-limit" role="status">
+          {state === "copied"
+            ? "Kopyalandı. Kendi kanalınızdan iletebilirsiniz."
+            : state === "manual"
+              ? "Metin seçildi; ⌘C ile kopyalayın."
+              : "Bu sürümde uygulama içinden gönderim yoktur."}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Tercihler penceresi.
  *
- * Tek modal içindeki üç blok kalktı: solda sekme rayı olan gerçek bir
- * preferences yüzeyi var. Ürünün kendisi — hakkında, telif ve geri bildirim —
- * artık gizli değil, kendi sekmelerinde.
+ * Solda sekme rayı olan gerçek bir macOS preferences yüzeyi. Ürünün kendisi —
+ * hakkında, telif ve geri bildirim — gizli değil, kendi sekmelerinde.
+ *
+ * Form TEK grid'dir: etiket solda, kontrol sabit genişlikte sağ kolonda.
+ * Yükseklik sabittir; sekme değişince pencere zıplamaz.
  *
  * Yapılandırma dizini, taşınan ayarlar, feature bayrakları ve depolama
  * anahtarları burada YOKTUR; bunlar geliştirme bilgisidir.
  */
-export function PreferencesSheet({ settings, version, tab, onTab, onChange, onClose }: Props) {
+export function PreferencesSheet({
+  settings,
+  version,
+  tab,
+  onTab,
+  onChange,
+  onForget,
+  onClose,
+}: Props) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true, onClose);
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) =>
     onChange({ ...settings, [key]: value });
+
+  const remembered = settings.recentDocuments.length;
 
   return (
     <div
@@ -79,6 +164,34 @@ export function PreferencesSheet({ settings, version, tab, onTab, onChange, onCl
           <h2 id="ayar-baslik" className="prefs-title">
             {TABS.find((t) => t.id === tab)?.label}
           </h2>
+
+          {tab === "genel" ? (
+            <>
+              {/* Çıktı klasörü gerçek, çalışan bir tercihtir; motor yoksa
+                  satır hiç çizilmez. Uydurma tercih eklenmedi. */}
+              <div className="prefs-group">
+                <OutputFolderField />
+              </div>
+              <div className="prefs-group">
+                <div className="field">
+                  <div className="field-label">
+                    Son kullanılanlar
+                    <span>
+                      {remembered > 0
+                        ? `${remembered} belge hatırlanıyor`
+                        : "Hatırlanan belge yok"}
+                    </span>
+                  </div>
+                  <Button disabled={remembered === 0} onClick={onForget}>
+                    Listeyi temizle
+                  </Button>
+                </div>
+                <p className="prefs-hint">
+                  Liste yalnız bu bilgisayarda tutulur ve hiçbir yere gönderilmez.
+                </p>
+              </div>
+            </>
+          ) : null}
 
           {tab === "gorunum" ? (
             <>
@@ -152,13 +265,16 @@ export function PreferencesSheet({ settings, version, tab, onTab, onChange, onCl
               <p className="about-line">
                 <span>Geliştirici</span> Raci Çetin Yüksekbaş
               </p>
+              <p className="about-line">
+                <span>Telif</span> © 2026 Raci Çetin Yüksekbaş
+              </p>
             </div>
           ) : null}
 
           {tab === "telif" ? (
             <div className="legal selectable">
               <p className="legal-strong">Copyright © 2026 Raci Çetin Yüksekbaş</p>
-              <p>Tüm hakları saklıdır.</p>
+              <p>Tüm hakları saklıdır. All Rights Reserved.</p>
               <p>
                 GölgeDosya tescilli bir yazılımdır. Adı, görsel kimliği, kullanıcı arayüzü ve
                 özgün bileşenleri korunmaktadır; izinsiz çoğaltılamaz, değiştirilemez veya
@@ -181,16 +297,7 @@ export function PreferencesSheet({ settings, version, tab, onTab, onChange, onCl
             </div>
           ) : null}
 
-          {tab === "geri" ? (
-            <div className="legal">
-              <p>Bu sürümde uygulama içinden geri bildirim gönderimi yoktur.</p>
-              <p>
-                GölgeDosya ağ bağlantısı kurmaz: belgeleriniz, adları ve içerikleri hiçbir
-                zaman dışarı çıkmaz. Görüş ve hata bildirimlerinizi geliştiriciye kendi
-                kanalınızdan iletebilirsiniz.
-              </p>
-            </div>
-          ) : null}
+          {tab === "geri" ? <FeedbackPane /> : null}
 
           <div className="sheet-actions">
             <Button onClick={onClose}>Bitti</Button>

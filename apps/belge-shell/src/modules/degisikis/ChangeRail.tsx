@@ -117,8 +117,8 @@ export function ChangeRail({ changes, selectedIndex, onSelect, onMove, onSwap, c
         </button>
       </div>
       <div className="rail-body">
-        {/* Toplam sayı rayın altındaki konum göstergesinde zaten var
-            ("3/22"); ayrıca bir sayaç bloğu aynı sayıyı ikinci kez yazıyordu. */}
+        {/* Sayaç yardımcı barda ("2 / 18 fark"); ray yalnız KONUM gösterir.
+            Rayın dibindeki "2/4" aynı sayının üçüncü evi oluyordu. */}
         <button
           className="rail-step up"
           onClick={() => onMove(-1)}
@@ -158,7 +158,6 @@ export function ChangeRail({ changes, selectedIndex, onSelect, onMove, onSwap, c
         >
           <Icon name="chevron-down" size={14} />
         </button>
-        <div className="rail-position">{selectedIndex >= 0 ? `${selectedIndex + 1}/${total}` : "—"}</div>
       </div>
     </div>
   );

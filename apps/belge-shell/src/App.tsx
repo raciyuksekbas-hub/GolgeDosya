@@ -119,7 +119,7 @@ export function App() {
     useMemo(
       () => [
         { key: "o", run: () => setOpenRequest((n) => n + 1), enabled: !prefsTab },
-        { key: ",", run: () => setPrefsTab("gorunum") },
+        { key: ",", run: () => setPrefsTab("genel") },
       ],
       [prefsTab],
     ),
@@ -220,6 +220,7 @@ export function App() {
           tab={prefsTab}
           onTab={setPrefsTab}
           onChange={saveSettings}
+          onForget={forgetDocuments}
           onClose={() => setPrefsTab(null)}
         />
       ) : null}

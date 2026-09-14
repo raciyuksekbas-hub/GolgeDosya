@@ -10,7 +10,7 @@ import { ChangeInspector } from "./ChangeInspector";
 import { useRowHeightSync } from "./useRowHeightSync";
 import { announce } from "../../shared-ui/Announcer";
 import { Status } from "../../shared-ui/primitives";
-import { InspectorPanel } from "../../shell/chrome";
+import { InspectorPanel, ToolbarStatus } from "../../shell/chrome";
 import "./compare.css";
 
 function baseName(path: string): string {
@@ -159,6 +159,14 @@ export function CompareWorkspace({ paths }: { paths: string[] }) {
 
   return (
     <div className="compare-root">
+      {/* Fark sayacı barda, panelde değil: aynı sayı iki evde durmaz.
+          Ray KONUMU, liste İÇERİĞİ gösterir; sayı ikisinin de üstünde. */}
+      <ToolbarStatus>
+        {model.summary.total === 0
+          ? "Fark yok"
+          : `${Math.max(selectedIndex, 0) + 1} / ${visible.length} fark`}
+      </ToolbarStatus>
+
       <InspectorPanel title="Farklar" scope="compare-root">
         <ChangeInspector
           summary={model.summary}

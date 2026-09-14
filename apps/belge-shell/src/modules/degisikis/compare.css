@@ -230,7 +230,6 @@
 .rail-node.is-offscreen i { display: block; }
 .rail-node.is-offscreen.added i { background: var(--diff-added-rest); }
 .rail-node.is-offscreen.removed i { background: var(--diff-removed-rest); }
-.rail-position { position: absolute; z-index: 2; right: 0; bottom: 3px; left: 0; color: var(--text-faint); font-family: var(--font-mono); font-size: 8.5px; font-variant-numeric: tabular-nums; text-align: center; }
 
 /* == Inspector ============================================================= */
 /* Fark paneli — kabuğun sağ paneli içinde. Kendi çerçevesi ve başlığı yok;

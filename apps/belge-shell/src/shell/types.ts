@@ -61,4 +61,10 @@ export interface MigrationReport {
 }
 
 /** Tercihler penceresinin sekmeleri. Kenar çubuğu doğrudan birini açar. */
-export type PrefTab = "gorunum" | "erisim" | "hakkinda" | "telif" | "geri";
+export type PrefTab =
+  | "genel"
+  | "gorunum"
+  | "erisim"
+  | "hakkinda"
+  | "telif"
+  | "geri";

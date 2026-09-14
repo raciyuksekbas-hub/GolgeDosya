@@ -24,13 +24,14 @@ try {
         import { Layout } from './src/shell/Layout';
         import { DocumentSurface } from './src/features/DocumentSurface';
         import { PreferencesSheet } from './src/shell/Settings';
-        import { Button, Pill } from './src/shared-ui/primitives';
+        import { Button } from './src/shared-ui/primitives';
         import { compareDocuments } from './src/modules/degisikis/core/compare';
         import { buildComparisonViewModel } from './src/modules/degisikis/viewModels/comparisonViewModel';
         import { DocumentPane } from './src/modules/degisikis/DocumentPane';
         import { ChangeRail } from './src/modules/degisikis/ChangeRail';
         import { ChangeInspector } from './src/modules/degisikis/ChangeInspector';
         import { ConvertFlow, ConvertDone } from './src/modules/tavzih/ConvertWorkspace';
+        import { OutputFolderRow } from './src/modules/tavzih/OutputFolderField';
         import { PdfWorkspace, ToolGroups } from './src/modules/duzenek/PdfWorkspace';
         import { FindingList, ReviewChrome, ReviewClear } from './src/modules/ikincigoz/ReviewWorkspace';
 
@@ -43,9 +44,11 @@ try {
         // Rust gibi Unix SANİYE.
         const now = Math.floor(Date.now() / 1000);
         const recents = [
-          { path: '/Belgeler/dava-dilekcesi.docx', openedAt: now - 12 * 60 },
+          { path: '/Belgeler/Baris_Dogan_itiraz_dilekcesi.docx', openedAt: now - 6 * 3600 },
           { path: '/Belgeler/ek-3 bilirkişi raporu.pdf', openedAt: now - 30 * 3600 },
           { path: '/Belgeler/İŞ SÖZLEŞMESİ.udf', openedAt: now - 3 * 86400 },
+          { path: '/Belgeler/kesif-tutanagi.pdf', openedAt: now - 5 * 86400 },
+          { path: '/Belgeler/sozlesme-v2.docx', openedAt: now - 9 * 86400 },
         ];
         const settings = { theme:'system', textScale:100, highContrast:'system', reduceMotion:'system',
           respectReducedMotion:true, acceptedTerms:1, outputDir:null, rendererPath:null,
@@ -57,9 +60,9 @@ try {
           features, current: 'duzenek', onNavigate(){}, onOpenSettings(){}, ...props,
         }, children);
 
-        // Kabuk sağ paneli gerçek pencerede portalla doldurur; statik çizimde
-        // portal çalışmaz. Üç kolonlu kompozisyonu görebilmek için panel
-        // biçimlendirmesi yuvaya yerleştirilir.
+        // Kabuk sağ paneli ve bar durumunu gerçek pencerede PORTALLA doldurur;
+        // statik çizimde portal çalışmaz. Kompozisyonu görebilmek için ikisi de
+        // yuvalarına string olarak yerleştirilir.
         // scope, gerçek uygulamada InspectorPanel'in aside'a eklediği modül
         // kapsam sınıfıdır (pdf-root, compare-root). Olmadan modül CSS'i
         // panele hiç uygulanmaz ve çizim yalan söyler.
@@ -71,57 +74,32 @@ try {
               '<div class="inspector-head"><h2 class="inspector-title">' + title + '</h2></div>' +
               '<div class="inspector-body">' + panelHtml + '</div></aside></div>',
           );
+        const withStatus = (shellHtml, text) =>
+          shellHtml.replace('<div class="toolbar-status"></div>',
+            '<div class="toolbar-status">' + text + '</div>');
+        // Kipin birincil eylemi de portalla gelir; barın sağ ucunu boş
+        // göstermek gerçek pencereyi yanlış anlatır.
+        const withActions = (shellHtml, html) =>
+          shellHtml.replace('<div class="toolbar-actions"></div>',
+            '<div class="toolbar-actions">' + html + '</div>');
+        const primary = (label) => renderToStaticMarkup(el(Button, { variant: 'primary' }, label));
+        const secondary = (label) => renderToStaticMarkup(el(Button, null, label));
 
-        const welcome = (i, withRecents) => renderToStaticMarkup(shell({
+        const welcome = (i, withRecents, outcome) => renderToStaticMarkup(shell({
           current: features[i].route,
           context: el('span', { className: 'toolbar-mode' }, features[i].label),
         }, el(DocumentSurface, {
           feature: features[i], recents: withRecents ? recents : [],
-          outcome: null, onDocuments(){}, onForget(){},
+          outcome: outcome ?? null, onDocuments(){}, onForget(){},
         })));
         export const home = welcome(0, true);
         export const welcomeConvert = welcome(1, true);
         export const welcomeCompare = welcome(2, true);
         export const welcomeReview = welcome(3, false);
-
-        export const homeEmpty = renderToStaticMarkup(shell({}, el(DocumentSurface, {
-          feature: features[2], recents: [], outcome: null, onDocuments(){}, onForget(){},
-        })));
-
-        // Belge açıkken: barda bağlam ve kabuğun kendi eylemi.
-        const chip = el('span', { className: 'doc-chip' },
-          el('span', { className: 'doc-chip-name' }, 'İŞ SÖZLEŞMESİ.docx'),
-          el(Pill, null, 'docx'));
-        export const withDoc = renderToStaticMarkup(shell({
-          current: 'ikincigoz',
-          context: chip,
-          actions: el(Button, { variant: 'quiet' }, 'Kapat'),
-        }, el('div', { className: 'surface review' },
-          el('h2', { className: 'section-head' }, 'Bulgular'),
-          el('ul', { className: 'findings' },
-            el('li', { className: 'finding', 'data-severity': 'error', 'data-active': 'true' },
-              el('button', { className: 'finding-head' },
-                el('span', { className: 'finding-mark' }, '●'),
-                el('span', { className: 'finding-sev' }, 'Kesin hata'),
-                el('span', { className: 'finding-title' }, 'Taraf adı belge içinde tutarsız'),
-                el('span', { className: 'finding-loc' }, '12. paragraf')),
-              el('div', { className: 'finding-body' },
-                el('p', { className: 'finding-message' }, 'Aynı taraf iki farklı biçimde yazılmış.'),
-                el('p', { className: 'finding-excerpt selectable' }, 'İşbu sözleşme, taraflar arasında ',
-                  el('mark', null, 'Yüksekbaş Ltd. Şti.'), ' ile akdedilmiş olup hükümleri aşağıda gösterilmiştir.'),
-                el('p', { className: 'finding-why' }, 'Belge içinde aynı tüzel kişinin farklı yazımları, icra aşamasında taraf teşhisini güçleştirir.'))),
-            el('li', { className: 'finding', 'data-severity': 'warning' },
-              el('button', { className: 'finding-head' },
-                el('span', { className: 'finding-mark' }, '▲'),
-                el('span', { className: 'finding-sev' }, 'Uyarı'),
-                el('span', { className: 'finding-title' }, 'Madde numarası atlanmış'),
-                el('span', { className: 'finding-loc' }, '31. paragraf'))),
-            el('li', { className: 'finding', 'data-severity': 'review' },
-              el('button', { className: 'finding-head' },
-                el('span', { className: 'finding-mark' }, '○'),
-                el('span', { className: 'finding-sev' }, 'İncele'),
-                el('span', { className: 'finding-title' }, 'Uzun cümle okunabilirliği düşürüyor'),
-                el('span', { className: 'finding-loc' }, '7. paragraf')))))));
+        // İlk belge seçildi: A yuvası dolu, sıra B'de.
+        export const welcomeCompareOne = welcome(2, true, {
+          kind: 'needsMore', paths: ['/Belgeler/sozlesme-v1.docx'], missing: 1,
+        });
 
         /**
          * Karşılaştır — GERÇEK motorla. Diff motoru saf TypeScript olduğu için
@@ -166,7 +144,7 @@ try {
           summary: cmpModel.summary, filter: 'all', onFilterChange: noop,
           filteredChanges: cmpModel.changes, selectedChange: cmpModel.changes[1], onSelect: noop,
         }));
-        export const compare = withPanel(renderToStaticMarkup(shell({
+        export const compare = withPanel(withStatus(renderToStaticMarkup(shell({
           current: 'degisikis', context: cmpNames,
           actions: el(Button, { variant: 'quiet' }, 'Kapat'),
         }, el('div', { className: 'compare-root' },
@@ -178,41 +156,36 @@ try {
               onSwap: noop, canSwap: true, paneRef: ref, rowRefs: mapRef, syncToken: 'x' }),
             el(DocumentPane, { side: 'revised', doc: doc('sozlesme-v2.docx'), rows: comparison.rows,
               changes: cmpModel.changes, selectedRows: cmpModel.changes[1]?.rowIndices ?? [],
-              paneRef: ref, rowRefs: mapRef, onScroll: noop }))))), comparePanelBody, 'Farklar', 'compare-root');
+              paneRef: ref, rowRefs: mapRef, onScroll: noop }))))),
+          '2 / ' + cmpModel.changes.length + ' fark'),
+          comparePanelBody, 'Farklar', 'compare-root');
 
-        // Panel gerçek pencerede kabuğun sağ yuvasına portallanır; statik
-        // çizimde portal çalışmadığı için kendi karesinde gösteriliyor.
-        export const comparePanel = renderToStaticMarkup(
-          el('div', { style: { width: '312px', height: '100vh', padding: '12px 12px 12px 0', background: 'var(--surface-workspace)' } },
-            el('aside', { className: 'inspector compare-root', 'aria-label': 'Farklar' },
-              el('div', { className: 'inspector-head' }, el('h2', { className: 'inspector-title' }, 'Farklar')),
-              el('div', { className: 'inspector-body' },
-                el(ChangeInspector, { summary: cmpModel.summary,
-                  filter: 'all', onFilterChange: noop, filteredChanges: cmpModel.changes,
-                  selectedChange: cmpModel.changes[1], onSelect: noop })))));
-
+        /* --------------------------------------------------------- Dönüştür */
         const cnvChip = el('span', { className: 'doc-chip' },
-          el('span', { className: 'doc-chip-name' }, 'dava-dilekcesi.docx'));
+          el('span', { className: 'doc-chip-name' }, 'Baris_Dogan_itiraz_dilekcesi.docx'));
         const cnvFolder = { path: '/Users/örnek/Belgeler/Dönüştürülen Belgeler', is_default: true };
-        export const convert = renderToStaticMarkup(shell({
+        const cnvSelected = [{ path: '/Users/örnek/Belgeler/Baris_Dogan_itiraz_dilekcesi.docx',
+          info: { name: 'Baris_Dogan_itiraz_dilekcesi.docx', source_format: 'Word (.docx)',
+            size_label: '2,6 KB', target_format: 'UYAP (.udf)' } }];
+
+        export const convert = withStatus(renderToStaticMarkup(shell({
           current: 'tavzih', context: cnvChip, actions: el(Button, { variant: 'quiet' }, 'Kapat'),
         }, el('div', { className: 'surface convert' }, el('div', { className: 'convert-body' },
           el(ConvertFlow, {
-            selected: [{ path: '/Users/örnek/Belgeler/dava-dilekcesi.docx',
-              info: { name: 'dava-dilekcesi.docx', source_format: 'Word (.docx)', size_label: '2,6 KB', target_format: 'UYAP (.udf)' } }],
-            target: 'UYAP (.udf)', folder: cnvFolder, onChooseFolder: noop, onResetFolder: noop,
-          })))));
+            selected: cnvSelected, target: 'UYAP (.udf)', folder: cnvFolder,
+            onConvert: noop, onChooseFolder: noop, onResetFolder: noop,
+          }))))), 'Word (.docx) → UYAP (.udf)');
 
-        export const convertDone = renderToStaticMarkup(shell({
+        export const convertDone = withStatus(renderToStaticMarkup(shell({
           current: 'tavzih', context: cnvChip, actions: el(Button, { variant: 'quiet' }, 'Kapat'),
         }, el('div', { className: 'surface convert' }, el('div', { className: 'convert-body' },
           el(ConvertDone, {
-            canReveal: true, onReveal: noop,
-            items: [{ source: '/a/dava-dilekcesi.docx', source_name: 'dava-dilekcesi.docx',
-              output_name: 'dava-dilekcesi.udf', status: 'success', source_unchanged: true, warnings: [
+            canReveal: true, onReveal: noop, onAgain: noop,
+            items: [{ source: '/a/x.docx', source_name: 'Baris_Dogan_itiraz_dilekcesi.docx',
+              output_name: 'Baris_Dogan_itiraz_dilekcesi.udf', status: 'success', source_unchanged: true, warnings: [
                 { code: 'W1', severity: 'APPROXIMATION', title: 'Tablo hücre kenarlıkları yaklaşık aktarıldı', location: 's. 2' },
               ] }],
-          })))));
+          }))))), 'Word (.docx) → UYAP (.udf)');
 
         /* ---------------------------------------------------------- Düzenle */
         const editChip = el('span', { className: 'doc-chip' },
@@ -263,10 +236,12 @@ try {
               el(Button, { className: 'btn-sm' }, 'Seçimi temizle')),
             el('p', { className: 'tool-hint' }, 'Yeni bir kopya oluşturulur; kaynak belgeleriniz korunur.'))));
 
-        export const editPages = withPanel(renderToStaticMarkup(shell({
+        export const editPages = withPanel(withActions(withStatus(renderToStaticMarkup(shell({
           current: 'duzenek', context: editChip,
           actions: el(Button, { variant: 'quiet' }, 'Kapat'),
-        }, editBody)), editPanel, 'Araç', 'pdf-root');
+        }, editBody)), '8 sayfa · 2 işaretli'),
+          secondary('Klasör seçerek kaydet') + primary('Yeni PDF kaydet')),
+          editPanel, 'Araç', 'pdf-root');
 
         /* ---------------------------------------------------------- Denetle */
         const doc8 = { fileName: 'dava-dilekcesi.docx', format: 'docx', blockCount: 26, wordCount: 178, charCount: 1140 };
@@ -309,9 +284,11 @@ try {
         const reviewChip = el('span', { className: 'doc-chip' },
           el('span', { className: 'doc-chip-name' }, 'dava-dilekcesi.docx'));
 
-        export const review0 = renderToStaticMarkup(shell({
+        // Bulgu yok: üçüncü kolon açılmaz ama belge bağlamı barda yaşamaya devam eder.
+        export const review0 = withStatus(renderToStaticMarkup(shell({
           current: 'ikincigoz', context: reviewChip, actions: el(Button, { variant: 'quiet' }, 'Kapat'),
-        }, el('div', { className: 'surface review' }, el(ReviewClear, { doc: { ...doc8, blockCount: 13, wordCount: 84 } }))));
+        }, el('div', { className: 'surface review' },
+          el(ReviewClear, { doc: { ...doc8, blockCount: 13, wordCount: 84 } })))), 'Bulgu yok');
 
         const chromeHtml = renderToStaticMarkup(el(ReviewChrome, {
           result: result8, fixable: findings8.filter(f => f.fix), selected: new Set(),
@@ -323,22 +300,33 @@ try {
           chromeHtml.lastIndexOf('</div></aside>'),
         );
 
-        export const review8 = withPanel(renderToStaticMarkup(shell({
+        export const review8 = withPanel(withActions(withStatus(renderToStaticMarkup(shell({
           current: 'ikincigoz', context: reviewChip,
           actions: el(Button, { variant: 'quiet' }, 'Kapat'),
         }, el('div', { className: 'surface review' },
           el(FindingList, {
             findings: findings8, blockText: blockText8, activeKey: 'r1:p7:62',
             selectedKeys: new Set(), onSetActive(){}, onToggleFix(){},
-          })))), reviewPanel, 'Denetim özeti');
+          })))), '5 kesin hata · 2 uyarı · 1 incele'),
+          primary('Kopyaya uygula…')), reviewPanel, 'Denetim özeti');
 
+        /* --------------------------------------------------------- Ayarlar */
+        // Çıktı klasörü satırı motor çağrısına bağlıdır ve statik çizimde
+        // komut yoktur; gerçek bileşen fixture klasörle çizilip kendi
+        // yuvasına yerleştirilir (portal/komut yokluğunun harness karşılığı).
+        const folderRow = renderToStaticMarkup(el(OutputFolderRow, {
+          folder: { path: '/Users/örnek/Belgeler/Dönüştürülen Belgeler', is_default: true },
+          onChoose: noop, onReset: noop,
+        }));
         const prefs = (tab) => renderToStaticMarkup(
           el(React.Fragment, null,
             shell({ context: el('span', { className: 'toolbar-mode' }, 'Düzenle') },
               el(DocumentSurface, { feature: features[0], recents, outcome: null, onDocuments(){}, onForget(){} })),
             el(PreferencesSheet, {
-              settings, version: '0.0.1', tab, onTab(){}, onChange(){}, onClose(){},
-            })));
+              settings, version: '0.0.1', tab, onTab(){}, onChange(){}, onForget(){}, onClose(){},
+            }))).replace('<div class="prefs-group"></div>',
+              '<div class="prefs-group">' + folderRow + '</div>');
+        export const prefsGenel = prefs('genel');
         export const prefsGorunum = prefs('gorunum');
         export const prefsErisim = prefs('erisim');
         export const prefsHakkinda = prefs('hakkinda');

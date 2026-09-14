@@ -13,7 +13,8 @@
  * Yasak: gradient, cam, neon, kalın gölge, kart yığını, renkli rozet çöplüğü,
  * 16-20px radius'lu dev kutular, pazarlama başlıkları.
  *
- * Marka: GölgeDosya (brand/BRAND.md). Sumi zemin, kâğıt yüzey, pirinç vurgu.
+ * Marka: GölgeDosya (brand/BRAND.md). Sumi zemin, kâğıt yüzey. Arayüzde
+ * RENKLİ VURGU YOKTUR: renk yalnız semantik (hata/uyarı/incele) ve odak.
  *
  * Aile: NöbetçiTakvim ile aynı tasarım ekibinden çıkmış gibi durur — kenar
  * çubuğu yoğunluğu, hairline ayırıcılar, BÜYÜK HARF grup etiketi, içeriden
@@ -46,12 +47,18 @@
   --border-subtle: rgb(0 0 0 / 8%);
   --border-strong: rgb(0 0 0 / 14%);
 
-  /* Vurgu SESSİZDİR: yalnız seçili kenar çubuğu satırındaki 2 px işaret ve
-     birkaç küçük durum işareti. Hiçbir düğme yüzeyini boyamaz. */
-  --accent: #8a6a3e;
-  --accent-hover: #75592f;
-  --accent-quiet: rgb(138 106 62 / 10%);
+  /* Vurgu NÖTR ve sessizdir: yalnız seçili kenar çubuğu satırındaki 2 px
+     işaret, sürükleme çerçevesi ve birkaç küçük durum işareti. Hiçbir düğme
+     yüzeyini boyamaz. Hardal/pirinç vurgu kaldırıldı: renk bu üründe yalnız
+     SEMANTİK taşır (hata, uyarı, incele) ve odak halkasında görünür. */
+  --accent: rgb(28 28 30 / 55%);
+  --accent-hover: rgb(28 28 30 / 75%);
+  --accent-quiet: rgb(28 28 30 / 5%);
   --on-accent: #ffffff;
+
+  /* Marka işareti. Vurgu token'ından ayrıdır: arayüz nötrleşirken markanın
+     kendi kimliği ayrı bir karardır ve brand/ varlıkları değişmedi. */
+  --brand-mark: rgb(28 28 30 / 26%);
 
   /* Birincil eylem: sistem düğmesi karakteri — mürekkep yüzey, açık metin. */
   --primary-surface: #1f1f21;
@@ -91,9 +98,9 @@
     system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 
-  --text-title: calc(17px * var(--text-scale));
-  --text-heading: calc(17px * var(--text-scale));
-  --text-section: calc(13.5px * var(--text-scale));
+  --text-title: calc(18px * var(--text-scale));
+  --text-heading: calc(18px * var(--text-scale));
+  --text-section: calc(14px * var(--text-scale));
   --text-body: calc(13px * var(--text-scale));
   --text-meta: calc(11.5px * var(--text-scale));
   /* Büyük harf etiket yalnız panel başlığında kaldı. */
@@ -118,6 +125,11 @@
   --measure-list: 680px;
   --measure-flow: 420px;
   --measure-empty: 360px;
+  /* Tercihler penceresinde kontrol kolonu: her satırda aynı hizada biter. */
+  --control-col: 200px;
+  /* Optik üst bant — boş, hata ve akış yüzeyleri TEK kuralla yerleşir.
+     Ekranın matematiksel merkezi değil; yukarıda ve sola hizalı. */
+  --band-top: 6%;
 
   /* Okunabilir ölçü — uzun açıklama metni bu genişliği aşmaz. */
   --measure: 62ch;
@@ -144,10 +156,12 @@
   --border-subtle: rgb(255 255 255 / 8%);
   --border-strong: rgb(255 255 255 / 14%);
 
-  --accent: #a8906a;
-  --accent-hover: #bda47c;
-  --accent-quiet: rgb(168 144 106 / 12%);
-  --on-accent: #1c1610;
+  --accent: rgb(255 255 255 / 65%);
+  --accent-hover: rgb(255 255 255 / 85%);
+  --accent-quiet: rgb(255 255 255 / 7%);
+  --on-accent: #1c1c1e;
+
+  --brand-mark: rgb(255 255 255 / 26%);
 
   /* Koyu temada sistem düğmesi açık nötrdür; altın değil. */
   --primary-surface: #eceae5;

@@ -25,6 +25,7 @@ const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffec
 
 export interface Chrome {
   toolbarSlot: HTMLElement | null;
+  statusSlot: HTMLElement | null;
   inspectorSlot: HTMLElement | null;
   /** Panelde içerik var mı? `InspectorPanel` bağlanınca/ayrılınca bildirir. */
   setHasInspector: (has: boolean) => void;
@@ -48,6 +49,23 @@ export function ToolbarActions({ children }: { children: ReactNode }) {
   if (!chrome) return <div className="toolbar-actions">{children}</div>;
   if (!chrome.toolbarSlot) return null;
   return createPortal(children, chrome.toolbarSlot);
+}
+
+/**
+ * Yardımcı barın ORTASI: açık bağlamın ölçüsü.
+ *
+ * Toolbar boş bir bant olmasın diye eklenmedi — belge adının yanında o
+ * belgenin **büyüklüğü** durur: kaç sayfa, hangi yöne dönüşecek, kaç fark,
+ * kaç bulgu. Kullanıcının "şu an neye bakıyorum" sorusunun ikinci yarısı
+ * budur ve her kipte aynı yerde okunur.
+ *
+ * Sayı kipin kendi durumundan gelir; kabuk onu üretemez, yalnız yerini verir.
+ */
+export function ToolbarStatus({ children }: { children: ReactNode }) {
+  const chrome = useContext(ChromeContext);
+  if (!chrome) return <span className="toolbar-status">{children}</span>;
+  if (!chrome.statusSlot) return null;
+  return createPortal(children, chrome.statusSlot);
 }
 
 /**

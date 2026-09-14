@@ -42,6 +42,7 @@ export function Layout({
   children,
 }: Props) {
   const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null);
+  const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null);
   const [inspectorSlot, setInspectorSlot] = useState<HTMLElement | null>(null);
   const [hasInspector, setHasInspector] = useState(false);
   const [hasActions, setHasActions] = useState(false);
@@ -65,8 +66,8 @@ export function Layout({
   }, []);
 
   const chrome = useMemo(
-    () => ({ toolbarSlot, inspectorSlot, setHasInspector, setHasActions }),
-    [toolbarSlot, inspectorSlot],
+    () => ({ toolbarSlot, statusSlot, inspectorSlot, setHasInspector, setHasActions }),
+    [toolbarSlot, statusSlot, inspectorSlot],
   );
 
   const showInspector = hasInspector && inspectorOpen;
@@ -100,6 +101,9 @@ export function Layout({
           <div className="titlebar-band" data-tauri-drag-region />
           <div className="toolbar" data-empty={barEmpty} data-tauri-drag-region>
             <div className="toolbar-context">{context}</div>
+            {/* Bağlamın ÖLÇÜSÜ: kaç sayfa, kaç fark, kaç bulgu. Kip doldurur;
+                doldurmazsa yuva hiç görünmez (`:empty`). */}
+            <div className="toolbar-status" ref={setStatusSlot} />
             <div className="toolbar-spacer" data-tauri-drag-region />
             <div className="toolbar-actions" ref={setToolbarSlot} />
             <div className="toolbar-shell">

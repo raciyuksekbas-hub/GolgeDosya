@@ -86,7 +86,7 @@ export const AppMark = ({ className }: P) => (
       </clipPath>
     </defs>
     <g clipPath="url(#gd-sidebar-mark)">
-      <rect x="12" y="8" width="40" height="48" fill="var(--accent)" />
+      <rect x="12" y="8" width="40" height="48" fill="var(--brand-mark)" />
       <path d="M12 8 H52 V32 L28 56 H12 Z" fill="currentColor" />
     </g>
   </svg>

@@ -128,10 +128,16 @@ test("boş, hata ve sonuç-yok durumları tek yüzeyden çizilir", () => {
       `ekrana özel boş durum sınıfı geri geldi: ${gone}`,
     );
   }
-  // Optik konum tek yerde tanımlı: kalan alanın %38'i üstte.
+  // Optik konum tek yerde tanımlı ve KARŞILAMA yüzeyiyle aynı: dört ekran
+  // birbirinin metin varyantı gibi durmasın diye kompozisyon tek. Ortalanmış
+  // kahraman blok geri gelmemeli — boş durum da sola hizalı üst banttadır.
   const blocks = shell.match(/^\.empty \{[^}]*\}/gmu) ?? [];
   assert.equal(blocks.length, 1, "boş durum tek CSS bloğuyla tanımlanmalı");
-  assert.match(blocks[0], /grid-template-rows: 38fr auto 62fr/u);
+  assert.match(blocks[0], /padding-top: var\(--band-top\)/u, "boş durum ortak üst bandı kullanmalı");
+  assert.match(blocks[0], /align-items: flex-start/u, "boş durum sola hizalı olmalı");
+  const welcomeBlock = shell.match(/^\.welcome \{[^}]*\}/gmu) ?? [];
+  assert.equal(welcomeBlock.length, 1, "karşılama tek CSS bloğuyla tanımlanmalı");
+  assert.match(welcomeBlock[0], /padding-top: var\(--band-top\)/u, "karşılama aynı bandı kullanmalı");
 });
 
 test("etkisiz eylem ekranın en ağır öğesi olamaz", () => {
@@ -172,10 +178,15 @@ test("belge seçici hatası kullanıcıya görünür", () => {
   // üretiyordu: kullanıcı düğmeye basıyor, hiçbir şey olmuyordu. Sessiz
   // başarısızlık, hata mesajından kötüdür.
   const surface = readFileSync("src/features/DocumentSurface.tsx", "utf8");
-  const browse = surface.slice(surface.indexOf("const browse"));
-  assert.match(browse.slice(0, 900), /try \{/, "seçici çağrısı korunmalı");
-  assert.match(browse.slice(0, 900), /catch/, "reddi yakalamalı");
-  assert.match(browse.slice(0, 900), /setRefused/, "kullanıcıya söylemeli");
+  // Keyfî bir karakter penceresi değil, GERÇEK gövde: bileşen büyüdükçe
+  // pencere kayıyor ve sözleşme sessizce ölçmeyi bırakıyordu.
+  const from = surface.indexOf("const browse");
+  const to = surface.indexOf("const handledOpen");
+  assert.ok(from > 0 && to > from, "belge seçici gövdesi bulunmalı");
+  const browse = surface.slice(from, to);
+  assert.match(browse, /try \{/, "seçici çağrısı korunmalı");
+  assert.match(browse, /catch/, "reddi yakalamalı");
+  assert.match(browse, /setRefused/, "kullanıcıya söylemeli");
 });
 
 test("modül CSS'i kabuk ilkellerinin sınıf adlarını ezmez", () => {
@@ -318,4 +329,109 @@ test("marka varlıkları tek kaynaktan üretiliyor", () => {
   // Kenar çubuğu işareti aynı yolu çizer.
   const icons = readFileSync("src/shell/icons.tsx", "utf8");
   assert.match(icons, /M12 8 H52 V32 L28 56 H12 Z/, "AppMark marka geometrisini taşımalı");
+});
+
+test("her ekran bağlamın ÖLÇÜSÜNÜ de söyler", () => {
+  // §24: "hangi belge açık" sorusunun ikinci yarısı sayıdır — kaç sayfa, hangi
+  // yöne, kaç fark, kaç bulgu. Dördü de aynı yerde, yardımcı barın ortasında.
+  // Bu olmadan bar yalnız bir ad taşıyan boş bir bant oluyordu.
+  for (const file of [
+    "src/modules/duzenek/PdfWorkspace.tsx",
+    "src/modules/tavzih/ConvertWorkspace.tsx",
+    "src/modules/degisikis/CompareWorkspace.tsx",
+    "src/modules/ikincigoz/ReviewWorkspace.tsx",
+  ]) {
+    assert.match(readFileSync(file, "utf8"), /<ToolbarStatus>/u, `${file}: bar durumu eksik`);
+  }
+  const chrome = readFileSync("src/shell/chrome.tsx", "utf8");
+  assert.match(chrome, /export function ToolbarStatus/u, "durum yuvası tanımlı olmalı");
+  // Yuva boşsa hiç yer kaplamaz: "bağlam yoksa ek UI yok".
+  assert.match(shell, /\.toolbar-status:empty \{ display: none; \}/u);
+});
+
+test("aynı sayının tek evi var", () => {
+  // Fark sayacı bir zamanlar üç yerdeydi: panelde bir blok, rayın dibinde
+  // "2/4", bir de seçili fark başlığında. Sayaç artık yalnız barda.
+  const rail = readFileSync("src/modules/degisikis/ChangeRail.tsx", "utf8");
+  assert.ok(!rail.includes("rail-position"), "rayda ikinci bir sayaç kalmamalı");
+  const compare = readFileSync("src/modules/degisikis/CompareWorkspace.tsx", "utf8");
+  assert.match(compare, /fark`/u, "sayaç barda olmalı");
+});
+
+test("son kullanılanlar kipin AÇABİLDİĞİ belgeleri gösterir", () => {
+  // Açılamayacak bir satır bilgi değil tuzaktır: tıklanınca reddedilir.
+  const surface = readFileSync("src/features/DocumentSurface.tsx", "utf8");
+  assert.match(surface, /mode\.extensions\.includes\(extensionOf\(r\.path\)\)/u, "liste süzülmeli");
+  assert.match(surface, /mode\.recentTitle/u, "başlık kipten gelmeli");
+  // Kayıt yokken "henüz yok" değil, ekranın ne kabul ettiği yazılır.
+  assert.match(surface, /formatList\(mode\)/u, "desteklenen türler gösterilmeli");
+});
+
+test("iki belge isteyen kip modelini boş durumda da gösterir", () => {
+  // Karşılaştır'ın boş durumu diğer üçünün metin varyantı değildir.
+  const surface = readFileSync("src/features/DocumentSurface.tsx", "utf8");
+  assert.match(surface, /mode\.slots!\[0\]/u, "ilk yuva çizilmeli");
+  assert.match(surface, /mode\.slots!\[1\]/u, "ikinci yuva çizilmeli");
+  const modes = readFileSync("src/shell/modes.ts", "utf8");
+  assert.match(modes, /slots: \["Belge A", "Belge B"\]/u);
+  // Yuva kart değildir: gölge ve çerçeve almaz.
+  const slot = shell.match(/^\.slot \{[^}]*\}/mu);
+  assert.ok(slot, ".slot tanımlı olmalı");
+  assert.ok(!/box-shadow|border: 1px/u.test(slot[0]), "yuva kart görünümü almamalı");
+});
+
+test("tercihler tek grid: kontroller tek hizada biter", () => {
+  // Flex ile yazıldığında her kontrol kendi metnine göre başka yerde bitiyor
+  // ve sütun kayboluyordu (§13).
+  const field = shell.match(/^\.field \{[^}]*\}/mu);
+  assert.ok(field, ".field tanımlı olmalı");
+  assert.match(field[0], /display: grid/u, "alan bir grid olmalı");
+  assert.match(field[0], /var\(--control-col\)/u, "kontrol kolonu tek yerde tanımlı olmalı");
+  assert.match(shell, /\.field > \.btn \{ justify-self: end; \}/u, "düğme kolonun sağında bitmeli");
+});
+
+test("geri bildirim var olmayan bir kanal uydurmaz", () => {
+  // Ürünün ağ izni yok ve bildirilmiş bir uç noktası yok. Yüzey bunu söyler;
+  // sahte bir gönderim, ölü bir düğme veya uydurma bir adres üretmez.
+  const settings = readFileSync("src/shell/Settings.tsx", "utf8");
+  for (const invented of ["fetch(", "mailto:", "http://", "https://", "XMLHttpRequest"]) {
+    assert.ok(!settings.includes(invented), `geri bildirim yüzeyinde uydurma kanal: ${invented}`);
+  }
+  assert.match(settings, /uygulama içinden gönderim yoktur/u, "durum açıkça yazılmalı");
+  // Kapasitede de URL açma izni yok: yüzeyin söylediği şey doğrulanabilir.
+  const caps = readdirSync("src-tauri/capabilities").map((f) =>
+    readFileSync(join("src-tauri/capabilities", f), "utf8"),
+  );
+  for (const c of caps) {
+    assert.ok(!/opener:allow-open-url|http:default|shell:allow-open/.test(c), "URL açma izni yok");
+  }
+});
+
+test("arayüzde renkli vurgu yok: renk yalnız semantik ve odak", () => {
+  // Hardal/pirinç vurgu kaldırıldı. Vurgu token'ı nötr; marka işareti kendi
+  // token'ında ve o da nötr bir tonda.
+  const accents = [...tokens.matchAll(/--accent(?:-hover)?:\s*([^;]+);/g)].map((m) => m[1].trim());
+  assert.ok(accents.length >= 2, "vurgu token'ları tanımlı olmalı");
+  for (const a of accents) {
+    assert.ok(
+      /^rgb\(\s*(255 255 255|28 28 30)\s*\/\s*\d+%\s*\)$/.test(a),
+      `vurgu nötr olmalı, bulunan: ${a}`,
+    );
+  }
+  assert.match(tokens, /--brand-mark:/u, "marka işareti kendi token'ında olmalı");
+  const icons = readFileSync("src/shell/icons.tsx", "utf8");
+  assert.ok(!icons.includes("var(--accent)"), "marka işareti vurgu token'ını kullanmamalı");
+});
+
+test("tipografi dört ölçü: 18 · 14 · 13 · 11.5", () => {
+  const sizes = {
+    "--text-title": "18px",
+    "--text-section": "14px",
+    "--text-body": "13px",
+    "--text-meta": "11.5px",
+  };
+  for (const [name, px] of Object.entries(sizes)) {
+    const line = tokens.split("\n").find((l) => l.includes(`${name}:`));
+    assert.ok(line?.includes(px), `${name} ${px} olmalı — bulunan: ${line?.trim()}`);
+  }
 });

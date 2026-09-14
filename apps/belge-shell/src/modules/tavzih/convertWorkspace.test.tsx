@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ConvertDone, ConvertFlow } from "./ConvertWorkspace";
+import { ConvertDone, ConvertFlow, formatParts } from "./ConvertWorkspace";
 import type { ConversionResult, InspectOutcome, OutputFolder } from "./types";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -42,46 +42,69 @@ const RESULT = [
   },
 ] as unknown as ConversionResult[];
 
+const noop = () => undefined;
+
 const flow = renderToStaticMarkup(
   <ConvertFlow
     selected={SELECTED}
     target="UYAP (.udf)"
     folder={FOLDER}
-    onChooseFolder={() => undefined}
-    onResetFolder={() => undefined}
+    onConvert={noop}
+    onChooseFolder={noop}
+    onResetFolder={noop}
   />,
 );
 const done = renderToStaticMarkup(
-  <ConvertDone items={RESULT} canReveal onReveal={() => undefined} />,
+  <ConvertDone items={RESULT} canReveal onReveal={noop} onAgain={noop} />,
 );
 
 describe("durum sözleşmesi", () => {
-  it("hazır: kaynak, hedef ve çıktının yeri tek yüzeyde", () => {
-    // Form değil: belgenin adı, biçim oku ve çıktının yeri. Ayrı "Kaynak" ve
-    // "Hedef" bölüm başlıkları kaldırıldı — satırın kendisi zaten onu söylüyor.
+  it("hazır: iki durak, bir ok, tek eylem", () => {
+    // Akış iki durağını ADIYLA söyler; kullanıcı neyin neye dönüşeceğini
+    // ekrandaki yerleşimden okur, bir cümleyi çözmek zorunda kalmaz.
+    expect(flow).toContain("Kaynak");
+    expect(flow).toContain("Hedef");
     expect(flow).toContain("ornek-dilekce.docx");
     expect(flow).toContain("Word (.docx)");
     expect(flow).toContain("→");
-    expect(flow).toContain("UYAP (.udf)");
+    // Hedef ad ve uzantı olarak iki satıra ayrılır.
+    expect(flow).toContain("UYAP");
+    expect(flow).toContain(".udf");
     // Çıktı klasörü: adı görünür, tam yol ipucunda. Monospace bir yol bloğu değil.
-    expect(flow).toMatch(/title="[^"]*Dönüştürülen Belgeler"[^>]*>Çıktı: Dönüştürülen Belgeler</);
+    expect(flow).toContain("Çıktı konumu");
+    expect(flow).toMatch(/title="[^"]*Dönüştürülen Belgeler"[^>]*>Dönüştürülen Belgeler</);
     expect(flow).not.toContain("folder-path");
     expect(flow).toContain("Değiştir…");
     // Varsayılan klasörde "Varsayılana dön" anlamsız.
     expect(flow).not.toContain("Varsayılana dön");
   });
 
+  it("birincil eylem akışın içinde ve tek", () => {
+    // İş burada yapılıyor; düğme de burada. Yardımcı barda ikinci bir kopyası
+    // olursa ekranda iki baskın eylem olur.
+    expect(flow).toContain("Dönüştür");
+    expect((flow.match(/class="btn btn-primary"/g) ?? []).length).toBe(1);
+    expect(source).not.toContain("ToolbarActions");
+  });
+
   it("tamamlandı: akışın yerini alır, üstüne binmez", () => {
     expect(done).toContain("Dönüştürme tamamlandı");
     expect(done).toContain("ornek-dilekce.docx → ornek-dilekce.udf");
+    expect(done).toContain("✓ Tamamlandı");
     expect(done).toContain("Kaynak belge değiştirilmedi.");
     // Soru artık "neye dönüşecek" değil: akış çizilmez.
-    expect(done).not.toContain("flow-source");
+    expect(done).not.toContain("flow-pair");
     expect(done).not.toContain("flow-arrow");
     expect(done).not.toContain("flow-dest");
-    // Tek baskın eylem.
+    // Tek baskın eylem; ikincisi sessiz.
     expect(done).toMatch(/Finder(&#x27;|')da Göster/);
     expect((done.match(/class="btn btn-primary"/g) ?? []).length).toBe(1);
+    expect(done).toContain("Yeniden dönüştür");
+  });
+
+  it("bar yönü taşır, düğmeyi değil", () => {
+    expect(source).toContain("ToolbarStatus");
+    expect(source).toMatch(/\{usable\[0\]\.info\?\.source_format\} → \{target \?\? "—"\}/);
   });
 
   it("kip kendi sağ panelini açmaz", () => {
@@ -92,10 +115,15 @@ describe("durum sözleşmesi", () => {
 
   it("durumlar birbirini dışlar", () => {
     expect(source).toMatch(
-      /\{done \? \(\s*<ConvertDone[\s\S]{0,200}?\) : selected\.length > 0 \? \(\s*<ConvertFlow/,
+      /\{done \? \(\s*<ConvertDone[\s\S]{0,260}?\) : selected\.length > 0 \? \(\s*<ConvertFlow/,
     );
-    // İş bitince bardaki düğme ikincil kalır ve ne yaptığını adıyla söyler.
-    expect(source).toContain('variant={done ? "default" : "primary"}');
-    expect(source).toContain('done ? "Yeniden dönüştür" : "Dönüştür"');
+  });
+
+  it("biçim etiketi ad ve uzantı olarak ayrılır, uydurulmaz", () => {
+    expect(formatParts("Word (.docx)")).toEqual({ name: "Word", ext: ".docx" });
+    expect(formatParts("UYAP (.udf)")).toEqual({ name: "UYAP", ext: ".udf" });
+    // Parantez yoksa etiket olduğu gibi kalır.
+    expect(formatParts("PDF")).toEqual({ name: "PDF", ext: "" });
+    expect(formatParts(null)).toEqual({ name: "—", ext: "" });
   });
 });

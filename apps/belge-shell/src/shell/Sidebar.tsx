@@ -78,7 +78,7 @@ export function Sidebar({ features, current, onNavigate, onOpenSettings }: Props
       {/* Ürün yüzeyleri: gizli değil, kiplerin altında kendi grubunda. Üçü de
           tercihler penceresini kendi sekmesinde açar. */}
       <div className="sidebar-footer">
-        <button type="button" className="sidebar-item" onClick={() => onOpenSettings("gorunum")} title="Ayarlar  ⌘,">
+        <button type="button" className="sidebar-item" onClick={() => onOpenSettings("genel")} title="Ayarlar  ⌘,">
           <IconSettings className="sidebar-icon" />
           <span>Ayarlar</span>
         </button>

@@ -23,10 +23,33 @@ export interface Mode {
   hint: string;
   /** Karşılama ekranındaki birincil eylemin adı. */
   openLabel: string;
+  /** Son kullanılanlar bölümünün başlığı — kipin diliyle. */
+  recentTitle: string;
   /** Dosya seçicide görünecek tür adı. */
   pickerLabel: string;
   /** Kaç belge gerekir: bir kip iki belge isteyebilir (Karşılaştır). */
   needs: 1 | 2;
+  /**
+   * İki belge isteyen kipte yuvaların adı.
+   *
+   * Karşılaştır'ın boş durumu diğerlerinin metin varyantı değildir: iki
+   * belgelik zihinsel model ekranda durur. Tek belgelik kiplerde yoktur.
+   */
+  slots?: [string, string];
+}
+
+/**
+ * Kipin kabul ettiği türlerin kullanıcıya gösterilecek yazımı.
+ *
+ * Kayıt yokken karşılama ekranı bu satırı taşır: "hiçbir şey yok" demek
+ * yerine ekran ne kabul ettiğini söyler (§12). Uzantı listesi tek kaynaktan
+ * türetilir; ikinci bir tablo tutulmaz.
+ */
+export function formatList(mode: Mode, limit = 5): string {
+  return mode.extensions
+    .slice(0, limit)
+    .map((e) => e.toLocaleUpperCase("tr-TR"))
+    .join(" · ");
 }
 
 export const MODES: Record<FeatureState["key"], Mode> = {
@@ -36,6 +59,10 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     extensions: ["pdf", "docx", "doc", "udf", "jpg", "jpeg", "png", "tiff", "heic"],
     hint: "Sayfaları düzenlemek, döndürmek, sıralamak veya dışa aktarmak için bir PDF açın.",
     openLabel: "PDF Aç",
+    // Liste PDF dışı türleri de taşır (Düzenle onları da açar), bu yüzden
+    // başlık "Son PDF'ler" olamaz: etiketin listeyle uyuşması, sloganın
+    // kulağa hoş gelmesinden önemli.
+    recentTitle: "Son Belgeler",
     pickerLabel: "Belge veya görsel",
     needs: 1,
   },
@@ -45,6 +72,7 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     extensions: ["docx", "udf"],
     hint: "Word ve UYAP biçimleri arasında: DOCX ⇄ UDF.",
     openLabel: "Belge Aç",
+    recentTitle: "Son Belgeler",
     pickerLabel: "Word veya UYAP belgesi",
     needs: 1,
   },
@@ -52,10 +80,12 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     label: "Karşılaştır",
     emptyTitle: "İki belgeyi karşılaştırın",
     extensions: ["pdf", "docx", "doc", "udf"],
-    hint: "İlk belgeyi açın, ardından karşılaştıracağınız ikinci belgeyi seçin.",
-    openLabel: "İlk Belgeyi Aç",
+    hint: "İlk belgeyi seçin, ardından karşılaştıracağınız ikinci belgeyi ekleyin.",
+    openLabel: "İlk Belgeyi Seç",
+    recentTitle: "Son Belgeler",
     pickerLabel: "Karşılaştırılacak belgeler",
     needs: 2,
+    slots: ["Belge A", "Belge B"],
   },
   ikincigoz: {
     label: "Denetle",
@@ -63,6 +93,7 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     extensions: ["docx", "udf"],
     hint: "Göndermeden önce son okuma: DOCX veya UDF dosyanızı açın.",
     openLabel: "Belge Aç",
+    recentTitle: "Son Belgeler",
     pickerLabel: "Word veya UYAP belgesi",
     needs: 1,
   },
