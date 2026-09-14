@@ -293,11 +293,18 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                 return;
             setBusy(true);
             setStatus('PDF hazırlanıyor…');
-            const outcome = await invoke<{ status: 'published' | 'compressed' | 'no_benefit' | 'failed'; reason?: string; source_bytes?: number; body_bytes?: number; output_bytes?: number; candidate_bytes?: number }>('duzenek_run_pdf_tool', { paths: sources.map(s => s.path), operation, outputPath, approved });
+            const outcome = await invoke<{ status: 'published' | 'compressed' | 'no_benefit' | 'failed'; reason?: string; source_bytes?: number; body_bytes?: number; output_bytes?: number; candidate_bytes?: number; images_found?: number; images_recompressed?: number }>('duzenek_run_pdf_tool', { paths: sources.map(s => s.path), operation, outputPath, approved });
             if (outcome.status === 'failed') throw new Error(outcome.reason);
             const metrics = `Sıkıştırılmış belge: ${((outcome.body_bytes || 0) / 1024).toFixed(1)} KB · Marka dahil: ${((outcome.output_bytes || outcome.candidate_bytes || 0) / 1024).toFixed(1)} KB`;
             if (outcome.status === 'no_benefit') {
-                setStatus(`${((outcome.source_bytes || 0) / 1024).toFixed(1)} KB\nBu belge zaten yeterince optimize. Anlamlı bir küçülme sağlanamadı. Çıktı kaydedilmedi.\n${metrics}\nEn az %3 küçülme gerekir.`);
+                // Görsel var ama hiçbiri yeniden kodlanmadıysa belge "zaten optimize"
+                // değildir; görseller güvenli sıkıştırma kapsamının dışındadır
+                // (CMYK, maske, paletli). Kullanıcıya doğru sebep söylenir.
+                const outOfScope = (outcome.images_found || 0) > 0 && !(outcome.images_recompressed || 0);
+                const why = outOfScope
+                    ? `${outcome.images_found} görsel bulundu; renk uzayı veya maskesi nedeniyle güvenle yeniden kodlanamadı. Anlamlı bir küçülme sağlanamadı. Çıktı kaydedilmedi.`
+                    : 'Bu belge zaten yeterince optimize. Anlamlı bir küçülme sağlanamadı. Çıktı kaydedilmedi.';
+                setStatus(`${((outcome.source_bytes || 0) / 1024).toFixed(1)} KB\n${why}\n${metrics}\nEn az %3 küçülme gerekir.`);
                 return;
             }
             // A receipt is derived from the published file, not just a resolved command promise.
@@ -328,6 +335,11 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         const kept = key === 'images' || kind === 'images' ? [] : (key === 'merge' ? sources : sources.slice(0, 1));
         setSources(kept);
         build(kept);
+        // `build` ilk sayfayı işaretler; Sil aracında bu, sayfa 1'i daha
+        // kullanıcı bir şey yapmadan çıkarılacak sayfa yapıyordu ve kaydet
+        // düğmesini açıyordu. Silme her zaman boş bir seçimle başlar.
+        if (key === 'delete')
+            setSelected([]);
         setStatus('');
         setApproved(false);
     };

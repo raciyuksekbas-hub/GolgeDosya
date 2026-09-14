@@ -271,6 +271,31 @@ fn copy_recursive_internal(
     Ok(new_id)
 }
 
+/// Kopyalanan sayfanın DIŞINDAKİ bir sayfa ya da sayfa ağacı düğümü mü?
+///
+/// Bağlantı açıklamalarının `/Dest`i, açıklamaların `/P`si ve sayfa
+/// sözlüklerinin `/Parent`ı başka sayfalara işaret eder. Bunlar ham kopyalanınca
+/// tek sayfa seçiminde bütün belge yetim nesne olarak çıktıya taşınıyordu
+/// (40 sayfalık kaynaktan tek sayfa: kaynağın %100'ü). Böyle bir hedef
+/// kopyalanmaz; referans `null` olur — PDF'te geçerli, görüntüleyicide zararsız.
+fn is_foreign_page_node(
+    src: &LopdfDoc,
+    id: ObjectId,
+    id_map: &BTreeMap<ObjectId, ObjectId>,
+) -> bool {
+    if id_map.contains_key(&id) {
+        return false;
+    }
+    src.get_dictionary(id)
+        .ok()
+        .and_then(|d| d.get(b"Type").ok())
+        // /Type dolaylı bir ad olabilir (`/Type 12 0 R`); çözülmeden bakılırsa
+        // sayfa düğümü tanınmaz ve ağaç yine sürüklenir.
+        .and_then(|t| src.dereference(t).ok())
+        .and_then(|(_, t)| t.as_name().ok())
+        .is_some_and(|t| t == b"Page" || t == b"Pages")
+}
+
 fn clone_object_remapping(
     src: &LopdfDoc,
     dst: &mut LopdfDoc,
@@ -278,6 +303,7 @@ fn clone_object_remapping(
     id_map: &mut BTreeMap<ObjectId, ObjectId>,
 ) -> Result<Object> {
     match obj {
+        Object::Reference(old_id) if is_foreign_page_node(src, *old_id, id_map) => Ok(Object::Null),
         Object::Reference(old_id) => {
             let mapped_id = copy_recursive_internal(src, dst, *old_id, id_map)?;
             Ok(Object::Reference(mapped_id))

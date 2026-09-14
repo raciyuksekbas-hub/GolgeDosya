@@ -69,19 +69,18 @@ export const MODES: Record<FeatureState["key"], Mode> = {
   duzenek: {
     label: "Düzenle",
     emptyTitle: "PDF çalışma alanı",
-    extensions: ["pdf", "docx", "doc", "udf", "jpg", "jpeg", "png", "tiff", "heic"],
-    // İkinci cümle bir nezaket değil zorunluluk: liste DOCX ve UDF satırları
-    // gösteriyor, motor da onları gerçekten açıyor. "Yalnız PDF" demek
-    // verilmeyen bir söz olurdu.
-    hint:
-      "Sayfaları sıralayın, döndürün ya da dışa aktarın. " +
-      "Word ve UYAP belgeleri PDF'ye dönüştürülür.",
+    // YALNIZ PDF. Tarayıcı DOCX/UDF/görseli de kabul eder, ama kabuğun PDF
+    // çalışma alanı önizlemeyi ve her aracı HAM yol üzerinde çalıştırır:
+    // bir DOCX verildiğinde `inspect_pdf` düşer, önizleme düşer, kaydetme
+    // düşer. Bağımsız DüzenEk'in dönüşüm adımı (`duzenek_convert_office_pdf`)
+    // kabukta bağlı değildir. Kip açamayacağı türü kabul etmez; görseller
+    // "Görseller → PDF" aracının kendi seçicisinden, Word/UYAP belgeleri
+    // Dönüştür kipinden girer. İşlevsel denetim: pdf_workspace_audit.rs.
+    extensions: ["pdf"],
+    hint: "Sayfaları sıralayın, döndürün, çıkarın ya da yeni bir kopyaya aktarın.",
     openLabel: "PDF Aç",
-    // Liste PDF dışı türleri de taşır (Düzenle onları da açar), bu yüzden
-    // başlık "Son PDF'ler" olamaz: etiketin listeyle uyuşması, sloganın
-    // kulağa hoş gelmesinden önemli.
-    recentTitle: "Son belgeler",
-    pickerLabel: "Belge veya görsel",
+    recentTitle: "Son PDF'ler",
+    pickerLabel: "PDF belgesi",
     needs: 1,
   },
   tavzih: {

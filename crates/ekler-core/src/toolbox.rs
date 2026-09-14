@@ -362,6 +362,11 @@ fn run_tool_inner(
             let mut quality_errors = Vec::new();
             for preset in levels {
                 let mut candidate = original.as_ref().unwrap().clone();
+                // Kapsam dışı görsel (ICC dışı renk uzayı, maske, öngörücü) artık
+                // optimize_pdf içinde ATLANIR, hata döndürmez. Buradan çıkan hata
+                // gerçek bir bozukluktur (çözülemeyen JPEG, uyuşmayan örnek
+                // uzunluğu): temizlik adayı ne kadar kazandırırsa kazandırsın
+                // bozuk görseli içinde taşıyan bir çıktı yayınlanmaz.
                 let stats = crate::optimize_pdf(&mut candidate, *preset)?;
                 if let Err(e) =
                     validate_compression_quality(original.as_ref().unwrap(), &candidate, *preset)
@@ -379,10 +384,12 @@ fn run_tool_inner(
                     best = Some((candidate, stats, body, final_size));
                 }
             }
-            let (candidate, stats, body, _) =
-                best.ok_or_else(|| EklerError::ValidationFailed(quality_errors.join("; ")))?;
+            let (candidate, stats, body, _) = best.ok_or_else(|| {
+                quality_errors.dedup();
+                EklerError::ValidationFailed(quality_errors.join("; "))
+            })?;
             doc = candidate;
-            compression = Some((body, stats, quality_errors));
+            compression = Some((body, stats));
         }
         ToolOperation::Crop { margin_pt } => {
             if !margin_pt.is_finite() || *margin_pt < 0. {
@@ -458,11 +465,11 @@ fn run_tool_inner(
         crate::pdf::stamp::apply_branding(&mut doc)?;
     }
     let bytes = validated_pdf_bytes(&mut doc)?;
-    if let Some((body_bytes, stats, quality_errors)) = compression {
+    if let Some((body_bytes, stats)) = compression {
+        // Kalan quality_errors yalnız daha sert bir ön ayarın PİKSEL kalitesi
+        // nedeniyle elendiğini söyler; kazanan aday geçerlidir. Kazanç %3'ün
+        // altındaysa bu dürüstçe "kazanç yok"tur, hata değil.
         if (bytes.len() as u128) * 100 > (source_bytes as u128) * 97 {
-            if !quality_errors.is_empty() {
-                return Err(EklerError::ValidationFailed(quality_errors.join("; ")));
-            }
             return Ok(ToolOutcome::NoBenefit {
                 source_bytes,
                 body_bytes,
@@ -537,11 +544,20 @@ fn validate_compression_quality(
         }
         let resolve = |doc: &LopdfDoc, stream: &lopdf::Stream| -> Result<lopdf::Stream> {
             let mut s = stream.clone();
-            for key in [b"ColorSpace".as_slice(), b"Filter", b"DecodeParms"] {
+            for key in [b"Filter".as_slice(), b"DecodeParms"] {
                 if let Ok(v) = s.dict.get(key).cloned() {
                     s.dict
                         .set(key, doc.dereference(&v).map_err(|_| fail())?.1.clone());
                 }
+            }
+            // Optimizer ile aynı indirgeme: ICCBased görsel Device adıyla çözülür.
+            if let Some(space) = s
+                .dict
+                .get(b"ColorSpace")
+                .ok()
+                .and_then(|v| crate::optimizer::decodable_colorspace(doc, v))
+            {
+                s.dict.set("ColorSpace", space);
             }
             Ok(s)
         };

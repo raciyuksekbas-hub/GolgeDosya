@@ -443,7 +443,7 @@ buyurmuyor; ne yapılacağı açıklamada, nasıl başlanacağı düğmede.
 
 | Kip | Başlık | Açıklama |
 |---|---|---|
-| Düzenle | Sayfalar ve dışa aktarma | Bir PDF açın; sayfaları sıralayın, döndürün ya da dışa aktarın. Word ve UYAP belgeleri açılırken PDF'ye dönüştürülür. |
+| Düzenle | PDF çalışma alanı | Sayfaları sıralayın, döndürün, çıkarın ya da yeni bir kopyaya aktarın. |
 | Dönüştür | Word ve UYAP arasında | DOCX ve UDF biçimleri arasında dönüştürün; kaynak belgeniz olduğu gibi kalır. |
 | Karşılaştır | İki sürüm arasındaki farklar | İki belge seçin; eklenen, silinen ve değişen bölümler yan yana gösterilir. |
 | Denetle | Göndermeden önce son okuma | Bir DOCX veya UDF açın; yazım, noktalama ve tutarlılık bulgularını inceleyin. |
@@ -511,3 +511,15 @@ Başlıklar bir tur daha sadeleşti — `PDF çalışma alanı` ·
 `Word ve UYAP arasında` · `İki sürüm arasındaki farklar` ·
 `Göndermeden önce son okuma` — ve açıklamalar merkez kompozisyonu bozmayacak
 şekilde iki dengeli satıra indi.
+
+---
+
+## İşlevsel denetim düzeltmesi (2026-09-14)
+
+Düzenle'nin kapısı **yalnız PDF**'ye daraltıldı ve karşılama metni buna göre
+yeniden yazıldı. Önceki turun gerekçesi ("motor DOCX/UDF'yi de açıyor")
+tarayıcı için doğru, çalışma alanı için yanlıştı: kabuğun PDF çalışma alanı
+önizlemeyi ve her aracı ham yol üzerinde çalıştırır, bağımsız DüzenEk'in
+dönüşüm adımı kabukta bağlı değildir. Bu yüzden "Son belgeler" yeniden
+"Son PDF'ler" oldu — liste artık gerçekten yalnız PDF taşıyor. Ayrıntı:
+`docs/audit/2026-09-14-pdf-workspace.md`.

@@ -523,12 +523,17 @@ test("büyük harf düzeni tek kural: komut Başlık, bölüm cümle düzeninde"
       );
     }
   }
-  // Bölüm başlıkları cümle düzeninde: yalnız ilk kelime büyük.
+  // Bölüm başlıkları cümle düzeninde: yalnız ilk kelime büyük. Kısaltmalar
+  // (PDF, UYAP) Türkçede büyük kalır; "Son PDF'ler" cümle düzenidir.
   const modes = readFileSync("src/shell/modes.ts", "utf8");
   for (const m of modes.matchAll(/recentTitle: "([^"]+)"/g)) {
     const rest = m[1].split(" ").slice(1);
     for (const w of rest) {
-      assert.match(w, /^[a-zçğıöşü]/u, `bölüm başlığı cümle düzeninde olmalı — "${m[1]}"`);
+      assert.match(
+        w,
+        /^(?:[a-zçğıöşü]|[A-ZÇĞİÖŞÜ]{2,})/u,
+        `bölüm başlığı cümle düzeninde olmalı — "${m[1]}"`,
+      );
     }
   }
 });

@@ -62,6 +62,31 @@ pub fn decode_image(stream: &lopdf::Stream) -> Result<Option<image::DynamicImage
     if !filters.iter().all(|f| *f == b"FlateDecode") {
         return Ok(None);
     }
+    // /DecodeParms: lopdf yalnız SÖZLÜK biçimini okur ve yalnız PNG öngörücülerini
+    // (10–15) geri alır. Dizi biçimli parametre ya da TIFF öngörücüsü (2) sessizce
+    // atlanınca çözülmemiş DELTALAR piksel sanılıp JPEG'e kodlanıyordu — görsel
+    // bozuluyordu. Bu yüzden: dizi biçimi filtreyle eşleştirilip sözlüğe indirgenir;
+    // geri alamadığımız öngörücü taşıyan görsel dokunulmadan ATLANIR.
+    let params: Option<lopdf::Dictionary> = match stream.dict.get(b"DecodeParms") {
+        Err(_) | Ok(Object::Null) => None,
+        Ok(Object::Dictionary(d)) => Some(d.clone()),
+        Ok(Object::Array(a)) if a.len() == filters.len() => match a.first() {
+            Some(Object::Dictionary(d)) => Some(d.clone()),
+            Some(Object::Null) | None => None,
+            _ => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
+    if let Some(d) = &params {
+        let predictor = d
+            .get(b"Predictor")
+            .ok()
+            .and_then(|v| v.as_i64().ok())
+            .unwrap_or(1);
+        if predictor != 1 && !(10..=15).contains(&predictor) {
+            return Ok(None);
+        }
+    }
     if stream
         .dict
         .get(b"BitsPerComponent")
@@ -91,9 +116,25 @@ pub fn decode_image(stream: &lopdf::Stream) -> Result<Option<image::DynamicImage
         let mut encoded = stream.clone();
         encoded.dict.remove(b"Subtype");
         encoded
+            .dict
+            .set("Filter", Object::Name(b"FlateDecode".to_vec()));
+        match &params {
+            Some(d) => encoded
+                .dict
+                .set("DecodeParms", Object::Dictionary(d.clone())),
+            None => {
+                encoded.dict.remove(b"DecodeParms");
+            }
+        }
+        encoded
             .decompressed_content()
             .map_err(|e| fail(e.to_string()))?
     };
+    // Tam uzunluk: `from_raw` fazla baytı kabul eder; geri alınmamış satır
+    // başlığı ya da öngörücü artığı piksel gibi geçemez.
+    if raw.len() != (w as usize) * (h as usize) * channels {
+        return Err(fail("örnek uzunluğu boyutla uyuşmuyor".into()));
+    }
     if channels == 3 {
         image::RgbImage::from_raw(w, h, raw)
             .map(image::DynamicImage::ImageRgb8)
@@ -107,8 +148,47 @@ pub fn decode_image(stream: &lopdf::Stream) -> Result<Option<image::DynamicImage
     }
 }
 
+/// Görselin renk uzayını, örnekleri koruyarak çözebileceğimiz DEVICE adına
+/// indirger; indirgenemiyorsa `None`.
+///
+/// Gerçek dünyada `/ColorSpace` nadiren çıplak `/DeviceRGB`dir: ofis
+/// uygulamaları, Preview ve tarayıcılar `[/ICCBased n 0 R]` yazar. Profil
+/// akışının `/N` alanı bileşen sayısını verir (1 gri, 3 RGB); örnek düzeni
+/// Device eşdeğeriyle aynıdır, yalnız yorumu profile bağlıdır. Çözerken
+/// Device adı kullanılır; yazılırken ÖZGÜN nesne korunur ki profil kaybolmasın.
+/// CMYK (`/N 4`), Indexed, Separation vb. kapsam dışıdır.
+pub fn decodable_colorspace(doc: &LopdfDoc, space: &Object) -> Option<Object> {
+    let (_, space) = doc.dereference(space).ok()?;
+    match space {
+        Object::Name(n) if n == b"DeviceRGB" || n == b"DeviceGray" => Some(space.clone()),
+        Object::Array(a) if a.len() == 2 && a[0].as_name().ok() == Some(b"ICCBased") => {
+            let (_, profile) = doc.dereference(&a[1]).ok()?;
+            let n = profile
+                .as_stream()
+                .ok()?
+                .dict
+                .get(b"N")
+                .ok()?
+                .as_i64()
+                .ok()?;
+            match n {
+                1 => Some(Object::Name(b"DeviceGray".to_vec())),
+                3 => Some(Object::Name(b"DeviceRGB".to_vec())),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 /// No page rasterization. Presets differ in JPEG quality and pixel ceiling.
 /// The ceiling is not described as effective DPI: placement may vary per page.
+///
+/// Kapsam dışı görsel (CMYK, Indexed, maske…) bir HATA değildir: atlanır ve
+/// `images_supported` sayısında görünür. Çağıran, hiçbir görsel yeniden
+/// kodlanmamışsa bunu dürüstçe "kazanç yok" olarak raporlar. Eskiden burada
+/// hata döndürülüyor ve tek bir ICCBased görsel bütün sıkıştırmayı — temizlik
+/// adayı dâhil — "başarısız" yapıyordu.
 pub fn optimize_pdf(doc: &mut LopdfDoc, level: OptimizationLevel) -> Result<OptimizationResult> {
     let mut initial_buf = Vec::new();
     doc.save_to(&mut initial_buf)
@@ -158,7 +238,7 @@ pub fn optimize_pdf(doc: &mut LopdfDoc, level: OptimizationLevel) -> Result<Opti
             continue;
         }
         let mut stream = original.clone();
-        for key in [b"ColorSpace".as_slice(), b"Filter", b"DecodeParms"] {
+        for key in [b"Filter".as_slice(), b"DecodeParms"] {
             if let Ok(value) = stream.dict.get(key).cloned() {
                 let (_, resolved) = doc
                     .dereference(&value)
@@ -166,6 +246,17 @@ pub fn optimize_pdf(doc: &mut LopdfDoc, level: OptimizationLevel) -> Result<Opti
                 stream.dict.set(key, resolved.clone());
             }
         }
+        // Renk uzayı yalnız ÇÖZMEK için Device adına indirgenir; yazılan akış
+        // özgün `/ColorSpace` nesnesini (ör. ICC profili) korur.
+        let Some(space) = stream
+            .dict
+            .get(b"ColorSpace")
+            .ok()
+            .and_then(|v| decodable_colorspace(doc, v))
+        else {
+            continue;
+        };
+        stream.dict.set("ColorSpace", space);
         let Some(img) = decode_image(&stream)? else {
             continue;
         };
@@ -194,19 +285,28 @@ pub fn optimize_pdf(doc: &mut LopdfDoc, level: OptimizationLevel) -> Result<Opti
         };
         encoded.map_err(|e| EklerError::InvalidPdf(format!("JPEG kodlanamadı: {e}")))?;
         if jpeg.len() < original.content.len() {
-            stream.dict.set("Width", resized.width() as i64);
-            stream.dict.set("Height", resized.height() as i64);
-            stream.dict.set("Filter", "DCTDecode");
-            stream.dict.remove(b"DecodeParms");
-            stream.set_content(jpeg);
-            doc.objects.insert(id, Object::Stream(stream));
+            let mut out = original.clone();
+            out.dict.set("Width", resized.width() as i64);
+            out.dict.set("Height", resized.height() as i64);
+            out.dict.set("Filter", "DCTDecode");
+            out.dict.remove(b"DecodeParms");
+            out.set_content(jpeg);
+            doc.objects.insert(id, Object::Stream(out));
             recompressed += 1;
         }
     }
-    if level != OptimizationLevel::LowRiskCleanup && found > 0 && supported == 0 {
-        return Err(EklerError::ValidationFailed(format!("{found} görsel bulundu; renk uzayı, maske veya filtreleri güvenli sıkıştırma kapsamında değil.")));
+    // Yalnız GÖRSEL OLMAYAN akışlar Flate'lenir. Görseller yukarıda açıkça ele
+    // alındı; ham (filtresiz) bir görseli burada sarmak, kalite kapısının
+    // "bayt bayt aynı" kaçışını bozuyor ve temizlik adayını düşürüyordu.
+    for obj in doc.objects.values_mut() {
+        if let Object::Stream(s) = obj {
+            let is_image =
+                s.dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) == Some(b"Image");
+            if !is_image && !s.dict.has(b"Filter") {
+                let _ = s.compress();
+            }
+        }
     }
-    doc.compress();
     let mut bytes = Vec::new();
     doc.save_to(&mut bytes)
         .map_err(|e| EklerError::InvalidPdf(e.to_string()))?;

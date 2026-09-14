@@ -10,8 +10,22 @@ import { join } from '@tauri-apps/api/path';
  */
 export async function copyDestination(base: string, folderOnly: boolean): Promise<string | null> {
     const name = `${base}-${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`;
-    if (!folderOnly)
-        return save({ defaultPath: name, filters: [{ name: 'Yeni PDF', extensions: ['pdf'] }] });
+    if (!folderOnly) {
+        const picked = await save({ defaultPath: name, filters: [{ name: 'Yeni PDF', extensions: ['pdf'] }] });
+        return picked ? withPdfExtension(picked) : null;
+    }
     const folder = await open({ directory: true, multiple: false, title: 'Yeni PDF kopyasının kaydedileceği klasör' });
     return typeof folder === 'string' ? join(folder, name) : null;
+}
+
+/**
+ * Kaydetme penceresi uzantıyı garanti etmez: kullanıcı adı yazarken `.pdf`'yi
+ * silebilir ve macOS bunu olduğu gibi döndürür. Motor dosyayı yazar, ama
+ * kabuğun alım fişi (tarayıcı) biçimi UZANTIDAN okur ve uzantısız dosyayı
+ * reddeder — kullanıcı dosya diskteyken "kaydedilemedi" görüyordu.
+ * `.PDF` gibi büyük harfli yazım korunur; yalnız eksik uzantı tamamlanır.
+ */
+export function withPdfExtension(path: string): string {
+    const trimmed = path.trimEnd();
+    return /\.pdf$/i.test(trimmed) ? trimmed : `${trimmed}.pdf`;
 }
