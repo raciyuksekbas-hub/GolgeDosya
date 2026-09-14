@@ -352,9 +352,9 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         </ToolbarStatus>}
 
         {surfaces.tools && <ToolbarActions>
-            {kind !== 'raster' && <Button disabled={cannotSave} onClick={() => run(true)}>Klasör seçerek kaydet</Button>}
+            {kind !== 'raster' && <Button disabled={cannotSave} onClick={() => run(true)}>Klasör Seçerek Kaydet</Button>}
             <Button variant="primary" disabled={cannotSave} onClick={() => run()}>
-                {busy ? 'PDF hazırlanıyor…' : kind === 'raster' ? 'Görsel paketi kaydet' : 'Yeni PDF kaydet'}
+                {busy ? 'PDF hazırlanıyor…' : kind === 'raster' ? 'Görsel Paketi Kaydet' : 'Yeni PDF Kaydet'}
             </Button>
         </ToolbarActions>}
 
@@ -367,7 +367,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     <p className="tool-hint">{tools[kind][1]}</p>
                     {settingField}
                     {(kind === 'merge' || kind === 'images') &&
-                        <Button onClick={choose} disabled={busy}>Belge ekle</Button>}
+                        <Button onClick={choose} disabled={busy}>Belge Ekle</Button>}
                     {sources.length > 0 && <ol className="source-list">{sources.map((s, i) => <li key={s.path}>
                         <span>{s.file_name} · {s.page_count} sayfa</span>
                         {sources.length > 1 && <IconButton label={`${i + 1}. belgeyi yukarı taşı`} disabled={busy || i === 0} onClick={() => moveSource(i)}>
@@ -377,8 +377,8 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     {order.length > 0 && <>
                         <p className="tool-count">{order.length} kaynak sayfası{pageSelection ? ` · ${selected.length} işaretli` : ''} · Çıktı: {outputCount} sayfa</p>
                         {pageSelection && <div className="row">
-                            <Button className="btn-sm" disabled={busy} onClick={() => setSelected(order.map(p => p.key))}>Tümünü işaretle</Button>
-                            <Button className="btn-sm" variant="quiet" disabled={busy} onClick={() => setSelected([])}>Seçimi temizle</Button>
+                            <Button className="btn-sm" disabled={busy} onClick={() => setSelected(order.map(p => p.key))}>Tümünü İşaretle</Button>
+                            <Button className="btn-sm" variant="quiet" disabled={busy} onClick={() => setSelected([])}>Seçimi Temizle</Button>
                         </div>}
                     </>}
                     {sources.some(s => s.is_signed) && <label className="approval"><input type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)}/>İmza işareti bulundu. Türetilmiş PDF kaynak elektronik imzanın doğrulanabilirliğini taşımaz; onaylıyorum.</label>}

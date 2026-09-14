@@ -109,7 +109,7 @@ export function Layout({
             <div className="toolbar-shell">
               {hasInspector ? (
                 <IconButton
-                  label={inspectorOpen ? "Ayrıntıları gizle" : "Ayrıntıları göster"}
+                  label={inspectorOpen ? "Ayrıntıları Gizle" : "Ayrıntıları Göster"}
                   pressed={inspectorOpen}
                   onClick={() => setInspectorOpen((v) => !v)}
                 >

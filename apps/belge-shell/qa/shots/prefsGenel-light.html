@@ -802,9 +802,12 @@
   --measure-empty: 360px;
   /* Tercihler penceresinde kontrol kolonu: her satırda aynı hizada biter. */
   --control-col: 200px;
-  /* Optik üst bant — boş, hata ve akış yüzeyleri TEK kuralla yerleşir.
-     Ekranın matematiksel merkezi değil; yukarıda ve sola hizalı. */
-  --band-top: 6%;
+  /* Optik bant — boş, hata ve akış yüzeyleri TEK kuralla yerleşir.
+     Ekranın matematiksel merkezi değil: yukarıda, ve sol kenara yapışmayacak
+     kadar içeride. Üç yüzey de aynı iki değeri kullanır; aile hissi buradan
+     gelir. */
+  --band-top: 7%;
+  --band-left: min(8%, 88px);
 
   /* Okunabilir ölçü — uzun açıklama metni bu genişliği aşmaz. */
   --measure: 62ch;
@@ -1077,8 +1080,9 @@ body { user-select: none; -webkit-user-select: none; }
 .doc-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-chip-sep { color: var(--text-muted); }
 
-/* Belge yokken barın sol ucu: kipin adı. */
-.toolbar-mode { color: var(--text-primary); font-weight: 500; }
+/* Belge yokken barın sol ucu: kipin adı. Bir başlık değil, konum
+   göstergesi — kenar çubuğu zaten seçili kipi gösteriyor. */
+.toolbar-mode { color: var(--text-secondary); font-weight: 400; }
 
 /* Bağlamın ölçüsü: kaç sayfa, kaç fark, kaç bulgu. Bağlamın yanında, bir ton
    geride; sayılar sabit genişlikte ki değiştikçe satır oynamasın. Kip
@@ -1272,24 +1276,26 @@ body { user-select: none; -webkit-user-select: none; }
   flex-direction: column;
   align-items: flex-start;
   min-height: 200px;
-  padding-top: var(--band-top);
+  padding-top: calc(var(--band-top) * 2);
+  padding-left: var(--band-left);
   text-align: left;
 }
 .empty-body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  max-width: var(--measure-empty);
+  max-width: 46ch;
 }
-.empty-title { margin: 0; font-size: var(--text-title); font-weight: 600; }
+.empty-title { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.01em; }
 .empty-note {
-  margin: var(--space-2) 0 0;
+  margin: var(--space-3) 0 0;
   color: var(--text-secondary);
   font-size: var(--text-body);
-  line-height: 1.45;
+  line-height: 1.5;
+  text-wrap: balance;
 }
-.empty-meta { margin: var(--space-4) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
-.empty-action { margin-top: var(--space-6); }
+.empty-meta { margin: var(--space-5) 0 0; color: var(--text-muted); font-size: var(--text-meta); }
+.empty-action { margin-top: var(--space-5); }
 
 /* ------------------------------------------------------- Karşılama yüzeyi
    Kipin görevi üstte, gerçek içerik (son kullanılanlar) hemen altında.
@@ -1297,6 +1303,9 @@ body { user-select: none; -webkit-user-select: none; }
 
 .home { display: flex; flex-direction: column; }
 
+/* Başlık · açıklama · eylem · yardımcı satır TEK kompozisyondur: hepsi aynı
+   sol kenarı paylaşır, aralarındaki boşluk artan ağırlıkta açılır ve blok
+   içerik alanının sol kenarına yapışmaz. */
 .welcome {
   display: flex;
   flex: 1;
@@ -1304,21 +1313,27 @@ body { user-select: none; -webkit-user-select: none; }
   min-height: 0;
   max-width: var(--measure-list);
   padding-top: var(--band-top);
+  margin-left: var(--band-left);
 }
-.welcome-title { margin: 0; font-size: var(--text-title); font-weight: 600; }
+/* Altında liste yokken blok kısadır ve tepeye asılı kalır; o durumda
+   boş durumla aynı bandı kullanır. */
+.welcome[data-recents="false"] { padding-top: calc(var(--band-top) * 2); }
+.welcome-title { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.01em; }
 .welcome-note {
-  max-width: 52ch;
-  margin: var(--space-2) 0 0;
+  max-width: 56ch;
+  margin: var(--space-3) 0 0;
   color: var(--text-secondary);
   font-size: var(--text-body);
-  line-height: 1.45;
+  line-height: 1.5;
+  text-wrap: balance;
 }
-.welcome-action { display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-4); }
+/* Eylem ile yardımcı satır aynı taban çizgisinde oturur. */
+.welcome-action { display: flex; gap: var(--space-3); align-items: baseline; margin-top: var(--space-5); }
 .welcome-hint { color: var(--text-muted); font-size: var(--text-meta); }
 
 /* Kayıt yokken: "henüz yok" değil, ekranın ne kabul ettiği. */
 .welcome-formats {
-  margin: var(--space-8) 0 0;
+  margin: var(--space-7) 0 0;
   color: var(--text-muted);
   font-size: var(--text-meta);
 }
@@ -1331,19 +1346,20 @@ body { user-select: none; -webkit-user-select: none; }
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: var(--space-3);
-  align-items: center;
-  max-width: 520px;
-  margin-top: var(--space-6);
+  align-items: stretch;
+  max-width: 540px;
+  margin-top: var(--space-5);
 }
 
+/* İki yuva AYNI ızgaraya oturur: etiket · ad/davet · künye üç satırdır ve
+   dolu yuvayla boş yuva satır satır hizalanır. Satırlar kırılmaz. */
 .slot {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: flex-start;
-  justify-content: center;
-  min-height: 84px;
-  padding: var(--space-3) var(--space-4);
+  display: grid;
+  grid-template-rows: auto auto auto;
+  row-gap: 2px;
+  align-content: start;
+  justify-items: start;
+  padding: var(--space-4);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -1364,19 +1380,21 @@ body { user-select: none; -webkit-user-select: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.slot-meta { color: var(--text-secondary); font-size: var(--text-meta); }
-.slot-invite { color: var(--text-secondary); }
+/* Künye satırı boşken de yer tutar: dolu ve boş yuva satır satır aynı
+   hizada kalsın diye. */
+.slot-meta { min-height: 1.2em; color: var(--text-secondary); font-size: var(--text-meta); }
+.slot-invite { overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
 .slot:disabled .slot-invite { color: var(--text-muted); }
 /* Sıra kimdeyse o yuva konuşur; ikisi birden birincil olmaz. */
 .slot[data-next="true"] .slot-invite { color: var(--text-primary); font-weight: 500; }
 
 .slot-join { color: var(--text-muted); }
 
-.recents { display: flex; flex-direction: column; min-height: 0; margin-top: var(--space-8); }
+.recents { display: flex; flex-direction: column; min-height: 0; margin-top: var(--space-7); }
 .recents .file-list { min-height: 0; overflow: auto; }
 /* Üçüncül eylem başlığın YANINDA durur. Sağ uca itilince aralarında 500 px
    boşluk kalıyor ve hangi listeyi temizlediği okunmuyordu. */
-.recents-head { display: flex; gap: var(--space-3); align-items: baseline; padding-left: 8px; }
+.recents-head { display: flex; gap: var(--space-4); align-items: baseline; padding-left: 8px; }
 .recents-head > .section-head { margin-bottom: var(--space-2); }
 
 /* Sürükle-bırak hedefi tüm yüzey; kesikli çerçeve yalnız sürükleme sırasında. */
@@ -1670,7 +1688,7 @@ textarea {
 /* Üstten 72 px içeride, 680 px okuma genişliği: akış ekranın sol üst
    köşesine yapışmaz, ortasında da yüzmez. */
 .surface.convert { padding-top: 72px; }
-.convert-body { width: 100%; max-width: 680px; }
+.convert-body { width: 100%; max-width: 680px; margin-left: var(--band-left); }
 
 /* İki durak tek ızgarada: etiket · ad · biçim satırları hizalı, ok ADLARIN
    arasında durur. Ok kendi satırını bulamayınca biçim satırının yanına
@@ -1836,4 +1854,4 @@ textarea {
 .notices > div { display: flex; gap: var(--space-3); padding: 3px 0; }
 .notices dt { flex: none; min-width: 13ch; color: var(--text-primary); }
 .notices dd { margin: 0; color: var(--text-secondary); }
-</style></head><body><div style="height:100vh"><div class="shell" data-wide="true" data-fullscreen="false"><a class="skip-link" href="#icerik">İçeriğe geç</a><aside class="sidebar" data-tauri-drag-region="true"><div class="sidebar-head" data-tauri-drag-region="true"><svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true" class="sidebar-mark"><defs><clipPath id="gd-sidebar-mark"><rect x="12" y="8" width="40" height="48" rx="7"></rect></clipPath></defs><g clip-path="url(#gd-sidebar-mark)"><rect x="12" y="8" width="40" height="48" fill="var(--brand-mark)"></rect><path d="M12 8 H52 V32 L28 56 H12 Z" fill="currentColor"></path></g></svg><span class="sidebar-brand" title="GölgeDosya">GölgeDosya</span></div><nav class="sidebar-nav" aria-label="Çalışma kipleri"><button type="button" class="sidebar-item" data-feature="duzenek" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M9.5 1.8H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V8"></path><path d="M13.9 2.4a1.2 1.2 0 0 0-1.7-1.7L8.6 4.3l-.5 2.2 2.2-.5z"></path></svg><span>Düzenle</span></button><button type="button" class="sidebar-item" data-feature="tavzih"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M2.4 5.6h9.1M9.3 3.4l2.2 2.2-2.2 2.2"></path><path d="M13.6 10.4H4.5m2.2-2.2-2.2 2.2 2.2 2.2"></path></svg><span>Dönüştür</span></button><button type="button" class="sidebar-item" data-feature="degisikis"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><rect x="1.7" y="2.4" width="5.2" height="11.2" rx="1"></rect><rect x="9.1" y="2.4" width="5.2" height="11.2" rx="1"></rect><path d="M3.3 5.6h2M3.3 8h2M10.7 5.6h2M10.7 8h2M10.7 10.4h2"></path></svg><span>Karşılaştır</span></button><button type="button" class="sidebar-item" data-feature="ikincigoz"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M12.6 7.4V2.8a1 1 0 0 0-1-1H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h4"></path><path d="M4.9 4.8h5.2M4.9 7.2h3.4"></path><circle cx="11.1" cy="11.1" r="2.4"></circle><path d="m12.9 12.9 1.4 1.4"></path></svg><span>Denetle</span></button></nav><div class="sidebar-spacer" data-tauri-drag-region="true"></div><div class="sidebar-footer"><button type="button" class="sidebar-item" title="Ayarlar  ⌘,"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5"></path></svg><span>Ayarlar</span></button><button type="button" class="sidebar-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="6.2"></circle><path d="M8 7.2v4M8 4.9h.01"></path></svg><span>Hakkında</span></button><button type="button" class="sidebar-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M13.6 9.8a1 1 0 0 1-1 1H6.2L3.4 13.2V4.2a1 1 0 0 1 1-1h8.2a1 1 0 0 1 1 1z"></path></svg><span>Geri bildirim</span></button></div></aside><section class="content"><div class="titlebar-band" data-tauri-drag-region="true"></div><div class="toolbar" data-empty="false" data-tauri-drag-region="true"><div class="toolbar-context"><span class="toolbar-mode">Düzenle</span></div><div class="toolbar-status"></div><div class="toolbar-spacer" data-tauri-drag-region="true"></div><div class="toolbar-actions"></div><div class="toolbar-shell"></div></div><main id="icerik" class="content-body" tabindex="-1"><div class="surface home" data-over="false"><div class="welcome"><h1 class="welcome-title">PDF üzerinde çalışın</h1><p class="welcome-note">Sayfaları düzenlemek, döndürmek, sıralamak veya dışa aktarmak için bir PDF açın. Word, UYAP ve görsel dosyaları açılırken PDF&#x27;ye dönüştürülür.</p><div class="welcome-action"><button type="button" class="btn btn-primary" title="PDF Aç  ⌘O">PDF Aç</button><span class="welcome-hint">veya belgeyi buraya sürükleyin</span></div><section class="recents" aria-labelledby="son-baslik"><div class="recents-head"><h2 class="section-head" id="son-baslik">Son Belgeler</h2><button type="button" class="btn btn-quiet btn-sm">Listeyi temizle</button></div><ul class="file-list"><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">Baris_Dogan_itiraz_dilekcesi.docx</span><span class="file-meta">DOCX · 6 sa önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">ek-3 bilirkişi raporu.pdf</span><span class="file-meta">PDF · dün</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">İŞ SÖZLEŞMESİ.udf</span><span class="file-meta">UDF · 3 gün önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">kesif-tutanagi.pdf</span><span class="file-meta">PDF · 5 gün önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">sozlesme-v2.docx</span><span class="file-meta">DOCX · 5 Eyl</span></span></button></li></ul></section></div></div></main><div class="inspector-slot" hidden=""></div></section><div aria-live="polite" aria-atomic="true" class="sr-only" data-testid="announcer"></div></div><div class="sheet-backdrop"><div class="sheet prefs" role="dialog" aria-modal="true" aria-labelledby="ayar-baslik"><nav class="prefs-tabs" aria-label="Tercih bölümleri"><button type="button" class="sidebar-item" aria-current="page"><span>Genel</span></button><button type="button" class="sidebar-item"><span>Görünüm</span></button><button type="button" class="sidebar-item"><span>Erişilebilirlik</span></button><button type="button" class="sidebar-item"><span>Hakkında</span></button><button type="button" class="sidebar-item"><span>Telif</span></button><button type="button" class="sidebar-item"><span>Geri bildirim</span></button></nav><div class="prefs-body"><h2 id="ayar-baslik" class="prefs-title">Genel</h2><div class="prefs-group"><div class="field"><div class="field-label">Çıktı klasörü<span title="/Users/örnek/Belgeler/Dönüştürülen Belgeler">Dönüştürülen Belgeler · varsayılan</span></div><button type="button" class="btn">Değiştir…</button></div></div><div class="prefs-group"><div class="field"><div class="field-label">Son kullanılanlar<span>5 belge hatırlanıyor</span></div><button type="button" class="btn">Listeyi temizle</button></div><p class="prefs-hint">Liste yalnız bu bilgisayarda tutulur ve hiçbir yere gönderilmez.</p></div><div class="sheet-actions"><button type="button" class="btn">Bitti</button></div></div></div></div></div></body></html>
+</style></head><body><div style="height:100vh"><div class="shell" data-wide="true" data-fullscreen="false"><a class="skip-link" href="#icerik">İçeriğe geç</a><aside class="sidebar" data-tauri-drag-region="true"><div class="sidebar-head" data-tauri-drag-region="true"><svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true" class="sidebar-mark"><defs><clipPath id="gd-sidebar-mark"><rect x="12" y="8" width="40" height="48" rx="7"></rect></clipPath></defs><g clip-path="url(#gd-sidebar-mark)"><rect x="12" y="8" width="40" height="48" fill="var(--brand-mark)"></rect><path d="M12 8 H52 V32 L28 56 H12 Z" fill="currentColor"></path></g></svg><span class="sidebar-brand" title="GölgeDosya">GölgeDosya</span></div><nav class="sidebar-nav" aria-label="Çalışma kipleri"><button type="button" class="sidebar-item" data-feature="duzenek" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M9.5 1.8H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V8"></path><path d="M13.9 2.4a1.2 1.2 0 0 0-1.7-1.7L8.6 4.3l-.5 2.2 2.2-.5z"></path></svg><span>Düzenle</span></button><button type="button" class="sidebar-item" data-feature="tavzih"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M2.4 5.6h9.1M9.3 3.4l2.2 2.2-2.2 2.2"></path><path d="M13.6 10.4H4.5m2.2-2.2-2.2 2.2 2.2 2.2"></path></svg><span>Dönüştür</span></button><button type="button" class="sidebar-item" data-feature="degisikis"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><rect x="1.7" y="2.4" width="5.2" height="11.2" rx="1"></rect><rect x="9.1" y="2.4" width="5.2" height="11.2" rx="1"></rect><path d="M3.3 5.6h2M3.3 8h2M10.7 5.6h2M10.7 8h2M10.7 10.4h2"></path></svg><span>Karşılaştır</span></button><button type="button" class="sidebar-item" data-feature="ikincigoz"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M12.6 7.4V2.8a1 1 0 0 0-1-1H3.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h4"></path><path d="M4.9 4.8h5.2M4.9 7.2h3.4"></path><circle cx="11.1" cy="11.1" r="2.4"></circle><path d="m12.9 12.9 1.4 1.4"></path></svg><span>Denetle</span></button></nav><div class="sidebar-spacer" data-tauri-drag-region="true"></div><div class="sidebar-footer"><button type="button" class="sidebar-item" title="Ayarlar  ⌘,"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5"></path></svg><span>Ayarlar</span></button><button type="button" class="sidebar-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><circle cx="8" cy="8" r="6.2"></circle><path d="M8 7.2v4M8 4.9h.01"></path></svg><span>Hakkında</span></button><button type="button" class="sidebar-item"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="sidebar-icon"><path d="M13.6 9.8a1 1 0 0 1-1 1H6.2L3.4 13.2V4.2a1 1 0 0 1 1-1h8.2a1 1 0 0 1 1 1z"></path></svg><span>Geri Bildirim</span></button></div></aside><section class="content"><div class="titlebar-band" data-tauri-drag-region="true"></div><div class="toolbar" data-empty="false" data-tauri-drag-region="true"><div class="toolbar-context"><span class="toolbar-mode">Düzenle</span></div><div class="toolbar-status"></div><div class="toolbar-spacer" data-tauri-drag-region="true"></div><div class="toolbar-actions"></div><div class="toolbar-shell"></div></div><main id="icerik" class="content-body" tabindex="-1"><div class="surface home" data-over="false"><div class="welcome" data-recents="true"><h1 class="welcome-title">Sayfalar ve dışa aktarma</h1><p class="welcome-note">Bir PDF açın; sayfaları sıralayın, döndürün ya da dışa aktarın. Word ve UYAP belgeleri açılırken PDF&#x27;ye dönüştürülür.</p><div class="welcome-action"><button type="button" class="btn btn-primary" title="PDF Aç  ⌘O">PDF Aç</button><span class="welcome-hint">veya buraya sürükleyin</span></div><section class="recents" aria-labelledby="son-baslik"><div class="recents-head"><h2 class="section-head" id="son-baslik">Son belgeler</h2><button type="button" class="btn btn-quiet btn-sm">Listeyi Temizle</button></div><ul class="file-list"><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">Baris_Dogan_itiraz_dilekcesi.docx</span><span class="file-meta">DOCX · 6 saat önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">ek-3 bilirkişi raporu.pdf</span><span class="file-meta">PDF · dün</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">İŞ SÖZLEŞMESİ.udf</span><span class="file-meta">UDF · 3 gün önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">kesif-tutanagi.pdf</span><span class="file-meta">PDF · 5 gün önce</span></span></button></li><li><button type="button" class="file-row"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="file-icon"><path d="M9.4 1.8H4.6a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V4.8z"></path><path d="M9.4 1.8v3h3"></path><path d="M5.8 8h4.4M5.8 10.4h3"></path></svg><span class="file-text"><span class="file-name">sozlesme-v2.docx</span><span class="file-meta">DOCX · 5 Eylül</span></span></button></li></ul></section></div></div></main><div class="inspector-slot" hidden=""></div></section><div aria-live="polite" aria-atomic="true" class="sr-only" data-testid="announcer"></div></div><div class="sheet-backdrop"><div class="sheet prefs" role="dialog" aria-modal="true" aria-labelledby="ayar-baslik"><nav class="prefs-tabs" aria-label="Tercih bölümleri"><button type="button" class="sidebar-item" aria-current="page"><span>Genel</span></button><button type="button" class="sidebar-item"><span>Görünüm</span></button><button type="button" class="sidebar-item"><span>Erişilebilirlik</span></button><button type="button" class="sidebar-item"><span>Hakkında</span></button><button type="button" class="sidebar-item"><span>Telif</span></button><button type="button" class="sidebar-item"><span>Geri Bildirim</span></button></nav><div class="prefs-body"><h2 id="ayar-baslik" class="prefs-title">Genel</h2><div class="prefs-group"><div class="field"><div class="field-label">Çıktı klasörü<span title="/Users/örnek/Belgeler/Dönüştürülen Belgeler">Dönüştürülen Belgeler · varsayılan</span></div><button type="button" class="btn">Değiştir</button></div></div><div class="prefs-group"><div class="field"><div class="field-label">Son kullanılanlar<span>5 belge hatırlanıyor</span></div><button type="button" class="btn">Listeyi Temizle</button></div><p class="prefs-hint">Liste yalnız bu bilgisayarda tutulur ve hiçbir yere gönderilmez.</p></div><div class="sheet-actions"><button type="button" class="btn">Bitti</button></div></div></div></div></div></body></html>

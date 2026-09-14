@@ -88,7 +88,7 @@ export function Sidebar({ features, current, onNavigate, onOpenSettings }: Props
         </button>
         <button type="button" className="sidebar-item" onClick={() => onOpenSettings("geri")}>
           <IconFeedback className="sidebar-icon" />
-          <span>Geri bildirim</span>
+          <span>Geri Bildirim</span>
         </button>
       </div>
     </aside>

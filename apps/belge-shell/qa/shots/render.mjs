@@ -235,15 +235,15 @@ try {
             el('ol', { className: 'source-list' }, el('li', null, el('span', null, 'ek-3 bilirkişi raporu.pdf · 8 sayfa'))),
             el('p', { className: 'tool-count' }, '8 kaynak sayfası · 2 işaretli · Çıktı: 2 sayfa'),
             el('div', { className: 'row' },
-              el(Button, { className: 'btn-sm' }, 'Tümünü işaretle'),
-              el(Button, { className: 'btn-sm', variant: 'quiet' }, 'Seçimi temizle')),
+              el(Button, { className: 'btn-sm' }, 'Tümünü İşaretle'),
+              el(Button, { className: 'btn-sm', variant: 'quiet' }, 'Seçimi Temizle')),
             el('p', { className: 'tool-safe' }, 'Yeni bir kopya oluşturulur; kaynak belgeleriniz korunur.'))));
 
         export const editPages = withPanel(withActions(withStatus(renderToStaticMarkup(shell({
           current: 'duzenek', context: editChip,
           actions: el(Button, { variant: 'quiet' }, 'Kapat'),
         }, editBody)), '8 sayfa · 2 işaretli'),
-          secondary('Klasör seçerek kaydet') + primary('Yeni PDF kaydet')),
+          secondary('Klasör Seçerek Kaydet') + primary('Yeni PDF Kaydet')),
           editPanel, 'Araçlar', 'pdf-root');
 
         /* ---------------------------------------------------------- Denetle */
@@ -311,7 +311,7 @@ try {
             findings: findings8, blockText: blockText8, activeKey: 'r1:p7:62',
             selectedKeys: new Set(), onSetActive(){}, onToggleFix(){},
           })))), '5 kesin hata · 2 uyarı · 1 incele'),
-          primary('Kopyaya uygula')), reviewPanel, 'Denetim özeti');
+          primary('Kopyaya Uygula')), reviewPanel, 'Denetim özeti');
 
         /* --------------------------------------------------------- Ayarlar */
         // Çıktı klasörü satırı motor çağrısına bağlıdır ve statik çizimde

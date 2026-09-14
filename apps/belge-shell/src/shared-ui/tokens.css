@@ -130,9 +130,12 @@
   --measure-empty: 360px;
   /* Tercihler penceresinde kontrol kolonu: her satırda aynı hizada biter. */
   --control-col: 200px;
-  /* Optik üst bant — boş, hata ve akış yüzeyleri TEK kuralla yerleşir.
-     Ekranın matematiksel merkezi değil; yukarıda ve sola hizalı. */
-  --band-top: 6%;
+  /* Optik bant — boş, hata ve akış yüzeyleri TEK kuralla yerleşir.
+     Ekranın matematiksel merkezi değil: yukarıda, ve sol kenara yapışmayacak
+     kadar içeride. Üç yüzey de aynı iki değeri kullanır; aile hissi buradan
+     gelir. */
+  --band-top: 7%;
+  --band-left: min(8%, 88px);
 
   /* Okunabilir ölçü — uzun açıklama metni bu genişliği aşmaz. */
   --measure: 62ch;

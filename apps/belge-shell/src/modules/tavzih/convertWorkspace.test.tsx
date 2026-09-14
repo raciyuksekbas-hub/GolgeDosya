@@ -112,7 +112,7 @@ describe("durum sözleşmesi", () => {
     // Tek baskın eylem; ikincisi sessiz.
     expect(done).toMatch(/Finder(&#x27;|')da Göster/);
     expect((done.match(/class="btn btn-primary"/g) ?? []).length).toBe(1);
-    expect(done).toContain("Yeniden dönüştür");
+    expect(done).toContain("Yeniden Dönüştür");
   });
 
   it("bar yönü taşır, düğmeyi değil", () => {

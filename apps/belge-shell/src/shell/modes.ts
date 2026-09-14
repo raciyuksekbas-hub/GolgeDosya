@@ -15,7 +15,13 @@ import type { FeatureState } from "./types";
 export interface Mode {
   /** Kullanıcının gördüğü eylem adı. */
   label: string;
-  /** Karşılama ekranının başlığı — kipin GÖREVİ, "Belge açın" değil. */
+  /**
+   * Karşılama başlığı — kipin GÖREVİ.
+   *
+   * Emir kipi değil: "PDF üzerinde çalışın" bir çalışma notu gibi okunuyordu.
+   * Başlık işin ADINI söyler, kullanıcıya ne yapacağını buyurmaz; ne
+   * yapılacağı açıklamada, nasıl başlanacağı düğmededir.
+   */
   emptyTitle: string;
   /** Bu kipin açabildiği uzantılar. */
   extensions: string[];
@@ -36,6 +42,8 @@ export interface Mode {
    * belgelik zihinsel model ekranda durur. Tek belgelik kiplerde yoktur.
    */
   slots?: [string, string];
+  /** Yuvaların boş hâlindeki davet metni. Etiket ad, bu satır eylemdir. */
+  slotInvites?: [string, string];
 }
 
 /**
@@ -55,50 +63,51 @@ export function formatList(mode: Mode, limit = 5): string {
 export const MODES: Record<FeatureState["key"], Mode> = {
   duzenek: {
     label: "Düzenle",
-    emptyTitle: "PDF üzerinde çalışın",
+    emptyTitle: "Sayfalar ve dışa aktarma",
     extensions: ["pdf", "docx", "doc", "udf", "jpg", "jpeg", "png", "tiff", "heic"],
-    // Kip gerçekten Word, UYAP ve görselleri de açıyor (motor onları PDF'ye
-    // çeviriyor). Liste bu türleri gösterdiğine göre yüzey de bunu söylemeli:
-    // "yalnız PDF" demek verilmeyen bir söz olurdu.
+    // İkinci cümle bir nezaket değil zorunluluk: liste DOCX ve UDF satırları
+    // gösteriyor, motor da onları gerçekten açıyor. "Yalnız PDF" demek
+    // verilmeyen bir söz olurdu.
     hint:
-      "Sayfaları düzenlemek, döndürmek, sıralamak veya dışa aktarmak için bir PDF açın. " +
-      "Word, UYAP ve görsel dosyaları açılırken PDF'ye dönüştürülür.",
+      "Bir PDF açın; sayfaları sıralayın, döndürün ya da dışa aktarın. " +
+      "Word ve UYAP belgeleri açılırken PDF'ye dönüştürülür.",
     openLabel: "PDF Aç",
     // Liste PDF dışı türleri de taşır (Düzenle onları da açar), bu yüzden
     // başlık "Son PDF'ler" olamaz: etiketin listeyle uyuşması, sloganın
     // kulağa hoş gelmesinden önemli.
-    recentTitle: "Son Belgeler",
+    recentTitle: "Son belgeler",
     pickerLabel: "Belge veya görsel",
     needs: 1,
   },
   tavzih: {
     label: "Dönüştür",
-    emptyTitle: "Belge dönüştürün",
+    emptyTitle: "Word ve UYAP arasında",
     extensions: ["docx", "udf"],
-    hint: "Word ve UYAP biçimleri arasında: DOCX ⇄ UDF.",
+    hint: "DOCX ve UDF biçimleri arasında dönüştürün; kaynak belgeniz olduğu gibi kalır.",
     openLabel: "Belge Aç",
-    recentTitle: "Son Belgeler",
+    recentTitle: "Son belgeler",
     pickerLabel: "Word veya UYAP belgesi",
     needs: 1,
   },
   degisikis: {
     label: "Karşılaştır",
-    emptyTitle: "İki belgeyi karşılaştırın",
+    emptyTitle: "İki sürüm arasındaki farklar",
     extensions: ["pdf", "docx", "doc", "udf"],
-    hint: "İlk belgeyi seçin, ardından karşılaştıracağınız ikinci belgeyi ekleyin.",
+    hint: "İki belge seçin; eklenen, silinen ve değişen bölümler yan yana gösterilir.",
     openLabel: "İlk Belgeyi Seç",
-    recentTitle: "Son Belgeler",
+    recentTitle: "Son belgeler",
     pickerLabel: "Karşılaştırılacak belgeler",
     needs: 2,
     slots: ["Belge A", "Belge B"],
+    slotInvites: ["İlk belgeyi seç", "İkinci belgeyi seç"],
   },
   ikincigoz: {
     label: "Denetle",
-    emptyTitle: "Belgeyi denetleyin",
+    emptyTitle: "Göndermeden önce son okuma",
     extensions: ["docx", "udf"],
-    hint: "Göndermeden önce son okuma: DOCX veya UDF dosyanızı açın.",
+    hint: "Bir DOCX veya UDF açın; yazım, noktalama ve tutarlılık bulgularını inceleyin.",
     openLabel: "Belge Aç",
-    recentTitle: "Son Belgeler",
+    recentTitle: "Son belgeler",
     pickerLabel: "Word veya UYAP belgesi",
     needs: 1,
   },

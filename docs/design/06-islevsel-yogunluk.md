@@ -432,3 +432,37 @@ Arayüzde büyük harf zorlaması kalmadı; kullanılmayan `Pill` ilkeli kaldır
 Düzenle'nin karşılama metni artık Word/UYAP/görsel dosyalarının PDF'ye
 dönüştürüldüğünü söylüyor — liste bu türleri gösterdiğine göre vaat de
 dürüst olmalı.
+
+---
+
+## Metin ve tipografi turu
+
+**Başlıklar emir kipini bıraktı.** "PDF üzerinde çalışın" bir çalışma notu
+gibi okunuyordu. Başlık artık işin ADINI söylüyor, kullanıcıya ne yapacağını
+buyurmuyor; ne yapılacağı açıklamada, nasıl başlanacağı düğmede.
+
+| Kip | Başlık | Açıklama |
+|---|---|---|
+| Düzenle | Sayfalar ve dışa aktarma | Bir PDF açın; sayfaları sıralayın, döndürün ya da dışa aktarın. Word ve UYAP belgeleri açılırken PDF'ye dönüştürülür. |
+| Dönüştür | Word ve UYAP arasında | DOCX ve UDF biçimleri arasında dönüştürün; kaynak belgeniz olduğu gibi kalır. |
+| Karşılaştır | İki sürüm arasındaki farklar | İki belge seçin; eklenen, silinen ve değişen bölümler yan yana gösterilir. |
+| Denetle | Göndermeden önce son okuma | Bir DOCX veya UDF açın; yazım, noktalama ve tutarlılık bulgularını inceleyin. |
+
+**Kompozisyon tek blok.** Başlık · açıklama · eylem · yardımcı satır aynı sol
+kenarı paylaşır, aralarındaki boşluk artan ağırlıkta açılır (12 → 20), eylem
+ile yardımcı satır aynı taban çizgisinde oturur. Blok içerik alanının sol
+kenarına yapışmaz: `--band-left` (%8, en çok 88 px) üç yüzeyin de ortak sol
+bandıdır. Altında liste yokken blok kısadır ve üst bant iki katına çıkar —
+tepeye asılı kalmaz, ama hero da olmaz.
+
+**Büyük harf tek kural.** Komut etiketleri (düğme, gezinme, sekme) Başlık
+Düzeni; bölüm başlıkları ve yardımcı metin cümle düzeni. İstisna: "…" ile
+biten etiket bir ilerleme cümlesidir ve cümle düzeninde kalır
+("PDF hazırlanıyor…").
+
+**Zaman basamakları tek dilde.** "6 sa önce" ile "3 gün önce" aynı listede
+yan yana durunca liste bir çalışma notu gibi okunuyordu: artık "6 saat önce",
+"5 Eylül".
+
+**A/B yuvaları tek ızgarada.** Etiket · ad/davet · künye üç satırdır; dolu
+yuvayla boş yuva satır satır hizalanır, sıradaki adım tek yuvada konuşur.

@@ -155,8 +155,9 @@
 .doc-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-chip-sep { color: var(--text-muted); }
 
-/* Belge yokken barın sol ucu: kipin adı. */
-.toolbar-mode { color: var(--text-primary); font-weight: 500; }
+/* Belge yokken barın sol ucu: kipin adı. Bir başlık değil, konum
+   göstergesi — kenar çubuğu zaten seçili kipi gösteriyor. */
+.toolbar-mode { color: var(--text-secondary); font-weight: 400; }
 
 /* Bağlamın ölçüsü: kaç sayfa, kaç fark, kaç bulgu. Bağlamın yanında, bir ton
    geride; sayılar sabit genişlikte ki değiştikçe satır oynamasın. Kip
@@ -350,24 +351,26 @@
   flex-direction: column;
   align-items: flex-start;
   min-height: 200px;
-  padding-top: var(--band-top);
+  padding-top: calc(var(--band-top) * 2);
+  padding-left: var(--band-left);
   text-align: left;
 }
 .empty-body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  max-width: var(--measure-empty);
+  max-width: 46ch;
 }
-.empty-title { margin: 0; font-size: var(--text-title); font-weight: 600; }
+.empty-title { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.01em; }
 .empty-note {
-  margin: var(--space-2) 0 0;
+  margin: var(--space-3) 0 0;
   color: var(--text-secondary);
   font-size: var(--text-body);
-  line-height: 1.45;
+  line-height: 1.5;
+  text-wrap: balance;
 }
-.empty-meta { margin: var(--space-4) 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
-.empty-action { margin-top: var(--space-6); }
+.empty-meta { margin: var(--space-5) 0 0; color: var(--text-muted); font-size: var(--text-meta); }
+.empty-action { margin-top: var(--space-5); }
 
 /* ------------------------------------------------------- Karşılama yüzeyi
    Kipin görevi üstte, gerçek içerik (son kullanılanlar) hemen altında.
@@ -375,6 +378,9 @@
 
 .home { display: flex; flex-direction: column; }
 
+/* Başlık · açıklama · eylem · yardımcı satır TEK kompozisyondur: hepsi aynı
+   sol kenarı paylaşır, aralarındaki boşluk artan ağırlıkta açılır ve blok
+   içerik alanının sol kenarına yapışmaz. */
 .welcome {
   display: flex;
   flex: 1;
@@ -382,21 +388,27 @@
   min-height: 0;
   max-width: var(--measure-list);
   padding-top: var(--band-top);
+  margin-left: var(--band-left);
 }
-.welcome-title { margin: 0; font-size: var(--text-title); font-weight: 600; }
+/* Altında liste yokken blok kısadır ve tepeye asılı kalır; o durumda
+   boş durumla aynı bandı kullanır. */
+.welcome[data-recents="false"] { padding-top: calc(var(--band-top) * 2); }
+.welcome-title { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.01em; }
 .welcome-note {
-  max-width: 52ch;
-  margin: var(--space-2) 0 0;
+  max-width: 56ch;
+  margin: var(--space-3) 0 0;
   color: var(--text-secondary);
   font-size: var(--text-body);
-  line-height: 1.45;
+  line-height: 1.5;
+  text-wrap: balance;
 }
-.welcome-action { display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-4); }
+/* Eylem ile yardımcı satır aynı taban çizgisinde oturur. */
+.welcome-action { display: flex; gap: var(--space-3); align-items: baseline; margin-top: var(--space-5); }
 .welcome-hint { color: var(--text-muted); font-size: var(--text-meta); }
 
 /* Kayıt yokken: "henüz yok" değil, ekranın ne kabul ettiği. */
 .welcome-formats {
-  margin: var(--space-8) 0 0;
+  margin: var(--space-7) 0 0;
   color: var(--text-muted);
   font-size: var(--text-meta);
 }
@@ -409,19 +421,20 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: var(--space-3);
-  align-items: center;
-  max-width: 520px;
-  margin-top: var(--space-6);
+  align-items: stretch;
+  max-width: 540px;
+  margin-top: var(--space-5);
 }
 
+/* İki yuva AYNI ızgaraya oturur: etiket · ad/davet · künye üç satırdır ve
+   dolu yuvayla boş yuva satır satır hizalanır. Satırlar kırılmaz. */
 .slot {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: flex-start;
-  justify-content: center;
-  min-height: 84px;
-  padding: var(--space-3) var(--space-4);
+  display: grid;
+  grid-template-rows: auto auto auto;
+  row-gap: 2px;
+  align-content: start;
+  justify-items: start;
+  padding: var(--space-4);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -442,19 +455,21 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.slot-meta { color: var(--text-secondary); font-size: var(--text-meta); }
-.slot-invite { color: var(--text-secondary); }
+/* Künye satırı boşken de yer tutar: dolu ve boş yuva satır satır aynı
+   hizada kalsın diye. */
+.slot-meta { min-height: 1.2em; color: var(--text-secondary); font-size: var(--text-meta); }
+.slot-invite { overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
 .slot:disabled .slot-invite { color: var(--text-muted); }
 /* Sıra kimdeyse o yuva konuşur; ikisi birden birincil olmaz. */
 .slot[data-next="true"] .slot-invite { color: var(--text-primary); font-weight: 500; }
 
 .slot-join { color: var(--text-muted); }
 
-.recents { display: flex; flex-direction: column; min-height: 0; margin-top: var(--space-8); }
+.recents { display: flex; flex-direction: column; min-height: 0; margin-top: var(--space-7); }
 .recents .file-list { min-height: 0; overflow: auto; }
 /* Üçüncül eylem başlığın YANINDA durur. Sağ uca itilince aralarında 500 px
    boşluk kalıyor ve hangi listeyi temizlediği okunmuyordu. */
-.recents-head { display: flex; gap: var(--space-3); align-items: baseline; padding-left: 8px; }
+.recents-head { display: flex; gap: var(--space-4); align-items: baseline; padding-left: 8px; }
 .recents-head > .section-head { margin-bottom: var(--space-2); }
 
 /* Sürükle-bırak hedefi tüm yüzey; kesikli çerçeve yalnız sürükleme sırasında. */
@@ -748,7 +763,7 @@ textarea {
 /* Üstten 72 px içeride, 680 px okuma genişliği: akış ekranın sol üst
    köşesine yapışmaz, ortasında da yüzmez. */
 .surface.convert { padding-top: 72px; }
-.convert-body { width: 100%; max-width: 680px; }
+.convert-body { width: 100%; max-width: 680px; margin-left: var(--band-left); }
 
 /* İki durak tek ızgarada: etiket · ad · biçim satırları hizalı, ok ADLARIN
    arasında durur. Ok kendi satırını bulamayınca biçim satırının yanına

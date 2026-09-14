@@ -106,9 +106,10 @@ describe("durum sözleşmesi", () => {
     const box = declarations(".empty");
     for (const prop of ["background", "background-color", "border", "box-shadow"])
       expect(box[prop]).toBeUndefined();
-    // Künye sessiz: ikincil renk, küçük punto.
+    // Künye sessiz: ana metnin altında bir ton, küçük punto. Hangi sessiz
+    // ton olduğu tipografi turlarında değişebilir; sessiz OLMASI değişmez.
     const meta = declarations(".empty-meta");
-    expect(meta.color).toBe("var(--text-secondary)");
+    expect(["var(--text-secondary)", "var(--text-muted)"]).toContain(meta.color);
     expect(meta["font-size"]).toBe("var(--text-meta)");
   });
 
@@ -129,7 +130,7 @@ describe("durum sözleşmesi", () => {
     expect(markup).toContain("13 paragraf · 84 kelime");
     // Düzeltilebilir bulgu varsa birincil eylem barda.
     expect(markup).toContain('class="toolbar-actions"');
-    expect(markup).toContain("Kopyaya uygula");
+    expect(markup).toContain("Kopyaya Uygula");
   });
 
   it("workspace iki durumu da tek yerden seçer", () => {

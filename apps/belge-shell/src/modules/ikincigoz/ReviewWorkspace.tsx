@@ -88,7 +88,7 @@ export function ReviewChrome({
       {fixable.length > 0 ? (
         <ToolbarActions>
           <Button variant="primary" onClick={onApply} disabled={selected.size === 0}>
-            Kopyaya uygula
+            Kopyaya Uygula
           </Button>
         </ToolbarActions>
       ) : null}
@@ -125,7 +125,7 @@ export function ReviewChrome({
             </p>
             <div className="row">
               <Button className="btn-sm" onClick={onSelectAll} disabled={selected.size === fixable.length}>
-                Tümünü seç
+                Tümünü Seç
               </Button>
               <Button
                 className="btn-sm"
@@ -133,7 +133,7 @@ export function ReviewChrome({
                 onClick={onClearSelection}
                 disabled={selected.size === 0}
               >
-                Seçimi temizle
+                Seçimi Temizle
               </Button>
             </div>
             <p className="tool-hint">

@@ -24,7 +24,7 @@ const TABS: { id: PrefTab; label: string }[] = [
   { id: "erisim", label: "Erişilebilirlik" },
   { id: "hakkinda", label: "Hakkında" },
   { id: "telif", label: "Telif" },
-  { id: "geri", label: "Geri bildirim" },
+  { id: "geri", label: "Geri Bildirim" },
 ];
 
 /**
@@ -183,7 +183,7 @@ export function PreferencesSheet({
                     </span>
                   </div>
                   <Button disabled={remembered === 0} onClick={onForget}>
-                    Listeyi temizle
+                    Listeyi Temizle
                   </Button>
                 </div>
                 <p className="prefs-hint">

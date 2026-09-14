@@ -75,7 +75,7 @@ describe("Fark paneli erişilebilirliği", () => {
       resolve(import.meta.dirname, "../../shell/Layout.tsx"),
       "utf8",
     );
-    expect(layout).toContain('label={inspectorOpen ? "Ayrıntıları gizle" : "Ayrıntıları göster"}');
+    expect(layout).toContain('label={inspectorOpen ? "Ayrıntıları Gizle" : "Ayrıntıları Göster"}');
     expect(layout).toContain("pressed={inspectorOpen}");
   });
 

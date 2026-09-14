@@ -133,11 +133,15 @@ test("boş, hata ve sonuç-yok durumları tek yüzeyden çizilir", () => {
   // kahraman blok geri gelmemeli — boş durum da sola hizalı üst banttadır.
   const blocks = shell.match(/^\.empty \{[^}]*\}/gmu) ?? [];
   assert.equal(blocks.length, 1, "boş durum tek CSS bloğuyla tanımlanmalı");
-  assert.match(blocks[0], /padding-top: var\(--band-top\)/u, "boş durum ortak üst bandı kullanmalı");
+  assert.match(blocks[0], /var\(--band-top\)/u, "boş durum ortak üst bandı kullanmalı");
+  assert.match(blocks[0], /var\(--band-left\)/u, "boş durum ortak sol bandı kullanmalı");
   assert.match(blocks[0], /align-items: flex-start/u, "boş durum sola hizalı olmalı");
   const welcomeBlock = shell.match(/^\.welcome \{[^}]*\}/gmu) ?? [];
   assert.equal(welcomeBlock.length, 1, "karşılama tek CSS bloğuyla tanımlanmalı");
-  assert.match(welcomeBlock[0], /padding-top: var\(--band-top\)/u, "karşılama aynı bandı kullanmalı");
+  assert.match(welcomeBlock[0], /var\(--band-top\)/u, "karşılama aynı bandı kullanmalı");
+  assert.match(welcomeBlock[0], /var\(--band-left\)/u, "karşılama aynı sol bandı kullanmalı");
+  // Dönüştür akışı da aynı aileye girer: üç yüzey tek optik banttan yerleşir.
+  assert.match(shell, /\.convert-body \{[^}]*var\(--band-left\)/su, "akış da aynı sol bandı kullanmalı");
 });
 
 test("etkisiz eylem ekranın en ağır öğesi olamaz", () => {
@@ -467,4 +471,71 @@ test("boşluk ölçeği sistematik: 4 · 8 · 12 · 16 · 20 · 24 · 32", () =>
     const line = tokens.split("\n").find((l) => l.includes(`--space-${i + 1}:`));
     assert.ok(line?.includes(`${px}px`), `--space-${i + 1} ${px}px olmalı — ${line?.trim()}`);
   });
+});
+
+test("boş durum başlığı emir değil, işin adıdır", () => {
+  const modes = readFileSync("src/shell/modes.ts", "utf8");
+  const titles = [...modes.matchAll(/emptyTitle: "([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(titles.length, 4, "dört kipin de başlığı olmalı");
+  assert.equal(new Set(titles).size, 4, "başlıklar birbirinin kopyası olmamalı");
+  for (const t of titles) {
+    assert.ok(t.length <= 32, `başlık tek satıra sığmalı: "${t}" (${t.length})`);
+    // "…çalışın", "…dönüştürün", "…karşılaştırın": emir kipi bir çalışma notu
+    // gibi okunuyordu. Başlık işin ADINI söyler, buyurmaz.
+    assert.ok(
+      !/(?:ın|in|un[uü]n?|ün|yın|yin)$/u.test(t.split(" ").pop()),
+      `başlık emir kipiyle bitmemeli: "${t}"`,
+    );
+  }
+  // Açıklama iki satırı geçmez: 56ch ölçüde ~112 karakter.
+  const hints = [...modes.matchAll(/hint:\s*(?:"([^"]+)"|\n\s*"([^"]+)" \+\n\s*"([^"]+)")/g)].map(
+    (m) => (m[1] ?? "") + (m[2] ?? "") + (m[3] ?? ""),
+  );
+  assert.equal(hints.length, 4, "dört açıklama da bulunmalı");
+  for (const h of hints) {
+    assert.ok(h.length <= 120, `açıklama iki satırı aşıyor: "${h}" (${h.length})`);
+  }
+});
+
+test("büyük harf düzeni tek kural: komut Başlık, bölüm cümle düzeninde", () => {
+  // Komut etiketleri (düğme, gezinme) Başlık Düzeni; bölüm başlıkları ve
+  // yardımcı metin cümle düzeni. "…" ile biten etiket bir ilerleme cümlesidir
+  // ve cümle düzeninde kalır ("PDF hazırlanıyor…").
+  const labels = [];
+  for (const file of sources.filter((p) => p.endsWith(".tsx"))) {
+    const body = readFileSync(file, "utf8");
+    for (const m of body.matchAll(/<Button\b[^>]*>\s*([^<>{}]+?)\s*<\/Button>/gs)) {
+      labels.push([file, m[1].replace(/\s+/g, " ").trim()]);
+    }
+  }
+  assert.ok(labels.length >= 12, `düğme etiketleri taranmalı (bulunan ${labels.length})`);
+  for (const [file, label] of labels) {
+    if (label.endsWith("…")) continue;
+    for (const word of label.split(" ")) {
+      assert.match(
+        word,
+        /^[A-ZÇĞİÖŞÜ0-9&]/u,
+        `${file}: komut etiketi Başlık Düzeninde olmalı — "${label}"`,
+      );
+    }
+  }
+  // Bölüm başlıkları cümle düzeninde: yalnız ilk kelime büyük.
+  const modes = readFileSync("src/shell/modes.ts", "utf8");
+  for (const m of modes.matchAll(/recentTitle: "([^"]+)"/g)) {
+    const rest = m[1].split(" ").slice(1);
+    for (const w of rest) {
+      assert.match(w, /^[a-zçğıöşü]/u, `bölüm başlığı cümle düzeninde olmalı — "${m[1]}"`);
+    }
+  }
+});
+
+test("zaman basamakları tek dilde konuşur", () => {
+  // "6 sa önce" ile "3 gün önce" aynı listede yan yana durunca liste bir
+  // çalışma notu gibi okunuyordu.
+  const rel = readFileSync("src/features/relativeTime.ts", "utf8");
+  for (const short of [" dk önce", " sa önce"]) {
+    assert.ok(!rel.includes(short), `kısaltma kalmamalı: "${short.trim()}"`);
+  }
+  assert.ok(rel.includes("dakika önce") && rel.includes("saat önce"), "tam kelime kullanılmalı");
+  assert.ok(!/month: "short"/.test(rel), "ay adı da kısaltılmamalı");
 });

@@ -83,7 +83,7 @@ export function FlowDestination({ folder, onChoose, onReset }: {
         ) : null}
         {onReset && !folder.is_default ? (
           <Button className="btn-sm" variant="quiet" onClick={onReset}>
-            Varsayılana dön
+            Varsayılana Dön
           </Button>
         ) : null}
       </p>
@@ -236,7 +236,7 @@ export function ConvertDone({ items, from, to, folder, onReveal, onAgain }: {
           </Button>
         ) : null}
         <Button variant="quiet" onClick={onAgain}>
-          Yeniden dönüştür
+          Yeniden Dönüştür
         </Button>
       </div>
     </section>

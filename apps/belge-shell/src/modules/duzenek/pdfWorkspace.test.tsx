@@ -125,8 +125,8 @@ describe("yerleşim sözleşmesi", () => {
     expect(source).toMatch(/<div className="pdf-controls"/);
     // Kaydetme eylemleri yardımcı barda.
     const bar = source.slice(source.indexOf("<ToolbarActions>"), source.indexOf("</ToolbarActions>"));
-    expect(bar).toContain("Yeni PDF kaydet");
-    expect(bar).toContain("Klasör seçerek kaydet");
+    expect(bar).toContain("Yeni PDF Kaydet");
+    expect(bar).toContain("Klasör Seçerek Kaydet");
     // Sonuç metni panelde DEĞİL: panel kapalıyken de görünmeli.
     const workspace = source.slice(source.indexOf('className="pdf-workspace-layout"'));
     expect(workspace).toMatch(/<Status tone=/);
@@ -134,7 +134,7 @@ describe("yerleşim sözleşmesi", () => {
     expect(source).toMatch(/PAGE_TOOLS: Kind\[\] = \['select', 'reorder', 'delete', 'rotate'\]/);
     expect(source).toMatch(/className="tool-segment" role="group"/);
     // Birleştir ve Görseller → PDF için ikinci belge yolu duruyor.
-    expect(source).toContain("Belge ekle");
+    expect(source).toContain("Belge Ekle");
   });
 });
 
@@ -396,10 +396,10 @@ describe("kabuğa bağlanma", () => {
       "Genişliğe sığdır",
       "↶ Sola 90°",
       "↷ Sağa 90°",
-      "Yeni PDF kaydet",
-      "Klasör seçerek kaydet",
-      "Tümünü işaretle",
-      "Seçimi temizle",
+      "Yeni PDF Kaydet",
+      "Klasör Seçerek Kaydet",
+      "Tümünü İşaretle",
+      "Seçimi Temizle",
       "sayfayı yukarı taşı",
       "sayfayı aşağı taşı",
     ])

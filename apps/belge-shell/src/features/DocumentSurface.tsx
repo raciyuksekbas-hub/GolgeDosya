@@ -187,7 +187,7 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
 
       {/* Karşılama: kipin GÖREVİ. Ekranın matematiksel merkezinde değil,
           çalışma sütununun üst bandında ve sola hizalı. */}
-      <div className="welcome">
+      <div className="welcome" data-recents={shown.length > 0}>
         <h1 className="welcome-title">{mode.emptyTitle}</h1>
         <p className="welcome-note">{mode.hint}</p>
 
@@ -200,19 +200,18 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
               type="button"
               className="slot"
               data-filled={first ? "true" : undefined}
+              data-next={first ? undefined : "true"}
               onClick={() => void browse(0)}
             >
               <span className="slot-label">{mode.slots![0]}</span>
               {first ? (
-                <>
-                  <span className="slot-name">{fileNameOf(first)}</span>
-                  <span className="slot-meta">
-                    {extensionOf(first).toLocaleUpperCase("tr-TR")} · değiştirmek için seçin
-                  </span>
-                </>
+                <span className="slot-name">{fileNameOf(first)}</span>
               ) : (
-                <span className="slot-invite">İlk belgeyi seçin</span>
+                <span className="slot-invite">{mode.slotInvites![0]}</span>
               )}
+              <span className="slot-meta">
+                {first ? extensionOf(first).toLocaleUpperCase("tr-TR") : ""}
+              </span>
             </button>
 
             <span className="slot-join" aria-hidden="true">
@@ -227,7 +226,8 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
               onClick={() => void browse(1)}
             >
               <span className="slot-label">{mode.slots![1]}</span>
-              <span className="slot-invite">İkinci belgeyi seçin</span>
+              <span className="slot-invite">{mode.slotInvites![1]}</span>
+              <span className="slot-meta" />
             </button>
           </div>
         ) : (
@@ -235,7 +235,7 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
             <Button variant="primary" onClick={() => void browse(0)} title={`${mode.openLabel}  ⌘O`}>
               {mode.openLabel}
             </Button>
-            <span className="welcome-hint">veya belgeyi buraya sürükleyin</span>
+            <span className="welcome-hint">veya buraya sürükleyin</span>
           </div>
         )}
 
@@ -246,7 +246,7 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
                 {mode.recentTitle}
               </h2>
               <Button className="btn-sm" variant="quiet" onClick={onForget}>
-                Listeyi temizle
+                Listeyi Temizle
               </Button>
             </div>
             <ul className="file-list">

@@ -31,12 +31,12 @@ export function OutputFolderRow({
             {folder.is_default ? " · varsayılan" : ""}
           </span>
         </div>
-        <Button onClick={onChoose}>Değiştir…</Button>
+        <Button onClick={onChoose}>Değiştir</Button>
       </div>
       {!folder.is_default ? (
         <p className="prefs-hint">
           <Button className="btn-sm" variant="quiet" onClick={onReset}>
-            Varsayılana dön
+            Varsayılana Dön
           </Button>
         </p>
       ) : null}
