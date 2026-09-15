@@ -109,6 +109,33 @@ impl ArchiveBudget {
         Ok(())
     }
 
+    /// Bir arşiv girdisini BEYAN EDİLEN boyuta güvenmeden, sert bir sınıra kadar
+    /// okur. Merkezi dizindeki boyut saldırganın denetimindedir: küçük bir boyut
+    /// beyan edip (denetimi geçip) deflate akışında gigabaytlarca genişleyen bir
+    /// girdi, `read_to_end` ile sınırsız açılıp belleği tüketiyordu. Burada okuma
+    /// `cap` baytıyla sınırlanır; aşılırsa reddedilir. (İkinciGöz ayrıştırıcısı
+    /// bunu zaten böyle yapıyordu; dönüşüm motoru yapmıyordu.)
+    pub fn read_entry_capped<R: std::io::Read>(
+        &mut self,
+        mut reader: R,
+        declared: u64,
+        cap: u64,
+    ) -> Result<Vec<u8>> {
+        use std::io::Read as _;
+        let mut buf = Vec::with_capacity((declared.min(cap)).min(16 * 1024 * 1024) as usize);
+        let read = reader
+            .by_ref()
+            .take(cap + 1)
+            .read_to_end(&mut buf)
+            .map_err(|e| ConvError::invalid_docx(format!("archive entry unreadable: {e}")))?;
+        if read as u64 > cap {
+            return Err(ConvError::unsafe_archive(format!(
+                "archive entry exceeds {cap} bytes when decompressed"
+            )));
+        }
+        Ok(buf)
+    }
+
     /// Check one entry's declared sizes before reading it.
     pub fn check_entry_size(&mut self, compressed: u64, uncompressed: u64) -> Result<()> {
         if uncompressed > MAX_ENTRY_UNCOMPRESSED {
@@ -238,6 +265,35 @@ mod tests {
         // 2 MiB from 1 KiB is 2048:1.
         let e = b.check_entry_size(1024, 2 * 1024 * 1024).unwrap_err();
         assert_eq!(e.code, ErrorCode::UnsafeArchive);
+    }
+
+    #[test]
+    fn read_cap_rejects_an_entry_that_lies_about_its_size() {
+        // Saldırgan küçük bir boyut beyan eder (denetimi geçer) ama akış çok daha
+        // büyüktür. Sert sınır gerçek okumayı yakalar; beyan edilene güvenilmez.
+        let mut b = ArchiveBudget::new();
+        let actual = vec![0u8; 5000];
+        // Beyan 10 bayt (yalan), sınır 1000: 5000 baytlık gerçek akış reddedilir.
+        let e = b
+            .read_entry_capped(actual.as_slice(), 10, 1000)
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::UnsafeArchive);
+    }
+
+    #[test]
+    fn read_cap_allows_an_honest_entry() {
+        let mut b = ArchiveBudget::new();
+        let data = vec![7u8; 500];
+        let out = b.read_entry_capped(data.as_slice(), 500, 1000).unwrap();
+        assert_eq!(out, data);
+    }
+
+    #[test]
+    fn read_cap_allows_an_entry_exactly_at_the_limit() {
+        let mut b = ArchiveBudget::new();
+        let data = vec![1u8; 1000];
+        let out = b.read_entry_capped(data.as_slice(), 1000, 1000).unwrap();
+        assert_eq!(out.len(), 1000);
     }
 
     #[test]

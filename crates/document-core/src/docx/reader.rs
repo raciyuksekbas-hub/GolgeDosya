@@ -5,7 +5,6 @@
 //! a warning by the caller, never dropped in silence.
 
 use std::collections::HashMap;
-use std::io::Read;
 use std::sync::Arc;
 
 use quick_xml::events::{BytesStart, Event};
@@ -285,9 +284,10 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
             continue;
         }
 
-        let mut v = Vec::with_capacity(f.size().min(16 * 1024 * 1024) as usize);
-        f.read_to_end(&mut v)
-            .map_err(|e| ConvError::invalid_docx(format!("entry {name} unreadable: {e}")))?;
+        // Beyan edilen boyut denetimi geçti, ama gerçek deflate akışı çok daha
+        // büyük olabilir; okuma sert sınıra kadar yapılır (zip bomb koruması).
+        let declared = f.size();
+        let v = budget.read_entry_capped(&mut f, declared, security::MAX_ENTRY_UNCOMPRESSED)?;
 
         match lower.as_str() {
             "word/document.xml" => document = Some(v),

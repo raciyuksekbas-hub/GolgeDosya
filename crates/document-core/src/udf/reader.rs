@@ -9,7 +9,6 @@
 //! overrun the buffer by a character, and legacy `format_id` values. None of those should
 //! cost the user their document.
 
-use std::io::Read;
 use std::sync::Arc;
 
 use base64::Engine as _;
@@ -47,9 +46,9 @@ pub fn read_udf(bytes: &[u8], warn: &mut WarningSink) -> Result<Document> {
             continue;
         }
         if name.eq_ignore_ascii_case("content.xml") {
-            let mut v = Vec::with_capacity(f.size().min(8 * 1024 * 1024) as usize);
-            f.read_to_end(&mut v)
-                .map_err(|e| ConvError::invalid_udf(format!("content.xml unreadable: {e}")))?;
+            // Beyan edilen boyuta güvenmeden sert sınıra kadar oku (zip bomb).
+            let declared = f.size();
+            let v = budget.read_entry_capped(&mut f, declared, security::MAX_ENTRY_UNCOMPRESSED)?;
             content = Some(v);
         }
     }
