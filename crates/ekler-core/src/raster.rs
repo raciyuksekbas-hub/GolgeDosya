@@ -94,7 +94,7 @@ pub fn pdf_to_images(
             .unwrap()
             .to_string_lossy()
             .replace(".duzenek-images-", "");
-        let destination = output_dir.join(format!("DuzenEk-Gorseller-{name}"));
+        let destination = output_dir.join(format!("GolgeDosya-Gorseller-{name}"));
         safe_io::publish_directory(staging.path(), &destination)?;
         Ok(destination)
     }
@@ -307,11 +307,12 @@ pub fn preview_page(source: &Path, page: usize, dpi: u32, rotation: i32) -> Resu
         let doc = load_pdf_tolerant(&raw, "önizleme.pdf")?.document;
         let mut selected = crate::pdf::extract_page_range(&doc, page, page)?;
         for id in selected.get_pages().into_values() {
-            let old = crate::pdf::resolved_page_dictionary(&selected, id)?
-                .get(b"Rotate")
-                .ok()
-                .and_then(|o| o.as_i64().ok())
-                .unwrap_or(0);
+            // Dönüşü ARAÇLARLA AYNI biçimde oku. Burada ham `as_i64` vardı:
+            // `/Rotate` dolaylı bir başvuru (`12 0 R`) ya da ondalık (`90.0`)
+            // olduğunda 0 sayılıyor, önizleme sayfayı DÖNDÜRÜLMEMİŞ gösteriyordu
+            // — oysa kaydedilen çıktı dönüşü koruyordu. Ekranda görülen ile
+            // diske yazılan ayrışıyordu; tek kaynaktan okuyunca ayrışamaz.
+            let old = crate::toolbox::existing_rotation(&selected, id)?;
             selected
                 .get_dictionary_mut(id)
                 .map_err(|e| EklerError::InvalidPdf(e.to_string()))?

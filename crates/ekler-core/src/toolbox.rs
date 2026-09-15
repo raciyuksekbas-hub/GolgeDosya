@@ -205,7 +205,7 @@ pub fn run_tool_with_outcome(
 /// KAYBETMESİNE yol açıyordu (90° sayfa + 90° → 90°, 180° değil). 90'ın katı
 /// olmayan üretici değeri (45) görüntüleyicide 0 sayılır; taban da 0 alınır ki
 /// kullanıcının istediği dönüş görünür olsun.
-fn existing_rotation(doc: &LopdfDoc, id: lopdf::ObjectId) -> Result<i64> {
+pub(crate) fn existing_rotation(doc: &LopdfDoc, id: lopdf::ObjectId) -> Result<i64> {
     let resolved = crate::pdf::resolved_page_dictionary(doc, id)?;
     let value = match resolved.get(b"Rotate") {
         Ok(v) => doc

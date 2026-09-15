@@ -4,7 +4,7 @@
  * İkinciGöz ve Değişikİş'te bu hiç yoktu; DüzenEk ve MetinBul'da ayrı ayrı
  * yazılmıştı. Tek uygulama, dört modülün en iyisini alır.
  */
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 const FOCUSABLE = [
   "a[href]",
@@ -16,6 +16,14 @@ const FOCUSABLE = [
 ].join(",");
 
 export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean, onEscape?: () => void) {
+  // `onEscape` çağıran tarafta satır içi bir ok fonksiyonu olarak veriliyor
+  // (App.tsx: `onClose={() => setPrefsTab(null)}`), yani HER RENDER'DA yeni bir
+  // kimlik. Efektin bağımlılığı olsaydı tuzak her render'da sökülüp yeniden
+  // kuruluyor ve `items()[0].focus()` odağı İLK sekmeye fırlatıyordu: klavye
+  // kullanıcısı arka arkaya iki ayar değiştiremiyordu. Kimliği değil, güncel
+  // değeri taşı.
+  const escape = useRef(onEscape);
+  escape.current = onEscape;
   useEffect(() => {
     if (!active || !ref.current) return;
     const container = ref.current;
@@ -29,9 +37,9 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean
     items()[0]?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && onEscape) {
+      if (event.key === "Escape" && escape.current) {
         event.preventDefault();
-        onEscape();
+        escape.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -55,5 +63,5 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean
       // sayfanın başına düşer.
       previous?.focus?.();
     };
-  }, [ref, active, onEscape]);
+  }, [ref, active]);
 }
