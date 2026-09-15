@@ -5,7 +5,8 @@
 //! 1. **Eski dizinler asla silinmez, taşınmaz, değiştirilmez.** Bu modül eski
 //!    konumları yalnız `read_to_string` ile açar.
 //! 2. **Zaten ayarlanmış bir değer ezilmez.** Migration boş alanları doldurur;
-//!    kullanıcının birleşik uygulamada yaptığı bir seçimi geri almaz.
+//!    kullanıcının birleşik uygulamada yaptığı bir seçimi geri almaz. Birleşik
+//!    depoda veri varken bağımsız uygulamalar hiç okunmaz (bkz. `migrate_into`).
 //! 3. **Bir kaynağın okunamaması hata değildir.** Uygulama kurulmamış olabilir;
 //!    rapor "bulunamadı" der ve devam eder.
 //!
@@ -458,18 +459,29 @@ fn migrate_belge(old_dir: &Path, target_dir: &Path, s: &mut Settings) -> SourceS
 /// Eski uygulamaların ayarlarını **bir kez** birleşik depoya taşır.
 ///
 /// Yeniden çalıştırmak güvenlidir: hiçbir değer ezilmediği için sonuç değişmez.
+///
+/// Bağımsız uygulamalar (Tavzih, İkinciGöz, DüzenEk) yalnız birleşik depo el
+/// değmemişken okunur: açılışta birleşik `settings.json` yoksa ve önceki
+/// birleşik addan devralma olmadıysa. Birleşik depoda veri varken varsayılana
+/// eşit bir değer de kullanıcının seçimidir; ayar dosyası "hiç dokunulmadı" ile
+/// "bilerek varsayılana getirildi"yi ayırt edemez. Bu kapı olmadan kullanıcının
+/// varsayılana geri çektiği tema, inceleme ya da çıktı klasörü her açılışta eski
+/// uygulamanın değerine dönüyordu.
 pub fn migrate_into(target_dir: &Path, settings: &mut Settings) -> MigrationReport {
     let before = settings.clone();
     let mut sources = Vec::new();
+    let unified_existed = crate::settings::settings_path(target_dir).is_file();
 
     // Önce önceki birleşik ad: aynı şema, doğrudan devralma. Diğer kaynaklar
     // yalnız boş alanları doldurur, bu yüzden sıralama önemlidir.
     let belge_dir = paths::legacy_config_dir(paths::LEGACY_BELGE);
+    let belge_status = migrate_belge(&belge_dir, target_dir, settings);
+    let pristine = !unified_existed && !matches!(belge_status, SourceStatus::Migrated { .. });
     sources.push(SourceReport {
         app: "Belge".into(),
         identifier: paths::LEGACY_BELGE.into(),
         path: belge_dir.display().to_string(),
-        status: migrate_belge(&belge_dir, target_dir, settings),
+        status: belge_status,
     });
 
     let tavzih_dir = paths::legacy_config_dir(paths::LEGACY_TAVZIH);
@@ -477,7 +489,11 @@ pub fn migrate_into(target_dir: &Path, settings: &mut Settings) -> MigrationRepo
         app: "Tavzih".into(),
         identifier: paths::LEGACY_TAVZIH.into(),
         path: tavzih_dir.display().to_string(),
-        status: migrate_tavzih(&tavzih_dir, settings),
+        status: if pristine {
+            migrate_tavzih(&tavzih_dir, settings)
+        } else {
+            left_untouched(&tavzih_dir)
+        },
     });
 
     let ig_dir = paths::legacy_config_dir(paths::LEGACY_IKINCIGOZ);
@@ -485,16 +501,23 @@ pub fn migrate_into(target_dir: &Path, settings: &mut Settings) -> MigrationRepo
         app: "İkinciGöz".into(),
         identifier: paths::LEGACY_IKINCIGOZ.into(),
         path: ig_dir.display().to_string(),
-        status: migrate_ikincigoz(&ig_dir, target_dir, settings),
+        status: if pristine {
+            migrate_ikincigoz(&ig_dir, target_dir, settings)
+        } else {
+            left_untouched(&ig_dir)
+        },
     });
 
+    let duzenek_dir = paths::legacy_webkit_dir(paths::LEGACY_DUZENEK);
     sources.push(SourceReport {
         app: "DüzenEk".into(),
         identifier: paths::LEGACY_DUZENEK.into(),
-        path: paths::legacy_webkit_dir(paths::LEGACY_DUZENEK)
-            .display()
-            .to_string(),
-        status: migrate_duzenek_renderer(settings),
+        path: duzenek_dir.display().to_string(),
+        status: if pristine {
+            migrate_duzenek_renderer(settings)
+        } else {
+            left_untouched(&duzenek_dir)
+        },
     });
 
     // Değişikİş'in tek kalıcı tercihi kenar çubuğu durumu. İşlevsel değeri yok;
@@ -519,6 +542,15 @@ pub fn migrate_into(target_dir: &Path, settings: &mut Settings) -> MigrationRepo
     MigrationReport {
         changed: *settings != before,
         sources,
+    }
+}
+
+/// Birleşik depoda veri varken bağımsız kaynak okunmaz; yalnız varlığı raporlanır.
+fn left_untouched(path: &Path) -> SourceStatus {
+    if path.exists() {
+        SourceStatus::NothingToDo
+    } else {
+        SourceStatus::NotFound
     }
 }
 
@@ -803,6 +835,138 @@ mod tests {
             vec!["Belge", "Tavzih", "İkinciGöz", "DüzenEk", "Değişikİş"]
         );
         std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// Eski uygulama ayarlarını testin kendi (iş parçacığına özel) kökündeki
+    /// eski dizinlere yazar; kapanışta siler.
+    struct LegacyFixture(Vec<PathBuf>);
+    impl LegacyFixture {
+        fn new(files: &[(&str, &str, &str)]) -> Self {
+            let mut dirs = Vec::new();
+            for (id, name, text) in files {
+                let dir = paths::legacy_config_dir(id);
+                std::fs::create_dir_all(&dir).unwrap();
+                std::fs::write(dir.join(name), text).unwrap();
+                dirs.push(dir);
+            }
+            LegacyFixture(dirs)
+        }
+    }
+    impl Drop for LegacyFixture {
+        fn drop(&mut self) {
+            for d in &self.0 {
+                std::fs::remove_dir_all(d).ok();
+            }
+        }
+    }
+
+    /// Paketlenmiş uygulamada yeniden üretildi (2026-09-15): kullanıcı Ayarlar'da
+    /// temayı "system"e, incelemeyi açığa, çıktı klasörünü varsayılana geri
+    /// çekiyor; bir sonraki açılışta migration eski Tavzih/İkinciGöz değerlerini
+    /// yeniden basıyordu. Varsayılana eşit değer "boş" sayılıyordu.
+    #[test]
+    fn a_preference_returned_to_its_default_is_not_reapplied_on_the_next_launch() {
+        let _legacy = LegacyFixture::new(&[
+            (
+                paths::LEGACY_TAVZIH,
+                "preferences.json",
+                r#"{"output_dir":"/eski","accepted_terms":1}"#,
+            ),
+            (
+                paths::LEGACY_IKINCIGOZ,
+                "settings.json",
+                r#"{"theme":"dark","includeReview":false}"#,
+            ),
+        ]);
+        let target = tmp("geri-alma-hedef");
+        // İlk açılış: taşınır ve kaydedilir (migrate_legacy_settings gibi).
+        let mut s = crate::settings::load_from(&target);
+        assert!(migrate_into(&target, &mut s).changed);
+        assert_eq!(s.theme, "dark");
+        crate::settings::save_to(&target, &s).unwrap();
+
+        // Kullanıcı tercihlerini varsayılana geri çekip kaydediyor.
+        s.theme = "system".into();
+        s.include_review = true;
+        s.output_dir = None;
+        crate::settings::save_to(&target, &s).unwrap();
+
+        // Sonraki açılış.
+        let mut next = crate::settings::load_from(&target);
+        let report = migrate_into(&target, &mut next);
+        assert_eq!(
+            next.theme, "system",
+            "kullanıcının seçtiği tema geri alındı"
+        );
+        assert!(
+            next.include_review,
+            "kullanıcının seçtiği inceleme geri alındı"
+        );
+        assert_eq!(
+            next.output_dir, None,
+            "kullanıcının seçtiği klasör geri alındı"
+        );
+        assert!(!report.changed);
+        std::fs::remove_dir_all(&target).ok();
+    }
+
+    /// Birleşik uygulamada ayar dosyası zaten varken, varsayılana eşit değerler
+    /// de kullanıcının seçimidir: bağımsız uygulamaların eski değerleri onları ezmez.
+    #[test]
+    fn existing_unified_settings_are_never_overwritten_by_standalone_apps() {
+        let _legacy = LegacyFixture::new(&[
+            (
+                paths::LEGACY_TAVZIH,
+                "preferences.json",
+                r#"{"output_dir":"/eski","accepted_terms":1}"#,
+            ),
+            (
+                paths::LEGACY_IKINCIGOZ,
+                "settings.json",
+                r#"{"theme":"dark","includeReview":false,"textScale":150}"#,
+            ),
+        ]);
+        let target = tmp("mevcut-hedef");
+        crate::settings::save_to(&target, &Settings::default()).unwrap();
+        let before = std::fs::read(crate::settings::settings_path(&target)).unwrap();
+
+        let mut s = crate::settings::load_from(&target);
+        let report = migrate_into(&target, &mut s);
+        assert_eq!(s, Settings::default(), "mevcut birleşik ayarlar ezildi");
+        assert!(!report.changed);
+        assert_eq!(
+            std::fs::read(crate::settings::settings_path(&target)).unwrap(),
+            before
+        );
+        std::fs::remove_dir_all(&target).ok();
+    }
+
+    /// Önceki birleşik addan devralınan ayarlar da birleşik uygulamanın verisidir;
+    /// aynı açılışta bağımsız uygulamaların eski değerleri onları ezmez.
+    #[test]
+    fn inherited_unified_settings_are_not_overwritten_by_standalone_apps() {
+        let previous = Settings {
+            theme: "light".into(),
+            ..Default::default()
+        };
+        let _legacy = LegacyFixture::new(&[
+            (
+                paths::LEGACY_BELGE,
+                crate::settings::SETTINGS_FILE,
+                &serde_json::to_string(&previous).unwrap(),
+            ),
+            (
+                paths::LEGACY_IKINCIGOZ,
+                "settings.json",
+                r#"{"theme":"dark","includeReview":false}"#,
+            ),
+        ]);
+        let target = tmp("devralma-ezme-hedef");
+        let mut s = crate::settings::load_from(&target);
+        migrate_into(&target, &mut s);
+        assert_eq!(s.theme, "light");
+        assert!(s.include_review, "devralınan inceleme tercihi ezildi");
+        std::fs::remove_dir_all(&target).ok();
     }
 
     /// Kimlik değişiminde ayarlar devralınır; ikinci çalıştırma bir şey yapmaz
