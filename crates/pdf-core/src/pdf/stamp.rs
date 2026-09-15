@@ -241,7 +241,7 @@ fn apply_stamp_to_page(
         .transpose()
         .map_err(pdf_error)?
         .unwrap_or_default();
-    let mut font_name = "DuzenEkStamp".to_string();
+    let mut font_name = "GolgeDosyaStamp".to_string();
     while fonts.has(font_name.as_bytes()) {
         font_name.push('_');
     }
@@ -355,7 +355,7 @@ fn apply_stamp_to_page(
         if let Some(Object::Reference(id)) = existing {
             objects = doc.get_dictionary(id).map_err(pdf_error)?.clone();
         }
-        let mut name = "DuzenEkBrand".to_string();
+        let mut name = "GolgeDosyaBrand".to_string();
         while objects.has(name.as_bytes()) {
             name.push('_');
         }
@@ -571,8 +571,62 @@ pub fn apply_raster_branding(doc: &mut LopdfDoc, dpi: u32) -> Result<()> {
     apply_branding_for_output(doc, Some(dpi))
 }
 const BRAND_LOGO: &[u8] = include_bytes!("../../assets/brand-logo.ops");
+/// Ürün birleşmeden önceki DüzenEk marka çizimi. ARTIK ÜRETİLMEZ; yalnızca eski
+/// sürümle markalanmış belgeleri TANIYIP yükseltmek için tutulur (bkz.
+/// `upgrade_legacy_brand_marks`). Tanınmazsa eski belge yeniden işlendiğinde
+/// ikinci bir işaret eklenir ve kullanıcı "DüzenEk + GölgeDosya" çift filigranı
+/// görürdü.
+const LEGACY_BRAND_LOGO: &[u8] = include_bytes!("../../assets/brand-logo-legacy.ops");
 const BRAND_FORM_CONTENT: &[u8] = b"q /BrandAlpha gs /Mark Do Q";
 const BRAND_BBOX: [f32; 4] = [0., 0., 290., 72.];
+
+/// Marka kelime işareti için base-14 Helvetica-Bold. Damga yolunun zaten
+/// kullandığı mekanizma; gömülü font yok, her uyumlu görüntüleyicide bulunur.
+fn brand_font(doc: &mut LopdfDoc) -> lopdf::ObjectId {
+    doc.add_object(dictionary! {
+        "Type"=>"Font","Subtype"=>"Type1",
+        "BaseFont"=>"Helvetica-Bold","Encoding"=>"WinAnsiEncoding"
+    })
+}
+
+fn brand_vector_dict(font: lopdf::ObjectId) -> Dictionary {
+    dictionary! {
+        "Type"=>"XObject","Subtype"=>"Form",
+        "BBox"=>BRAND_BBOX.iter().map(|v| Object::Integer(*v as i64)).collect::<Vec<_>>(),
+        "Group"=>dictionary! {"S"=>"Transparency","I"=>true,"CS"=>"DeviceRGB"},
+        "Resources"=>dictionary! {"Font"=>dictionary! {"BrandFont"=>font}}
+    }
+}
+
+/// Eski DüzenEk marka çizimini YERİNDE canonical GölgeDosya çizimine yükselt.
+///
+/// Marka formu baytlarıyla tanınır; asset değiştiği için eski bir belgedeki
+/// işaret aksi hâlde "marka yok" sayılır ve üstüne ikinci bir GölgeDosya işareti
+/// eklenirdi. Çizimi yerinde değiştirmek hem çift filigranı önler hem de eski
+/// ürün kimliğinin kullanıcı çıktısında kalmamasını garanti eder.
+fn upgrade_legacy_brand_marks(doc: &mut LopdfDoc) -> Result<()> {
+    let legacy: Vec<lopdf::ObjectId> = doc
+        .objects
+        .iter()
+        .filter_map(|(id, obj)| {
+            let stream = obj.as_stream().ok()?;
+            if stream.dict.get(b"Subtype").and_then(|t| t.as_name()).ok() != Some(b"Form") {
+                return None;
+            }
+            (stream_data(stream)? == LEGACY_BRAND_LOGO).then_some(*id)
+        })
+        .collect();
+    if legacy.is_empty() {
+        return Ok(());
+    }
+    let font = brand_font(doc);
+    for id in legacy {
+        let mut upgraded = Stream::new(brand_vector_dict(font), BRAND_LOGO.to_vec());
+        upgraded.compress().map_err(pdf_error)?;
+        doc.objects.insert(id, Object::Stream(upgraded));
+    }
+    Ok(())
+}
 
 fn apply_branding_for_output(doc: &mut LopdfDoc, raster_dpi: Option<u32>) -> Result<()> {
     let config = StampConfig {
@@ -588,6 +642,9 @@ fn apply_branding_for_output(doc: &mut LopdfDoc, raster_dpi: Option<u32>) -> Res
     // türetilmiş kopyadan türetilen her kopya sayfayı 34 pt büyütüp bir logo
     // daha ekliyordu (sırala → döndür → sil: iki kat pay, üç logo, altı form).
     // Kırpma işareti görünür alanın dışında bıraktıysa sayfa yeniden işaretlenir.
+    // Eski DüzenEk işareti taşıyan belgeler ÖNCE yükseltilir: aksi hâlde işaret
+    // tanınmaz, sayfaya ikinci bir işaret eklenir ve çift filigran oluşur.
+    upgrade_legacy_brand_marks(doc)?;
     let existing = existing_brand_forms(doc);
     let pending: Vec<lopdf::ObjectId> = doc
         .get_pages()
@@ -603,11 +660,8 @@ fn apply_branding_for_output(doc: &mut LopdfDoc, raster_dpi: Option<u32>) -> Res
             // One shared, translucent vector form; no raster or unused font per page.
             // Isolate the vector as a transparency group: opacity applies once to the
             // complete mark, not repeatedly where the logo's paths overlap.
-            let mut vector = Stream::new(
-                dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>BRAND_BBOX.iter().map(|v| Object::Integer(*v as i64)).collect::<Vec<_>>(),
-                "Group"=>dictionary! {"S"=>"Transparency","I"=>true,"CS"=>"DeviceRGB"}, "Resources"=>Dictionary::new()},
-                BRAND_LOGO.to_vec(),
-            );
+            let font = brand_font(doc);
+            let mut vector = Stream::new(brand_vector_dict(font), BRAND_LOGO.to_vec());
             vector.compress().map_err(pdf_error)?;
             let vector_id = doc.add_object(vector);
             let mut form = Stream::new(
@@ -625,7 +679,7 @@ fn apply_branding_for_output(doc: &mut LopdfDoc, raster_dpi: Option<u32>) -> Res
         raster_dpi,
     };
     for id in pending {
-        apply_stamp_to_page(doc, id, "DuzenEk", (0, 0), &config, Some(&mut resources))?;
+        apply_stamp_to_page(doc, id, "GölgeDosya", (0, 0), &config, Some(&mut resources))?;
     }
     Ok(())
 }
