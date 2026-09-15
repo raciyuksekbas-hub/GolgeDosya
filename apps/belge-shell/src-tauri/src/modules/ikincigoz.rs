@@ -295,7 +295,9 @@ pub async fn ikincigoz_analyze_document(path: String) -> Result<AnalysisResult, 
 
 /// Seçilen düzeltmeleri **bir kopyaya** uygula.
 ///
-/// Kaynak yol asla yazmak için açılmaz; hedef kaynağa eşitse iş reddedilir.
+/// Kaynak yol asla yazmak için açılmaz. Yayın no-clobber + atomiktir
+/// (`atomic::write_new_unique`): kaynak dahil var olan hiçbir dosyanın üzerine
+/// yazılmaz, çakışan ad Dönüştür gibi " (2)" ile türetilir.
 #[tauri::command]
 pub async fn ikincigoz_apply_fixes(
     path: String,
@@ -317,15 +319,16 @@ pub async fn ikincigoz_apply_fixes(
                 .map(|p| p.to_path_buf())
                 .ok_or_else(|| "Kaydedilecek klasör bulunamadı.".to_string())?,
         };
-        let target = directory.join(&result.file_name);
-        if target == source {
-            return Err("Kaynak belge değiştirilmez. Farklı bir konum seçin.".into());
-        }
-        std::fs::write(&target, &result.bytes)
+        // No-clobber + atomik yayın. Kaynak zaten adı değiştiği için korunur;
+        // ama kullanıcının daha önce üretip düzenlediği bir "… - İkinciGöz"
+        // kopyası aynı adı taşıyabilir. Düz fs::write onu sessizce eziyordu
+        // (geri alınamaz kayıp) ve atomik değildi (yarım yazım → bozuk zip).
+        // Çakışırsa Dönüştür gibi " (2)" türet; var olan hiçbir kopya kaybolmaz.
+        let written = crate::atomic::write_new_unique(&directory, &result.file_name, &result.bytes)
             .map_err(|_| "Yeni dosya kaydedilemedi.".to_string())?;
 
         Ok(WriteResult {
-            file_name: result.file_name,
+            file_name: written,
             directory: directory.to_string_lossy().to_string(),
             applied: result.applied,
         })

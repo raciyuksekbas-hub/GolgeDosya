@@ -326,3 +326,90 @@ fn the_full_chain_writes_a_real_corrected_copy_that_reopens() {
         std::fs::remove_dir_all(&out).ok();
     }
 }
+
+// ---------------------------------------------------------------- hardening: apply-to-copy no-clobber (skeptic 2, P0)
+
+/// P0 (skeptic 2): `ikincigoz_apply_fixes` çıktıyı düz `std::fs::write` ile
+/// yazıyordu. Çıktı adı kaynaktan farklı olduğu için kaynak korunuyordu, AMA:
+/// kullanıcı bir kez düzeltme uygulayıp oluşan "… - İkinciGöz" kopyasını açıp
+/// DÜZENLEDİKTEN sonra aynı kaynağa yeniden düzeltme uygularsa, ikinci yazım
+/// düzenlenmiş kopyanın ÜZERİNE SESSİZCE yazıyordu — geri alınamaz veri kaybı.
+/// Ayrıca yazım atomik değildi (yarıda kesilen yazım bozuk zip bırakır).
+///
+/// Bu test komutu GERÇEKTEN iki kez çağırır. Fix öncesi: ikinci çağrı
+/// düzenlenmiş kopyayı ezer ve aynı adı döndürür → assert'ler kırılır.
+/// Fix sonrası: ikinci çağrı dokunmaz, " (2)" türetir; düzenlenen kopya korunur.
+#[test]
+fn applying_fixes_twice_never_clobbers_a_previously_edited_copy() {
+    use belge_shell_lib::modules::ikincigoz::ikincigoz_apply_fixes;
+
+    let name = "ornek-dilekce-hatali.docx";
+    let source = samples().join(name);
+    let fixes: Vec<_> = baseline_findings(name)
+        .into_iter()
+        .filter_map(|f| f.fix)
+        .collect();
+    assert!(!fixes.is_empty(), "örnek düzeltme üretmiyor: {name}");
+
+    // İzole çıktı dizini — gerçek kullanıcı dizini ya da repo fixture'ı DEĞİL.
+    let out = std::env::temp_dir().join(format!(
+        "ig-noclobber-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&out).unwrap();
+    let out_s = out.to_string_lossy().to_string();
+
+    // 1) İlk uygulama: kopya oluşur.
+    let r1 = tauri::async_runtime::block_on(ikincigoz_apply_fixes(
+        source.to_string_lossy().to_string(),
+        fixes.clone(),
+        Some(out_s.clone()),
+    ))
+    .expect("ilk uygulama başarılı olmalı");
+    assert_eq!(r1.file_name, "ornek-dilekce-hatali - İkinciGöz.docx");
+    assert!(r1.applied > 0);
+    let first = out.join(&r1.file_name);
+    assert!(first.exists());
+
+    // 2) Avukat bu kopyayı açıp elle DÜZENLER (belirgin, kısa içerik).
+    let edited = b"AVUKATIN ELLE DUZENLEDIGI KOPYA - BU KAYBOLMAMALI";
+    std::fs::write(&first, edited).unwrap();
+
+    // 3) Aynı kaynağa yeniden düzeltme uygula.
+    let r2 = tauri::async_runtime::block_on(ikincigoz_apply_fixes(
+        source.to_string_lossy().to_string(),
+        fixes.clone(),
+        Some(out_s.clone()),
+    ))
+    .expect("ikinci uygulama başarılı olmalı");
+
+    // Fix öncesi burada r2.file_name == r1.file_name olurdu (clobber).
+    assert_ne!(
+        r2.file_name, r1.file_name,
+        "P0: ikinci çıktı ilk kopyanın adını yeniden kullandı (clobber)"
+    );
+    assert_eq!(r2.file_name, "ornek-dilekce-hatali - İkinciGöz (2).docx");
+
+    // Düzenlenen ilk kopya BİT BİT korunmalı.
+    assert_eq!(
+        std::fs::read(&first).unwrap(),
+        edited,
+        "P0: kullanıcının düzenlediği kopya ezildi (veri kaybı)"
+    );
+
+    // İkinci çıktı gerçek düzeltilmiş belgedir ve yeniden açılabilir (bozuk değil).
+    let second = out.join(&r2.file_name);
+    let bytes2 = std::fs::read(&second).unwrap();
+    parser::parse(&r2.file_name, &bytes2).expect("ikinci çıktı geçerli bir belge olmalı");
+
+    // Kaynak hiç değişmedi.
+    let src_now = std::fs::read(&source).unwrap();
+    let src_orig = std::fs::read(samples().join(name)).unwrap();
+    assert_eq!(src_now, src_orig, "kaynak belge değişti");
+
+    std::fs::remove_dir_all(&out).ok();
+}
