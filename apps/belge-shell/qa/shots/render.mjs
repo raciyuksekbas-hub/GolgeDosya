@@ -326,7 +326,7 @@ try {
             shell({ context: el('span', { className: 'toolbar-mode' }, 'Düzenle') },
               el(DocumentSurface, { feature: features[0], recents, outcome: null, onDocuments(){}, onForget(){} })),
             el(PreferencesSheet, {
-              settings, version: '0.0.1', tab, onTab(){}, onChange(){}, onForget(){}, onClose(){},
+              settings, version: '0.2.0', tab, onTab(){}, onChange(){}, onForget(){}, onClose(){},
             }))).replace('<div class="prefs-group"></div>',
               '<div class="prefs-group">' + folderRow + '</div>');
         export const prefsGenel = prefs('genel');

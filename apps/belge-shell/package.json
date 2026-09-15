@@ -1,7 +1,7 @@
 {
   "name": "belge-shell",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.2.0",
   "type": "module",
   "description": "G\u00f6lgeDosya birle\u015fik kabu\u011fu",
   "scripts": {
