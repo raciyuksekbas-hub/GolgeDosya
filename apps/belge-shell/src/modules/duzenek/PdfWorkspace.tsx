@@ -191,12 +191,14 @@ export function PreviewPlaceholder({ state, detail, onOpenAnother }: {
 export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths: string[]) => void }> = ({ paths: initialPaths, onOpenDocument }) => {
     const [kind, setKind] = useState<Kind>('merge'), [sources, setSources] = useState<SourceFile[]>([]), [order, setOrder] = useState<Page[]>([]), [selected, setSelected] = useState<string[]>([]), [current, setCurrent] = useState(''), [zoom, setZoom] = useState<PreviewMode>('fit-page');
     const [rotations, setRotations] = useState<Record<string, number>>({});
+    // Araç değiştirirken neyin kaybolacağını söyleyebilmek için: sıra elle değişti mi?
+    const [reordered, setReordered] = useState(false);
     // "Sayfa yok" ile "belge açılamadı" aynı şey değildir: araç paneli yalnız
     // açık bir belge oturumunda çizilir, sayfa şeridi ise gerçekten sayfa varken.
     const [docState, setDocState] = useState<DocumentState>(initialPaths?.length ? 'loading' : 'none');
     const [failure, setFailure] = useState('');
-    const [margin, setMargin] = useState(10), [text, setText] = useState('KOPYA'), [start, setStart] = useState(1), [level, setLevel] = useState('balanced_compression'), [approved, setApproved] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
-    const build = (list: SourceFile[]) => { setRotations({}); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
+    const [margin, setMargin] = useState(10), [text, setText] = useState('KOPYA'), [imageFormat, setImageFormat] = useState('png'), [start, setStart] = useState(1), [level, setLevel] = useState('balanced_compression'), [approved, setApproved] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
+    const build = (list: SourceFile[]) => { setRotations({}); setReordered(false); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
     // Tarama gövdesi, kendi seçicisi ile kabuğun açtığı belgeler arasında ortak.
     const load = async (paths: string[]) => { try {
         if (!paths.length)
@@ -253,7 +255,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     // Kabuk belgeyi belge yüzeyinde açtırdı; aynı yolları burada tara.
     const opened = initialPaths?.join('\u0000') ?? '';
     useEffect(() => { if (opened) void load(opened.split('\u0000')); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [opened]);
-    const shiftPage = (index: number, delta: number) => { const next = [...order]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; setOrder(next); };
+    const shiftPage = (index: number, delta: number) => { const next = [...order]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; setOrder(next); setReordered(true); };
     const moveSource = (index: number) => { const next = [...sources]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; setSources(next); build(next); };
     const toggle = (key: string) => setSelected(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
     const selectedPages = order.filter(p => selected.includes(p.key)).map(p => p.page);
@@ -284,7 +286,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     return;
                 setBusy(true);
                 setStatus('Görseller hazırlanıyor…');
-                const result = await invoke<string>('duzenek_pdf_to_images', { path: sources[0].path, outputDir, format: text === 'jpg' ? 'jpg' : 'png', dpi: 150, approved });
+                const result = await invoke<string>('duzenek_pdf_to_images', { path: sources[0].path, outputDir, format: imageFormat, dpi: 150, approved });
                 setStatus('Görsel paketi kaydedildi: ' + result);
                 return;
             }
@@ -333,6 +335,18 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const pick = (key: Kind) => {
         setKind(key);
         const kept = key === 'images' || kind === 'images' ? [] : (key === 'merge' ? sources : sources.slice(0, 1));
+        // Araçlar BİLİNÇLİ olarak bağımsızdır: her biri kaynaktan tek bir işlem
+        // uygulayıp kendi kopyasını üretir, düzenlemeler birikmez. Ama bu
+        // sessizce oluyordu — kullanıcı üç belge açıp ya da sayfaları sıralayıp
+        // araç değiştirince emeği uyarısız siliniyordu. Kayıp artık SÖYLENİYOR.
+        const droppedDocs = sources.length - kept.length;
+        const lostEdits = Object.values(rotations).some(Boolean) || reordered;
+        const notes = [
+            droppedDocs > 0 && (kept.length
+                ? `bu araç tek belgeyle çalışır, ${droppedDocs} belge kapatıldı`
+                : `${droppedDocs} belge kapatıldı`),
+            lostEdits && 'sayfa sırası ve dönüşler sıfırlandı',
+        ].filter(Boolean) as string[];
         setSources(kept);
         build(kept);
         // `build` ilk sayfayı işaretler; Sil aracında bu, sayfa 1'i daha
@@ -340,7 +354,10 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         // düğmesini açıyordu. Silme her zaman boş bir seçimle başlar.
         if (key === 'delete')
             setSelected([]);
-        setStatus('');
+        const message = notes.length ? `${tools[key][0]} aracına geçildi — ${notes.join('; ')}.` : '';
+        setStatus(message);
+        if (message)
+            announce(message);
         setApproved(false);
     };
     const PAGE_TOOLS: Kind[] = ['select', 'reorder', 'delete', 'rotate'];
@@ -349,9 +366,9 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         : kind === 'crop'
         ? <label>Her kenardan kırpılacak mesafe (mm)<input type="number" min={0} value={margin} onChange={e => setMargin(Number(e.target.value))}/></label>
         : kind === 'watermark'
-        ? <label>Filigran (temel Latin karakterleri, en fazla 60)<input maxLength={60} value={text} onChange={e => setText(e.target.value)}/></label>
+        ? <label>Filigran (en fazla 60 karakter)<input maxLength={60} value={text} onChange={e => setText(e.target.value)}/></label>
         : kind === 'raster'
-        ? <label>Görsel biçimi (150 DPI)<select value={text === 'jpg' ? 'jpg' : 'png'} onChange={e => setText(e.target.value)}><option value="png">PNG</option><option value="jpg">JPG</option></select></label>
+        ? <label>Görsel biçimi (150 DPI)<select value={imageFormat} onChange={e => setImageFormat(e.target.value === 'jpg' ? 'jpg' : 'png')}><option value="png">PNG</option><option value="jpg">JPG</option></select></label>
         : kind === 'number'
         ? <label>İlk sayfa numarası<input type="number" min={1} value={start} onChange={e => setStart(Number(e.target.value))}/></label>
         : null;
