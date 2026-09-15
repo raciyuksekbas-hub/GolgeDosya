@@ -4,6 +4,7 @@
 //! ayar deposu, eski ayar migration'ı ve feature flag altyapısı burada; hiçbir
 //! belge motoru henüz taşınmadı. Yeni özellik yazılmaz.
 
+pub mod atomic;
 pub mod features;
 
 /// Modül motorları. Her biri yalnız kendi cargo feature'ı açıkken derlenir.

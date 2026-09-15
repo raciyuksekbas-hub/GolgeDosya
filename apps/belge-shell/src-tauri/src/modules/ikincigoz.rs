@@ -153,9 +153,10 @@ fn read_json<T: Default + for<'de> Deserialize<'de>>(name: &str) -> T {
 
 fn write_json<T: Serialize>(name: &str, value: &T) -> Result<(), String> {
     let dir = paths::app_config_dir();
-    std::fs::create_dir_all(&dir).map_err(|_| "Ayarlar klasörü oluşturulamadı.".to_string())?;
     let json = serde_json::to_string_pretty(value).map_err(|_| "Kaydedilemedi.".to_string())?;
-    std::fs::write(dir.join(name), json).map_err(|_| "Kaydedilemedi.".to_string())
+    // Atomik yazım: yarıda kesilen bir yazma öğrenilen kelime/düzeltme
+    // sözlüğünü sessizce silebiliyordu (read_json bozuk dosyada boş döner).
+    crate::atomic::write(&dir.join(name), json.as_bytes()).map_err(|_| "Kaydedilemedi.".to_string())
 }
 
 fn dictionary() -> UserDictionary {

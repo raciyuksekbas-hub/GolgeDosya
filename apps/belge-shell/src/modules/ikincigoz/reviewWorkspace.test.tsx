@@ -13,7 +13,7 @@ import { dirname, resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import postcss from "postcss";
 import { describe, expect, it } from "vitest";
-import { ReviewChrome, ReviewClear, visibleText } from "./ReviewWorkspace";
+import { findingKey, ReviewChrome, ReviewClear, visibleText } from "./ReviewWorkspace";
 import type { AnalysisResult, Finding } from "./types";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -140,6 +140,61 @@ describe("durum sözleşmesi", () => {
     );
     // Sonuç ekran okuyucuya her iki durumda da bildirilir.
     expect(source).toContain('"İnceleme tamamlandı. Bulgu yok."');
+  });
+});
+
+describe("bulgu kimliği (düzeltme seçimi)", () => {
+  // Motor SourceLocation'ı snake_case gönderir; arayüz tipi camelCase. Bir
+  // bulguyu ÇALIŞMA ZAMANI biçiminde (snake_case) kur ki gerçek IPC yükü
+  // sınansın — camelCase fixture bu hatayı gizliyordu.
+  const runtimeFinding = (charStart: number, charEnd: number, message: string): Finding =>
+    ({
+      rule_id: "TYPO_SPACE",
+      title: "t",
+      severity: "warning",
+      confidence: 1,
+      message,
+      explanation: "e",
+      block_id: "p3",
+      location: {
+        block_index: 3,
+        run_index: null,
+        char_start: charStart,
+        char_end: charEnd,
+        container_path: null,
+      },
+      context: null,
+      fix: {
+        block_id: "p3",
+        char_start: charStart,
+        char_end: charEnd,
+        original: " .",
+        replacement: ".",
+        description: "d",
+      },
+    }) as unknown as Finding;
+
+  it("aynı kural ve paragraftaki farklı bulgular ayrı anahtar alır", () => {
+    // Eskiden hepsi `kural:blok:-1`e çöküyordu; tek onay birden çok düzeltmeyi
+    // seçtiriyordu. Farklı ofsetli iki bulgunun anahtarı FARKLI olmalı.
+    const a = findingKey(runtimeFinding(6, 8, "ilk"));
+    const b = findingKey(runtimeFinding(20, 22, "ikinci"));
+    expect(a).not.toBe(b);
+    // Anahtar `-1`e düşmemeli: gerçek ofset okunmalı.
+    expect(a).not.toContain("-1");
+    expect(a).toContain("6");
+  });
+
+  it("aynı aralıkta farklı mesajlı iki bulgu yine ayrışır", () => {
+    const a = findingKey(runtimeFinding(6, 8, "fazla boşluk"));
+    const b = findingKey(runtimeFinding(6, 8, "noktalama öncesi boşluk"));
+    expect(a).not.toBe(b);
+  });
+
+  it("camelCase biçim de (tip sözleşmesi) çalışır", () => {
+    const k = findingKey(FINDING);
+    expect(k).toContain("10");
+    expect(k).not.toContain("-1");
   });
 });
 

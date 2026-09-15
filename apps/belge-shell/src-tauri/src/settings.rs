@@ -157,14 +157,53 @@ pub fn load_from(dir: &Path) -> Settings {
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Settings::default();
     };
-    serde_json::from_str(&text).unwrap_or_default()
+    // Mutlu yol: yapı bütünüyle çözülür.
+    if let Ok(settings) = serde_json::from_str::<Settings>(&text) {
+        return settings;
+    }
+    // Aksi hâlde alan alan kurtar: tek yanlış tipli alan bütün ayarları
+    // düşürmemeli. Yalnız geçerli değerler devralınır, gerisi varsayılan kalır.
+    lenient(&text)
+}
+
+/// Geçerli her alanı ayrı ayrı çözer; çözülemeyen alan varsayılanında kalır.
+fn lenient(text: &str) -> Settings {
+    let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(text) else {
+        return Settings::default();
+    };
+    let mut s = Settings::default();
+    macro_rules! field {
+        ($key:literal, $field:ident) => {
+            if let Some(v) = map.get($key) {
+                if let Ok(val) = serde_json::from_value(v.clone()) {
+                    s.$field = val;
+                }
+            }
+        };
+    }
+    field!("theme", theme);
+    field!("textScale", text_scale);
+    field!("highContrast", high_contrast);
+    field!("reduceMotion", reduce_motion);
+    field!("respectReducedMotion", respect_reduced_motion);
+    field!("acceptedTerms", accepted_terms);
+    field!("outputDir", output_dir);
+    field!("rendererPath", renderer_path);
+    field!("disabledRules", disabled_rules);
+    field!("includeReview", include_review);
+    field!("sourceReadOnly", source_read_only);
+    field!("linearResults", linear_results);
+    field!("recentDocuments", recent_documents);
+    field!("migratedFrom", migrated_from);
+    s
 }
 
 pub fn save_to(dir: &Path, settings: &Settings) -> std::io::Result<()> {
-    std::fs::create_dir_all(dir)?;
     let text = serde_json::to_string_pretty(settings)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    std::fs::write(settings_path(dir), text)
+    // Atomik yazım: yarım kalan dosya sonraki okumayı varsayılana düşürüp ilk
+    // kayıtta kalıcı veri kaybına yol açıyordu (bkz. atomic::write).
+    crate::atomic::write(&settings_path(dir), text.as_bytes())
 }
 
 #[cfg(test)]
@@ -246,6 +285,59 @@ mod tests {
         let back = load_from(&d);
         assert_eq!(back.reduce_motion, "system");
         assert!(!back.respect_reduced_motion);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn one_wrong_typed_field_does_not_discard_every_other_value() {
+        // Bir alanın tipi yanlışsa (indirme sonrası eski sürüm, elle düzenleme
+        // ya da kısmi bozulma) serde bütün yapıyı reddediyordu: kabul edilen
+        // kullanım koşulları, çıktı klasörü, kurallar ve son belgeler tümden
+        // varsayılana düşüyordu; bir sonraki kayıt kaybı kalıcı yapıyordu.
+        let d = tmp();
+        std::fs::write(
+            settings_path(&d),
+            r#"{"theme":123,"textScale":150,"acceptedTerms":3,"outputDir":"/tmp/x",
+                "disabledRules":["ORTHO_01"],"includeReview":false}"#,
+        )
+        .unwrap();
+        let s = load_from(&d);
+        // Yanlış tipli alan varsayılanda kalır…
+        assert_eq!(s.theme, "system");
+        // …ama geçerli olan her alan KORUNUR.
+        assert_eq!(s.text_scale, 150);
+        assert_eq!(s.accepted_terms, Some(3));
+        assert_eq!(s.output_dir.as_deref(), Some("/tmp/x"));
+        assert_eq!(s.disabled_rules, vec!["ORTHO_01".to_string()]);
+        assert!(!s.include_review);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn save_is_atomic_and_leaves_no_temporary_file() {
+        // Yerinde yazımda yarım kalan dosya sessizce varsayılana düşürüyordu.
+        // Atomik yazım ya eski ya yeni tam dosyayı bırakır; geçici dosya kalmaz.
+        let d = tmp();
+        let s = Settings {
+            theme: "dark".into(),
+            accepted_terms: Some(2),
+            ..Default::default()
+        };
+        save_to(&d, &s).unwrap();
+        // İkinci yazım da atomik; birinci sürümün üzerine güvenle yazar.
+        let s2 = Settings {
+            theme: "light".into(),
+            ..s.clone()
+        };
+        save_to(&d, &s2).unwrap();
+        assert_eq!(load_from(&d), s2);
+        let leftovers: Vec<_> = std::fs::read_dir(&d)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n != SETTINGS_FILE)
+            .collect();
+        assert!(leftovers.is_empty(), "geçici dosya kaldı: {leftovers:?}");
         std::fs::remove_dir_all(&d).ok();
     }
 
