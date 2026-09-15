@@ -178,3 +178,30 @@ fn stamping_a_self_referential_contents_does_not_hang() {
         Guarded::TimedOut => panic!("damga döngüde KİLİTLENDİ"),
     }
 }
+
+/// 4. tur: dolaylı→dizi /Contents deseninin BAŞKA bir tüketicisi —
+/// detect_likely_blank_pages (Düzenle boş-sayfa tespiti, kullanıcıya SİLME
+/// adayı olarak sunar). Dolaylı diziyi (`5 0 R`→`[6 0 R]`) dereference etmeden
+/// tek stream sanıp `as_stream()` başarısız olunca içerik 0 bayt sayılıyor →
+/// DOLU bir sayfa "boş" işaretlenip silme adayı gösteriliyordu. Fix ile: dolu
+/// sayfa aday DEĞİL; gerçekten boş sayfa hâlâ aday.
+#[test]
+fn a_content_page_with_indirect_array_contents_is_not_flagged_blank() {
+    // Dolu sayfa: dolaylı→dizi /Contents, ~34 bayt gerçek içerik.
+    let mut pdf = skeleton("5 0 R");
+    pdf.object(5, b"[6 0 R]");
+    pdf.stream(6, "", b"BT /F1 18 Tf 72 72 Td (Dolu sayfa metni burada) Tj ET");
+    pdf.finish_classic("/Root 1 0 R");
+    let doc = match guarded(Duration::from_secs(20), {
+        let bytes = pdf.bytes.clone();
+        move || ekler_core::load_pdf_tolerant(&bytes, "x.pdf").map(|r| r.document).map_err(|e| e.to_string())
+    }) {
+        Guarded::Done(Ok(d)) => d,
+        other => panic!("dolu sayfa yüklenemedi: {other:?}"),
+    };
+    let blanks = ekler_core::detect_likely_blank_pages(&doc);
+    assert!(
+        blanks.is_empty(),
+        "dolaylı-dizi içerikli DOLU sayfa yanlışlıkla boş (silme adayı) işaretlendi: {blanks:?}"
+    );
+}

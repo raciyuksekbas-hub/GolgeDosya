@@ -88,12 +88,12 @@ pub fn detect_likely_blank_pages(doc: &LopdfDoc) -> Vec<usize> {
             // Contents akışını denetle
             let mut total_content_bytes = 0;
             if let Ok(contents) = page_dict.get(b"Contents") {
-                match contents {
-                    Object::Reference(ref_id) => {
-                        if let Ok(stream) = doc.get_object(*ref_id).and_then(|o| o.as_stream()) {
-                            total_content_bytes += stream.content.len();
-                        }
-                    }
+                // `/Contents` dolaylı olup bir DİZİYE çözülebilir (`5 0 R`→`[6 0 R]`);
+                // dizi/stream kararından ÖNCE dereference et, yoksa dolu bir sayfa
+                // 0 bayt sayılıp yanlışlıkla "boş" (silme adayı) işaretlenir.
+                let resolved = doc.dereference(contents).map(|(_, o)| o).unwrap_or(contents);
+                match resolved {
+                    Object::Stream(stream) => total_content_bytes += stream.content.len(),
                     Object::Array(arr) => {
                         for item in arr {
                             if let Ok(ref_id) = item.as_reference() {
