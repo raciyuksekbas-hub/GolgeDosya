@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn write_new_refuses_to_overwrite_and_preserves_the_existing_file() {
         let d = tmp();
-        let f = d.join("Dilekçe - İkinciGöz.docx");
+        let f = d.join("Dilekçe - Düzeltilmiş.docx");
         // Kullanıcının elle düzenlemiş olabileceği önceki kopya.
         std::fs::write(&f, b"kullanicinin duzenledigi kopya").unwrap();
         let err = write_new(&f, b"yeni tam icerik cok daha uzun").unwrap_err();
@@ -169,12 +169,12 @@ mod tests {
     fn write_new_unique_never_clobbers_and_derives_numbered_names() {
         let d = tmp();
         // Aynı ada üç kez yaz; her biri farklı içerik.
-        let n1 = write_new_unique(&d, "Dilekçe - İkinciGöz.docx", b"birinci").unwrap();
-        let n2 = write_new_unique(&d, "Dilekçe - İkinciGöz.docx", b"ikinci").unwrap();
-        let n3 = write_new_unique(&d, "Dilekçe - İkinciGöz.docx", b"ucuncu").unwrap();
-        assert_eq!(n1, "Dilekçe - İkinciGöz.docx");
-        assert_eq!(n2, "Dilekçe - İkinciGöz (2).docx");
-        assert_eq!(n3, "Dilekçe - İkinciGöz (3).docx");
+        let n1 = write_new_unique(&d, "Dilekçe - Düzeltilmiş.docx", b"birinci").unwrap();
+        let n2 = write_new_unique(&d, "Dilekçe - Düzeltilmiş.docx", b"ikinci").unwrap();
+        let n3 = write_new_unique(&d, "Dilekçe - Düzeltilmiş.docx", b"ucuncu").unwrap();
+        assert_eq!(n1, "Dilekçe - Düzeltilmiş.docx");
+        assert_eq!(n2, "Dilekçe - Düzeltilmiş (2).docx");
+        assert_eq!(n3, "Dilekçe - Düzeltilmiş (3).docx");
         // Üçü de var ve içerikleri karışmamış: hiçbiri kaybolmadı.
         assert_eq!(std::fs::read(d.join(&n1)).unwrap(), b"birinci");
         assert_eq!(std::fs::read(d.join(&n2)).unwrap(), b"ikinci");
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn split_name_handles_extension_dotfiles_and_bare_names() {
         assert_eq!(split_name("a.docx"), ("a", Some("docx")));
-        assert_eq!(split_name("a - İkinciGöz.udf"), ("a - İkinciGöz", Some("udf")));
+        assert_eq!(split_name("a - Düzeltilmiş.udf"), ("a - Düzeltilmiş", Some("udf")));
         assert_eq!(split_name("noext"), ("noext", None));
         assert_eq!(split_name(".gizli"), (".gizli", None));
         assert_eq!(split_name("bitiyor."), ("bitiyor.", None));

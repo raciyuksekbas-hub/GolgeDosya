@@ -420,7 +420,16 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             boş bir bant çizmez ve hata/boş durum tam genişliği alır. */}
         <div className="pdf-workspace-layout" data-pages={surfaces.strip}>
             {surfaces.strip && <aside className="thumbnail-list" aria-label="Sayfa önizlemeleri">{order.map((item, index) => <div key={item.key} className={`thumbnail ${item.key === current ? 'current' : ''} ${selected.includes(item.key) ? 'selected' : ''} ${kind === 'delete' && selected.includes(item.key) ? 'removed' : ''}`}>
-                <button className="thumbnail-image-button" aria-label={`${item.source.file_name} sayfa ${item.page} görüntüle`} onClick={() => setCurrent(item.key)}><Preview item={item} rotation={rotations[item.key] || 0}/></button>
+                {/* Önizleme motoru PDF SAYFASI çizer. Görsel kaynaklarda (Görseller
+                    → PDF aracı) bu çağrı zorunlu olarak düşüyor ve her küçük resim
+                    "önizleme oluşturulamadı" hatası gösteriyordu: araç çalışıyor
+                    ama tamamen bozukmuş gibi görünüyordu. Görselde hata yerine
+                    dosyanın kendisi söylenir. */}
+                <button className="thumbnail-image-button" aria-label={`${item.source.file_name} sayfa ${item.page} görüntüle`} onClick={() => setCurrent(item.key)}>
+                    {item.source.format === 'pdf'
+                        ? <Preview item={item} rotation={rotations[item.key] || 0}/>
+                        : <span className="thumbnail-placeholder">{item.source.file_name}</span>}
+                </button>
                 <span className="thumbnail-no">{index + 1}<span className="sr-only">. çıktı sırası · Kaynak s. {item.page}</span></span>
                 {pageSelection && <label className="thumbnail-pick"><input type="checkbox" checked={selected.includes(item.key)} onChange={() => toggle(item.key)}/>{kind === 'delete' ? 'Çıkar' : kind === 'rotate' ? 'Döndür' : 'Dahil et'}</label>}
                 {kind === 'reorder' && <div className="thumbnail-move">

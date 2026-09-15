@@ -166,7 +166,7 @@ pub fn convert_udf_to_markdown(
         .unwrap()
         .to_string_lossy()
         .replace(".duzenek-markdown-", "");
-    let package_dir = output_dir.join(format!("DuzenEk-Markdown-{suffix}"));
+    let package_dir = output_dir.join(format!("GolgeDosya-Markdown-{suffix}"));
     safe_io::publish_directory(staging.path(), &package_dir)?;
     Ok(MarkdownResult {
         markdown,

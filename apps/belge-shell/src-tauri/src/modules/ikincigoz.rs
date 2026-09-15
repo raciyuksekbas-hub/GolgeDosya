@@ -320,7 +320,7 @@ pub async fn ikincigoz_apply_fixes(
                 .ok_or_else(|| "Kaydedilecek klasör bulunamadı.".to_string())?,
         };
         // No-clobber + atomik yayın. Kaynak zaten adı değiştiği için korunur;
-        // ama kullanıcının daha önce üretip düzenlediği bir "… - İkinciGöz"
+        // ama kullanıcının daha önce üretip düzenlediği bir "… - Düzeltilmiş"
         // kopyası aynı adı taşıyabilir. Düz fs::write onu sessizce eziyordu
         // (geri alınamaz kayıp) ve atomik değildi (yarım yazım → bozuk zip).
         // Çakışırsa Dönüştür gibi " (2)" türet; var olan hiçbir kopya kaybolmaz.

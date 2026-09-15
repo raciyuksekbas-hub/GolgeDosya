@@ -116,7 +116,7 @@ pub(crate) fn execute_with_expected_outputs(
         .replace(".duzenek-export-", "")
         .replace(".tmp", "");
     let package_dir = ctx.output_dir.join(format!(
-        "DuzenEk-{}-{}",
+        "GolgeDosya-{}-{}",
         sanitize_for_filename(&project.name),
         suffix
     ));

@@ -102,9 +102,9 @@ pub fn output_file_name(source: &str) -> String {
         None => (base.as_str(), ""),
     };
     if ext.is_empty() {
-        format!("{stem} - İkinciGöz")
+        format!("{stem} - Düzeltilmiş")
     } else {
-        format!("{stem} - İkinciGöz.{ext}")
+        format!("{stem} - Düzeltilmiş.{ext}")
     }
 }
 
@@ -816,9 +816,9 @@ mod tests {
 
     #[test]
     fn the_output_is_a_new_file_with_the_product_name() {
-        assert_eq!(output_file_name("dava.docx"), "dava - İkinciGöz.docx");
-        assert_eq!(output_file_name("/a/b/dava.udf"), "dava - İkinciGöz.udf");
-        assert_eq!(output_file_name("dosya"), "dosya - İkinciGöz");
+        assert_eq!(output_file_name("dava.docx"), "dava - Düzeltilmiş.docx");
+        assert_eq!(output_file_name("/a/b/dava.udf"), "dava - Düzeltilmiş.udf");
+        assert_eq!(output_file_name("dosya"), "dosya - Düzeltilmiş");
     }
 
     #[test]

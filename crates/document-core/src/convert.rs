@@ -90,13 +90,13 @@ pub struct ConversionResult {
     pub elapsed_ms: u128,
 }
 
-/// Where Tavzih writes its results.
+/// Where GölgeDosya writes its conversion results.
 ///
 /// Outputs no longer land beside the source: a converted copy appearing silently next to a
 /// case file is easy to mistake for the original, and it writes into folders the user may
 /// not own. Everything goes to one predictable place instead.
 pub fn output_root() -> PathBuf {
-    documents_dir().join("Tavzih").join("Dönüştürülen Belgeler")
+    documents_dir().join("GölgeDosya").join("Dönüştürülen Belgeler")
 }
 
 /// The user's Documents directory.
@@ -116,7 +116,7 @@ fn documents_dir() -> PathBuf {
         .join("Documents")
 }
 
-/// True when `path` ends with `Documents/Tavzih/Dönüştürülen Belgeler`.
+/// True when `path` ends with `Documents/GölgeDosya/Dönüştürülen Belgeler`.
 ///
 /// Compares path components rather than a string suffix, because the separator differs
 /// between platforms — a hardcoded `/` passes on macOS and fails on Windows.
@@ -127,7 +127,7 @@ pub fn ends_with_output_root(path: &Path) -> bool {
         .take(3)
         .map(|c| c.as_os_str().to_string_lossy().to_string())
         .collect();
-    tail == ["Dönüştürülen Belgeler", "Tavzih", "Documents"]
+    tail == ["Dönüştürülen Belgeler", "GölgeDosya", "Documents"]
 }
 
 /// Create the output root if it does not exist yet.
@@ -646,7 +646,7 @@ fn build_batch_zip(
         )
     })?;
     let stamp = stamp.map(|s| s.to_string()).unwrap_or_else(utc_stamp);
-    let base = format!("Tavzih_Dönüşüm_{stamp}");
+    let base = format!("GölgeDosya_Dönüşüm_{stamp}");
 
     let mut zip_path = dir.join(format!("{base}.zip"));
     let mut n = 2;

@@ -1756,7 +1756,7 @@ fn c41_homogeneous_batch_zips_into_one_target_folder() {
         .file_name()
         .unwrap()
         .to_string_lossy()
-        .starts_with("Tavzih_Dönüşüm_2026-08-30_2005"));
+        .starts_with("GölgeDosya_Dönüşüm_2026-08-30_2005"));
     let entries = zip_entries(&zip);
     assert_eq!(entries.len(), 4);
     assert!(entries.iter().all(|e| e.starts_with("UDF/")), "{entries:?}");

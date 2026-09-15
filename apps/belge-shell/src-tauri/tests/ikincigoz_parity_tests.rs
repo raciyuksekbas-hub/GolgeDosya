@@ -331,7 +331,7 @@ fn the_full_chain_writes_a_real_corrected_copy_that_reopens() {
 
 /// P0 (skeptic 2): `ikincigoz_apply_fixes` çıktıyı düz `std::fs::write` ile
 /// yazıyordu. Çıktı adı kaynaktan farklı olduğu için kaynak korunuyordu, AMA:
-/// kullanıcı bir kez düzeltme uygulayıp oluşan "… - İkinciGöz" kopyasını açıp
+/// kullanıcı bir kez düzeltme uygulayıp oluşan "… - Düzeltilmiş" kopyasını açıp
 /// DÜZENLEDİKTEN sonra aynı kaynağa yeniden düzeltme uygularsa, ikinci yazım
 /// düzenlenmiş kopyanın ÜZERİNE SESSİZCE yazıyordu — geri alınamaz veri kaybı.
 /// Ayrıca yazım atomik değildi (yarıda kesilen yazım bozuk zip bırakır).
@@ -370,7 +370,7 @@ fn applying_fixes_twice_never_clobbers_a_previously_edited_copy() {
         Some(out_s.clone()),
     ))
     .expect("ilk uygulama başarılı olmalı");
-    assert_eq!(r1.file_name, "ornek-dilekce-hatali - İkinciGöz.docx");
+    assert_eq!(r1.file_name, "ornek-dilekce-hatali - Düzeltilmiş.docx");
     assert!(r1.applied > 0);
     let first = out.join(&r1.file_name);
     assert!(first.exists());
@@ -392,7 +392,7 @@ fn applying_fixes_twice_never_clobbers_a_previously_edited_copy() {
         r2.file_name, r1.file_name,
         "P0: ikinci çıktı ilk kopyanın adını yeniden kullandı (clobber)"
     );
-    assert_eq!(r2.file_name, "ornek-dilekce-hatali - İkinciGöz (2).docx");
+    assert_eq!(r2.file_name, "ornek-dilekce-hatali - Düzeltilmiş (2).docx");
 
     // Düzenlenen ilk kopya BİT BİT korunmalı.
     assert_eq!(
