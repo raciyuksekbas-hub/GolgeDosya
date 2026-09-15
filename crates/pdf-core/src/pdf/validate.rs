@@ -342,12 +342,20 @@ pub fn validate_document(doc: &Document) -> Result<usize> {
                             .map_err(|_| invalid("Contents stream eksik"))?;
                         Ok(())
                     };
-                    match contents {
+                    // `/Contents` değeri ISO 32000-1 §7.7.3.3 gereği DOLAYLI
+                    // olabilir ve bir akışa ya da akış dizisine çözülür. Dizi mi
+                    // tek akış mı kararından ÖNCE dereference et; yoksa diziye
+                    // çözülen dolaylı bir başvuru (`/Contents 5 0 R`, 5 = `[6 0 R]`)
+                    // tek stream sanılıp reddedilir — her görüntüleyici açsa da.
+                    let resolved = doc.dereference(contents).map(|(_, o)| o).unwrap_or(contents);
+                    match resolved {
                         Object::Array(a) => {
                             for v in a {
                                 check(v)?
                             }
                         }
+                        // Dolaylı başvuru doğrudan bir akışa çözüldü: geçerli.
+                        Object::Stream(_) => {}
                         v => check(v)?,
                     }
                 }
@@ -414,7 +422,21 @@ fn validate_flate_stream(stream: &lopdf::Stream) -> Result<()> {
             return Err(invalid("PDF akışının açılmış boyutu güvenli sınırı aşıyor"));
         }
     }
-    if decoder.total_in() != stream.content.len() as u64 {
+    // Akış temiz çözüldü: döngü hatasız `read == 0` (zlib EOD) ile bitti.
+    // lopdf 0.34'ün hatalı zlib'de kısmi veri döndürmesi endişesi YUKARIDAKİ
+    // read hatasında (kısmi içerik reddi) yakalanır; yarıda kesilmiş bir akış
+    // temiz EOD değil, çözme hatası üretir. Buraya ulaşan her şey geçerli ve
+    // eksiksiz bir zlib akışıdır.
+    //
+    // `total_in` çoğu zaman `content.len()`e eşittir, ama pek çok üretici
+    // `endstream`den önceki satır sonunu (LF/CRLF) ya da hizalama dolgusunu
+    // `/Length`e katar. Bu baytlar zlib EOD'undan SONRADIR, çözülen içeriğe
+    // girmez ve ISO 32000-1 gereği her görüntüleyici yok sayar; onlar yüzünden
+    // belge reddedilmez (kendi görsel yolumuz da bunu tolere eder, optimizer.rs).
+    // Eşitlik dayatmak, görüntüleyicinin sorunsuz açtığı belgeyi kilitliyordu.
+    // Tutarsızlık yalnızca çözücünün var olandan FAZLA girdi tüketmesidir —
+    // mantıken imkânsız; yine de savunma amaçlı denetlenir.
+    if decoder.total_in() > stream.content.len() as u64 {
         return Err(invalid("Sıkıştırılmış PDF akışı uzunluğu tutarsız"));
     }
     Ok(())

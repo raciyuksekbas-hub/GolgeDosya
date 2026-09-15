@@ -403,9 +403,18 @@ fn apply_stamp_to_page(
     let old = resolved.get(b"Contents").ok().cloned();
     let mut contents = vec![Object::Reference(prefix)];
     if let Some(old) = old {
-        match old {
+        // `/Contents` dolaylı olup bir DİZİYE çözülebilir (`5 0 R` → `[6 0 R]`).
+        // Düzleştirmeden önce çöz; yoksa yeni diziye bir DİZİYE başvuru gömülür
+        // ve çıktı "Contents stream eksik" ile doğrulamada düşer (okuma yolu
+        // zaten dereference ediyor — bkz. brand_visible_on_page).
+        let resolved_old = doc
+            .dereference(&old)
+            .map(|(_, o)| o.clone())
+            .unwrap_or_else(|_| old.clone());
+        match resolved_old {
             Object::Array(items) => contents.extend(items),
-            other => contents.push(other),
+            // Tek akış (doğrudan ya da dolaylı başvuru): başvuruyu koru.
+            _ => contents.push(old),
         }
     }
     contents.extend([
