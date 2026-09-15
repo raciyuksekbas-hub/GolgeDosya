@@ -1,6 +1,6 @@
 use crate::error::{EklerError, Result};
 use crate::image::image_file_to_pdf;
-use crate::pdf::{extract_page_range, load_pdf_tolerant, merge_documents};
+use crate::pdf::{extract_pages, load_pdf_tolerant, merge_documents};
 use lopdf::{Document as LopdfDoc, Object};
 use std::path::{Path, PathBuf};
 
@@ -228,7 +228,11 @@ fn run_tool_inner(
                     "İmzalı PDF için türetilmiş kopya onayı gerekli".into(),
                 ));
             }
-            docs.push(load_single_pdf_approved(path)?);
+            let mut doc = load_single_pdf_approved(path)?;
+            // Her araç belgeyi yeniden yazar; imza artık doğrulanamaz. Çıktı
+            // imzalıymış gibi davranmasın diye imza verisi taşınmaz.
+            crate::pdf::strip_signatures(&mut doc);
+            docs.push(doc);
         }
     }
     if docs.len() > 1 && !matches!(operation, ToolOperation::Merge | ToolOperation::Images) {
@@ -284,11 +288,9 @@ fn run_tool_inner(
                     "En az bir sayfa kalmalı".into(),
                 ));
             }
-            let parts = selected
-                .iter()
-                .map(|p| extract_page_range(&doc, *p, *p))
-                .collect::<Result<Vec<_>>>()?;
-            doc = merge_documents(&parts)?;
+            // Tek geçiş, tek nesne haritası: sayfaların paylaştığı kaynak bir kez
+            // kopyalanır, kalan sayfalar arası bağlantılar yeni sayfalara bağlanır.
+            doc = extract_pages(&doc, &selected)?;
         }
         ToolOperation::Rotate { degrees } | ToolOperation::RotateSelected { degrees, .. } => {
             if let ToolOperation::RotateSelected { pages, .. } = operation {

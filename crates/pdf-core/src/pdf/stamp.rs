@@ -546,6 +546,10 @@ pub fn apply_branding(doc: &mut LopdfDoc) -> Result<()> {
 pub fn apply_raster_branding(doc: &mut LopdfDoc, dpi: u32) -> Result<()> {
     apply_branding_for_output(doc, Some(dpi))
 }
+const BRAND_LOGO: &[u8] = include_bytes!("../../assets/brand-logo.ops");
+const BRAND_FORM_CONTENT: &[u8] = b"q /BrandAlpha gs /Mark Do Q";
+const BRAND_BBOX: [f32; 4] = [0., 0., 290., 72.];
+
 fn apply_branding_for_output(doc: &mut LopdfDoc, raster_dpi: Option<u32>) -> Result<()> {
     let config = StampConfig {
         enabled: true,
@@ -554,30 +558,209 @@ fn apply_branding_for_output(doc: &mut LopdfDoc, raster_dpi: Option<u32>) -> Res
         margin_pt: 8.0,
         show_badge: false,
     };
-    // One shared, translucent vector form; no raster or unused font per page.
-    // Isolate the vector as a transparency group: opacity applies once to the
-    // complete mark, not repeatedly where the logo's paths overlap.
-    let mut vector = Stream::new(
-        dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),290.into(),72.into()],
-        "Group"=>dictionary! {"S"=>"Transparency","I"=>true,"CS"=>"DeviceRGB"}, "Resources"=>Dictionary::new()},
-        include_bytes!("../../assets/brand-logo.ops").to_vec(),
-    );
-    vector.compress().map_err(pdf_error)?;
-    let vector_id = doc.add_object(vector);
-    let mut form = Stream::new(
-        dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),290.into(),72.into()],
-        "Resources"=>dictionary! {"XObject"=>dictionary! {"Mark"=>vector_id},"ExtGState"=>dictionary! {"BrandAlpha"=>dictionary! {"Type"=>"ExtGState","ca"=>0.24f32,"CA"=>0.24f32}}}},
-        b"q /BrandAlpha gs /Mark Do Q".to_vec(),
-    );
-    form.compress().map_err(pdf_error)?;
-    let form_id = doc.add_object(form);
+    // Marka idempotenttir. Daha önce GölgeDosya'nın türettiği bir belgede
+    // işareti görünür alanda duran sayfaya ikinci pay ve ikinci logo eklenmez;
+    // yeni işaret gerekirse var olan marka formu yeniden kullanılır. Eskiden
+    // türetilmiş kopyadan türetilen her kopya sayfayı 34 pt büyütüp bir logo
+    // daha ekliyordu (sırala → döndür → sil: iki kat pay, üç logo, altı form).
+    // Kırpma işareti görünür alanın dışında bıraktıysa sayfa yeniden işaretlenir.
+    let existing = existing_brand_forms(doc);
+    let pending: Vec<lopdf::ObjectId> = doc
+        .get_pages()
+        .into_values()
+        .filter(|page| !brand_visible_on_page(doc, *page, &existing))
+        .collect();
+    if pending.is_empty() {
+        return Ok(());
+    }
+    let form_id = match existing.iter().min() {
+        Some(form) => *form,
+        None => {
+            // One shared, translucent vector form; no raster or unused font per page.
+            // Isolate the vector as a transparency group: opacity applies once to the
+            // complete mark, not repeatedly where the logo's paths overlap.
+            let mut vector = Stream::new(
+                dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>BRAND_BBOX.iter().map(|v| Object::Integer(*v as i64)).collect::<Vec<_>>(),
+                "Group"=>dictionary! {"S"=>"Transparency","I"=>true,"CS"=>"DeviceRGB"}, "Resources"=>Dictionary::new()},
+                BRAND_LOGO.to_vec(),
+            );
+            vector.compress().map_err(pdf_error)?;
+            let vector_id = doc.add_object(vector);
+            let mut form = Stream::new(
+                dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>BRAND_BBOX.iter().map(|v| Object::Integer(*v as i64)).collect::<Vec<_>>(),
+                "Resources"=>dictionary! {"XObject"=>dictionary! {"Mark"=>vector_id},"ExtGState"=>dictionary! {"BrandAlpha"=>dictionary! {"Type"=>"ExtGState","ca"=>0.24f32,"CA"=>0.24f32}}}},
+                BRAND_FORM_CONTENT.to_vec(),
+            );
+            form.compress().map_err(pdf_error)?;
+            doc.add_object(form)
+        }
+    };
     let mut resources = BrandResources {
         form: form_id,
         streams: Default::default(),
         raster_dpi,
     };
-    for id in doc.get_pages().into_values() {
+    for id in pending {
         apply_stamp_to_page(doc, id, "DuzenEk", (0, 0), &config, Some(&mut resources))?;
     }
     Ok(())
+}
+
+fn dictionary_at<'o>(doc: &'o LopdfDoc, value: Option<&'o Object>) -> Option<&'o Dictionary> {
+    value
+        .and_then(|v| doc.dereference(v).ok())
+        .and_then(|(_, v)| v.as_dict().ok())
+}
+
+fn stream_data(stream: &Stream) -> Option<Vec<u8>> {
+    if stream.dict.has(b"Filter") {
+        stream.decompressed_content().ok()
+    } else {
+        Some(stream.content.clone())
+    }
+}
+
+/// Belgedeki GölgeDosya marka formları: içeriği ve logo akışı birebir
+/// eşleşen Form XObject'ler. Ada değil baytlara bakılır.
+fn existing_brand_forms(doc: &LopdfDoc) -> std::collections::HashSet<lopdf::ObjectId> {
+    doc.objects
+        .iter()
+        .filter_map(|(id, obj)| {
+            let form = obj.as_stream().ok()?;
+            if form.dict.get(b"Subtype").and_then(|t| t.as_name()).ok() != Some(b"Form")
+                || stream_data(form)? != BRAND_FORM_CONTENT
+            {
+                return None;
+            }
+            let resources = form.dict.get(b"Resources").ok()?;
+            let (_, resources) = doc.dereference(resources).ok()?;
+            let xobjects = resources.as_dict().ok()?.get(b"XObject").ok()?;
+            let (_, xobjects) = doc.dereference(xobjects).ok()?;
+            let mark = xobjects.as_dict().ok()?.get(b"Mark").ok()?;
+            let (_, mark) = doc.dereference(mark).ok()?;
+            (stream_data(mark.as_stream().ok()?)? == BRAND_LOGO).then_some(*id)
+        })
+        .collect()
+}
+
+/// Sayfa bir marka formunu çiziyor ve işaret sayfanın görünür kutusunun
+/// içinde mi? İşaretin kutusu, çizildiği akıştaki `cm` dönüşümlerinden
+/// hesaplanır.
+fn brand_visible_on_page(
+    doc: &LopdfDoc,
+    page_id: lopdf::ObjectId,
+    forms: &std::collections::HashSet<lopdf::ObjectId>,
+) -> bool {
+    if forms.is_empty() {
+        return false;
+    }
+    let Ok(page) = super::resolved_page_dictionary(doc, page_id) else {
+        return false;
+    };
+    let Some(xobjects) = dictionary_at(doc, page.get(b"Resources").ok())
+        .and_then(|r| dictionary_at(doc, r.get(b"XObject").ok()))
+    else {
+        return false;
+    };
+    let names: Vec<&[u8]> = xobjects
+        .iter()
+        .filter(|(_, v)| v.as_reference().is_ok_and(|id| forms.contains(&id)))
+        .map(|(k, _)| k.as_slice())
+        .collect();
+    if names.is_empty() {
+        return false;
+    }
+    let number = |o: &Object| o.as_float().ok();
+    let Some(visible) = page
+        .get(b"CropBox")
+        .or_else(|_| page.get(b"MediaBox"))
+        .ok()
+        .and_then(|b| doc.dereference(b).ok())
+        .and_then(|(_, b)| b.as_array().ok())
+        .filter(|b| b.len() == 4)
+        .and_then(|b| {
+            Some([
+                number(&b[0])?,
+                number(&b[1])?,
+                number(&b[2])?,
+                number(&b[3])?,
+            ])
+        })
+    else {
+        return false;
+    };
+    let (vx0, vx1) = (visible[0].min(visible[2]), visible[0].max(visible[2]));
+    let (vy0, vy1) = (visible[1].min(visible[3]), visible[1].max(visible[3]));
+    let streams: Vec<Object> = match page.get(b"Contents") {
+        Ok(Object::Array(items)) => items.clone(),
+        Ok(Object::Reference(id)) => match doc.get_object(*id) {
+            Ok(Object::Array(items)) => items.clone(),
+            _ => vec![Object::Reference(*id)],
+        },
+        _ => Vec::new(),
+    };
+    for item in streams {
+        let Some(data) = doc
+            .dereference(&item)
+            .ok()
+            .and_then(|(_, s)| s.as_stream().ok())
+            .and_then(stream_data)
+        else {
+            continue;
+        };
+        let Ok(content) = Content::decode(&data) else {
+            continue;
+        };
+        // [a b c d e f]; nokta: x' = a·x + c·y + e, y' = b·x + d·y + f.
+        let mut ctm = [1f32, 0., 0., 1., 0., 0.];
+        let mut saved = Vec::new();
+        for op in &content.operations {
+            match op.operator.as_str() {
+                "q" => saved.push(ctm),
+                "Q" => ctm = saved.pop().unwrap_or([1., 0., 0., 1., 0., 0.]),
+                "cm" if op.operands.len() == 6 => {
+                    let m: Vec<f32> = op.operands.iter().filter_map(number).collect();
+                    if m.len() == 6 {
+                        ctm = [
+                            m[0] * ctm[0] + m[1] * ctm[2],
+                            m[0] * ctm[1] + m[1] * ctm[3],
+                            m[2] * ctm[0] + m[3] * ctm[2],
+                            m[2] * ctm[1] + m[3] * ctm[3],
+                            m[4] * ctm[0] + m[5] * ctm[2] + ctm[4],
+                            m[4] * ctm[1] + m[5] * ctm[3] + ctm[5],
+                        ];
+                    }
+                }
+                "Do" if op
+                    .operands
+                    .first()
+                    .and_then(|o| o.as_name().ok())
+                    .is_some_and(|n| names.contains(&n)) =>
+                {
+                    let corners = [
+                        (BRAND_BBOX[0], BRAND_BBOX[1]),
+                        (BRAND_BBOX[2], BRAND_BBOX[1]),
+                        (BRAND_BBOX[0], BRAND_BBOX[3]),
+                        (BRAND_BBOX[2], BRAND_BBOX[3]),
+                    ];
+                    const TOLERANCE: f32 = 0.5;
+                    let inside = corners.iter().all(|(x, y)| {
+                        let (ux, uy) = (
+                            ctm[0] * x + ctm[2] * y + ctm[4],
+                            ctm[1] * x + ctm[3] * y + ctm[5],
+                        );
+                        ux >= vx0 - TOLERANCE
+                            && ux <= vx1 + TOLERANCE
+                            && uy >= vy0 - TOLERANCE
+                            && uy <= vy1 + TOLERANCE
+                    });
+                    if inside {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    false
 }

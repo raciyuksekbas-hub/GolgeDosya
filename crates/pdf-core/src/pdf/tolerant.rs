@@ -13,6 +13,9 @@ pub struct TolerantLoadResult {
 pub enum RepairStrategy {
     Strict,
     XrefNormalization,
+    /// Sayfa görünüm grafiği eksiksiz; yalnız onun dışındaki eksik nesne
+    /// başvuruları null sayıldı.
+    DanglingReferences,
 }
 
 /// Çok katmanlı toleranslı PDF yükleyici:
@@ -22,17 +25,23 @@ pub enum RepairStrategy {
 ///   - Dosya sonu (%%EOF) sonrasındaki artık/çöp baytların temizlenmesi
 ///   - startxref offset taraması ve düzeltilmesi
 ///
+/// Her iki katmanda da okunan belge normalize edilir ve katı kurallarla YENİDEN
+/// doğrulanır (`canonicalize`): toleranslı oku → normalize et → doğrula.
+///
 /// Unknown damage is rejected; object-scanning reconstruction is intentionally disabled.
 pub fn load_pdf_tolerant(bytes: &[u8], file_name: &str) -> Result<TolerantLoadResult> {
     // Tier 1: Doğrudan ve müdahalesiz hızlı yükleme
     if let Ok(mut doc) = LopdfDoc::load_mem(bytes) {
-        detach_from_source_layout(&mut doc);
-        super::validate_document(&doc)?;
+        let detached = canonicalize(&mut doc)?;
         return Ok(TolerantLoadResult {
-            strategy: RepairStrategy::Strict,
+            strategy: if detached == 0 {
+                RepairStrategy::Strict
+            } else {
+                RepairStrategy::DanglingReferences
+            },
             document: doc,
-            is_repaired: false,
-            repair_note: None,
+            is_repaired: detached > 0,
+            repair_note: (detached > 0).then(|| dangling_note(detached)),
         });
     }
 
@@ -48,15 +57,17 @@ pub fn load_pdf_tolerant(bytes: &[u8], file_name: &str) -> Result<TolerantLoadRe
     // Adım 2.1: Xref ve startxref normalizasyonu
     if let Ok(normalized_bytes) = normalize_xref_and_startxref(bytes) {
         if let Ok(mut doc) = LopdfDoc::load_mem(&normalized_bytes) {
-            detach_from_source_layout(&mut doc);
-            super::validate_document(&doc)?;
+            let detached = canonicalize(&mut doc)?;
+            let mut note =
+                "Standart dışı xref tablosu ve satır sonları normalize edildi.".to_string();
+            if detached > 0 {
+                note = format!("{note} {}", dangling_note(detached));
+            }
             return Ok(TolerantLoadResult {
                 strategy: RepairStrategy::XrefNormalization,
                 document: doc,
                 is_repaired: true,
-                repair_note: Some(
-                    "Standart dışı xref tablosu ve satır sonları normalize edildi.".to_string(),
-                ),
+                repair_note: Some(note),
             });
         }
     }
@@ -65,6 +76,27 @@ pub fn load_pdf_tolerant(bytes: &[u8], file_name: &str) -> Result<TolerantLoadRe
         "'{}' standart PDF yapısında okunamadı. Dosya şifreli, eksik veya ağır hasarlı olabilir.",
         file_name
     )))
+}
+
+/// Okunan belgeyi normalize eder ve katı kurallarla doğrular. Dönen sayı, null
+/// sayılan eksik nesne başvurularıdır.
+fn canonicalize(doc: &mut LopdfDoc) -> Result<usize> {
+    detach_from_source_layout(doc);
+    // Şifreli belge ayrıştırılmış sayılmaz; reddi validate_document kendi
+    // sözüyle verir.
+    let detached = if doc.trailer.has(b"Encrypt") {
+        0
+    } else {
+        super::validate::detach_dangling_references(doc)?
+    };
+    super::validate_document(doc)?;
+    Ok(detached)
+}
+
+fn dangling_note(detached: usize) -> String {
+    format!(
+        "Sayfa içeriğine ve kaynaklarına ait olmayan {detached} eksik nesne başvurusu PDF standardına göre boş sayıldı; kaynak dosya değiştirilmedi."
+    )
 }
 
 /// Yükleyicinin verdiği belge BÜTÜN bir belgedir; kaynak dosyanın fiziksel

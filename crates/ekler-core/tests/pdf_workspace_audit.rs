@@ -566,12 +566,13 @@ fn rotate_per_page_left_right_180_and_repeated() {
         [0, 180, 0]
     );
     // Geometri: dönüş bir öznitelik olarak taşınır, kutu yeniden örneklenmez.
-    // Marka payı görsel alt kenara eklenir: iki türetmede 180° dönük sayfada
-    // ilk pay (o an 90°) x eksenine, ikinci pay (o an 180°) üst kenara gelir;
-    // toplam alan = özgün + 2 pay.
+    // Marka payı ilk türetmede görsel alt kenara eklenir (o an 90° → x ekseni).
+    // Marka idempotenttir: ikinci türetmede işaret görünür alanda olduğu için
+    // yeni pay eklenmez; toplam alan = özgün + 1 pay. (2026-09-15'e kadar her
+    // türetme bir pay daha ekliyordu; bu test o birikimi kilitliyordu.)
     let (m, _) = boxes(&d2, 2);
     let area_growth = (m[2] - m[0]) * (m[3] - m[1]) - A4_LANDSCAPE[0] * A4_LANDSCAPE[1];
-    let expected = BRAND_GUTTER * A4_LANDSCAPE[1] + BRAND_GUTTER * (A4_LANDSCAPE[0] + BRAND_GUTTER);
+    let expected = BRAND_GUTTER * A4_LANDSCAPE[1];
     assert!(
         (area_growth - expected).abs() < 1.0,
         "beklenmeyen kutu büyümesi: {area_growth} vs {expected}"
@@ -1068,20 +1069,21 @@ fn chain_a_open_rotate_reorder_delete_save_reopen_each_step() {
         "döndürülen sayfa sıralama ve silmeden sonra hâlâ 90°"
     );
     // 90° dönük sayfada marka payı görsel alt kenara, yani x eksenine gelir.
+    // Marka idempotenttir: üç türetme = TEK pay (işaret görünür kaldıkça
+    // sonraki türetmeler pay eklemez). 2026-09-15'e kadar üç pay birikiyordu.
     let (m, _) = boxes(&d, 2);
     assert!(
         (m[3] - m[1] - A4_LANDSCAPE[1]).abs() < 0.05,
         "dönük sayfanın yüksekliği korunmalı: {m:?}"
     );
     assert!(
-        (m[2] - m[0] - (A4_LANDSCAPE[0] + 3.0 * BRAND_GUTTER)).abs() < 0.05,
-        "üç türetme = x ekseninde üç pay: {m:?}"
+        (m[2] - m[0] - (A4_LANDSCAPE[0] + BRAND_GUTTER)).abs() < 0.05,
+        "üç türetme = x ekseninde tek pay: {m:?}"
     );
-    // Dik sayfada üç türetme = alt kenarda üç pay.
     let (m1, _) = boxes(&d, 1);
     assert!(
-        (m1[3] - m1[1] - (LETTER[1] + 3.0 * BRAND_GUTTER)).abs() < 0.05,
-        "üç türetme = üç marka payı: {m1:?}"
+        (m1[3] - m1[1] - (LETTER[1] + BRAND_GUTTER)).abs() < 0.05,
+        "üç türetme = tek marka payı: {m1:?}"
     );
 }
 
@@ -2705,4 +2707,2853 @@ fn incrementally_updated_documents_compress_rotate_and_number_like_any_other() {
     ] {
         assert_incremental_derivable(&format!("{layout:?}"), &incremental_contract(layout, 3), 3);
     }
+}
+
+// ============ SARKAN BAŞVURU · PAYLAŞILAN KAYNAK · İÇ BAĞLANTI (2026-09-15)
+//
+// İki açık kusur, yapısal nedeniyle:
+//
+//  1. Eksik nesneye başvuru. macOS 26 PDFKit'in (Önizleme) yeniden kaydettiği
+//     etiketli belgede `/StructTreeRoot /IDTree 71 0 R` yazılı, 71 numaralı
+//     nesne dosyada yok (`/Size` 543 içinde, kullanımda değil). Doğrulayıcı
+//     Root'tan erişilen HER eksik nesneyi reddediyordu; sayfa görünümü
+//     eksiksiz olduğu hâlde belge hiç açılmıyordu. ISO 32000-1 §7.3.10 böyle
+//     bir başvuruyu null sayar.
+//  2. Paylaşılan kaynak çoğaltması. Sayfa kopyalayıcı eski→yeni id haritasını
+//     her sayfada sıfırdan açıyordu: sayfaların paylaştığı font, gömülü font
+//     programı, görsel ve ICC profili onu kullanan sayfa sayısı kadar
+//     kopyalanıyordu (40 sayfalık Chrome belgesi sıralanınca FontFile2 2 → 80,
+//     çıktı 10×). Aynı sebeple kalan sayfaya giden iç bağlantılar da kopuyordu.
+
+/// Çıktıda eksik nesneye başvuru ya da sayfası `null` bir bağlantı hedefi yok.
+fn assert_no_dangling_or_dead_destinations(name: &str, doc: &Document) {
+    fn visit(doc: &Document, obj: &Object, name: &str, key: Option<&[u8]>) {
+        match obj {
+            Object::Reference(id) => assert!(
+                doc.objects.contains_key(id),
+                "{name}: eksik nesneye başvuru {id:?}"
+            ),
+            Object::Array(items) => {
+                if matches!(key, Some(b"Dest") | Some(b"D")) {
+                    let first = items.first().map(|f| {
+                        let mut value = f.clone();
+                        for _ in 0..16 {
+                            match value {
+                                Object::Reference(id) => {
+                                    value = doc.get_object(id).cloned().unwrap_or(Object::Null)
+                                }
+                                _ => break,
+                            }
+                        }
+                        value
+                    });
+                    assert!(
+                        !matches!(first, Some(Object::Null)),
+                        "{name}: sayfası null bir bağlantı hedefi kaldı"
+                    );
+                }
+                for item in items {
+                    visit(doc, item, name, None);
+                }
+            }
+            Object::Dictionary(d) => {
+                for (k, v) in d.iter() {
+                    visit(doc, v, name, Some(k));
+                }
+            }
+            Object::Stream(s) => {
+                for (k, v) in s.dict.iter() {
+                    visit(doc, v, name, Some(k));
+                }
+            }
+            _ => {}
+        }
+    }
+    for obj in doc.objects.values() {
+        visit(doc, obj, name, None);
+    }
+    for (k, v) in doc.trailer.iter() {
+        visit(doc, v, name, Some(k));
+    }
+}
+
+/// İki sayfalık etiketli belge: sayfa görünümü eksiksiz, belge düzeyindeki
+/// yapıda yedi eksik nesneye başvuru. Eksik numaralar klasik xref'te `/Size`
+/// içinde ve serbest — PDFKit çıktısındaki biçim. Başvuranlar: yapı ağacının
+/// `/IDTree`'si, `/ParentTree` dizisindeki bir öğe, Catalog `/Outlines`, notun
+/// `/Popup`ı, bağlantının `/A` eylemi, görselin `/Metadata`sı ve trailer
+/// `/Info`. 2. sayfada, değeri Catalog'a kadar uzanan görünmez bir imza alanı.
+fn dangling_metadata_pdf() -> Vec<u8> {
+    let content = |n: u32, image: bool| {
+        let mut text = format!("/P <</MCID 0>> BDC BT /F1 24 Tf 72 720 Td (Sayfa {n}) Tj ET EMC");
+        if image {
+            text.push_str(" q 40 0 0 40 72 600 cm /Im1 Do Q");
+        }
+        zlib(text.as_bytes())
+    };
+    let mut pdf = RawPdf::new("1.7");
+    pdf.object(1, b"<</Type/Catalog/Pages 2 0 R/StructTreeRoot 30 0 R/MarkInfo<</Marked true>>/Outlines 40 0 R/Lang(tr-TR)>>");
+    pdf.object(2, b"<</Type/Pages/Count 2/Kids[10 0 R 12 0 R]>>");
+    pdf.object(3, b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>");
+    pdf.stream(
+        4,
+        "/Type/XObject/Subtype/Image/Width 2/Height 2/ColorSpace/DeviceRGB/BitsPerComponent 8/Metadata 41 0 R",
+        &[200, 30, 30, 30, 200, 30, 30, 30, 200, 240, 240, 240],
+    );
+    pdf.object(10, b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 595.28 841.89]/Resources<</Font<</F1 3 0 R>>/XObject<</Im1 4 0 R>>>>/Contents 11 0 R/StructParents 0/Annots[20 0 R 21 0 R]>>");
+    pdf.stream(11, "/Filter/FlateDecode", &content(1, true));
+    pdf.object(12, b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 595.28 841.89]/Resources<</Font<</F1 3 0 R>>>>/Contents 13 0 R/StructParents 1/Annots[22 0 R]>>");
+    pdf.stream(13, "/Filter/FlateDecode", &content(2, false));
+    pdf.object(
+        20,
+        b"<</Type/Annot/Subtype/Text/Rect[500 780 520 800]/Contents(Not)/Popup 42 0 R/F 4>>",
+    );
+    pdf.object(
+        21,
+        b"<</Type/Annot/Subtype/Link/Rect[72 700 300 720]/Border[0 0 0]/A 43 0 R>>",
+    );
+    // Görünmez imza alanı: `/V` imza sözlüğüne, onun `/Reference /Data`sı
+    // Catalog'a çıkar. Görünüm grafiği bu yoldan bütün belgeye yayılmamalı.
+    pdf.object(
+        22,
+        b"<</Type/Annot/Subtype/Widget/FT/Sig/T(Imza)/Rect[0 0 0 0]/F 4/V 33 0 R>>",
+    );
+    pdf.object(33, b"<</Type/Sig/Filter/Adobe.PPKLite/SubFilter/adbe.pkcs7.detached/Reference[<</Type/SigRef/TransformMethod/DocMDP/Data 1 0 R>>]>>");
+    pdf.object(
+        30,
+        b"<</Type/StructTreeRoot/K 31 0 R/ParentTree 32 0 R/IDTree 44 0 R>>",
+    );
+    pdf.object(
+        31,
+        b"<</Type/StructElem/S/Document/P 30 0 R/K 0/Pg 10 0 R>>",
+    );
+    pdf.object(32, b"<</Nums[0[31 0 R] 1[45 0 R]]>>");
+    let live: Vec<u32> = pdf.offsets.keys().copied().collect();
+    pdf.classic_table(47, &live, "/Size 47/Root 1 0 R/Info 46 0 R");
+    pdf.bytes
+}
+
+#[test]
+fn dangling_reference_outside_page_graph_opens_previews_saves_and_reopens() {
+    use ekler_core::pdf::tolerant::RepairStrategy;
+    let bytes = dangling_metadata_pdf();
+    // Toleranslı oku → normalize et → katı kurallarla yeniden doğrula.
+    let loaded = load_pdf_tolerant(&bytes, "onizleme-kaydi.pdf").unwrap();
+    assert!(loaded.is_repaired);
+    assert_eq!(loaded.strategy, RepairStrategy::DanglingReferences);
+    assert!(
+        loaded
+            .repair_note
+            .as_deref()
+            .unwrap_or("")
+            .contains("7 eksik nesne"),
+        "{:?}",
+        loaded.repair_note
+    );
+    assert_eq!(loaded.document.get_pages().len(), 2);
+    assert_no_dangling_or_dead_destinations("yüklenen", &loaded.document);
+    pdf::validate_document(&loaded.document).unwrap();
+    // Görünüm grafiği dokunulmadan kaldı: görsel, font ve iki açıklama yerinde.
+    let p1 =
+        pdf::resolved_page_dictionary(&loaded.document, loaded.document.get_pages()[&1]).unwrap();
+    assert_eq!(annot_count(&loaded.document, 1), 2);
+    assert!(format!("{p1:?}").contains("Im1"));
+
+    let lab = Lab::new();
+    let src = lab.write_bytes("onizleme-kaydi.pdf", &bytes);
+    // Aç: kabuğun alım fişi.
+    let receipt = scan_source_files(std::slice::from_ref(&src));
+    assert!(receipt.errors.is_empty(), "{:?}", receipt.errors);
+    assert_eq!(receipt.sources[0].page_count, 2);
+    // İmza alanı taşıdığı için türetilmiş kopya onayla yapılır (ayrı sözleşme).
+    assert!(receipt.sources[0].is_signed);
+    // Önizle: kabuğun sayfa önizlemesi.
+    #[cfg(target_os = "macos")]
+    {
+        let png = ekler_core::raster::preview_page(&src, 1, 72, 0).unwrap();
+        let image = image::load_from_memory(&png).unwrap();
+        assert!(image.width() > 100 && image.height() > 100);
+    }
+    // Kopya kaydet → yeniden aç; sıra, açıklamalar, sarkan başvuru yok.
+    for (label, op, expected) in [
+        (
+            "secim.pdf",
+            ToolOperation::Select { pages: vec![2, 1] },
+            vec!["Sayfa 2", "Sayfa 1"],
+        ),
+        (
+            "sirala.pdf",
+            ToolOperation::Reorder { pages: vec![2, 1] },
+            vec!["Sayfa 2", "Sayfa 1"],
+        ),
+        (
+            "dondur.pdf",
+            ToolOperation::Rotate { degrees: 90 },
+            vec!["Sayfa 1", "Sayfa 2"],
+        ),
+    ] {
+        let (o, out) = run(&lab, std::slice::from_ref(&src), op, label, true);
+        published(&o);
+        let d = reopen(&out);
+        assert_eq!(markers(&d), expected, "{label}");
+        assert_no_dangling_or_dead_destinations(label, &d);
+    }
+    let (o, _) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Compress {
+            level: Level::BalancedCompression,
+        },
+        "sikistir.pdf",
+        true,
+    );
+    assert!(!matches!(o, ToolOutcome::Failed { .. }), "{o:?}");
+}
+
+/// Tek bir nesnesi dosyada olmayan iki sayfalık belge. İlk grup sayfa
+/// ağacına, içeriğe ya da kaynaklara (katman görünürlüğü dâhil) dokunur:
+/// onarılamaz, belge reddedilir. İkinci grup görünüm grafiğinin dışındadır:
+/// başvuru null sayılır, belge açılır.
+#[derive(Clone, Copy, Debug)]
+enum Damage {
+    // --- ölümcül
+    Contents,
+    FontInResources,
+    EmbeddedFontProgram,
+    ImageXObject,
+    PageInKids,
+    InheritedResources,
+    /// Kaynaklar kök Pages düğümünün `/Parent`ından miras alınıyor.
+    InheritedAboveRoot,
+    /// Adı `/P` olan font: ad haritasındaki anahtarlar atlanmamalı.
+    FontNamedP,
+    /// Adı `/A` olan Type3 glifi.
+    Type3GlyphNamedA,
+    /// Adı `/B` olan Form XObject'in kendi kaynağındaki font.
+    FontInsideFormNamedB,
+    /// Catalog `/OCProperties /D`: gizli katman görünür olurdu.
+    OptionalContentConfig,
+    /// Kök Pages düğümünün `/Parent`ı dosyada yok VE 1. sayfanın içeriği eksik.
+    DanglingRootParentMissingContents,
+    /// Kök Pages düğümünün `/Parent`ı dosyada yok VE sayfa fontu eksik.
+    DanglingRootParentMissingFont,
+    /// Kökün `/Parent`ı VAR olan bir Pages düğümü, onun `/Parent`ı dosyada yok
+    /// VE 1. sayfanın içeriği eksik.
+    DanglingGrandparentMissingContents,
+    // --- toleranslı
+    AnnotationEntry,
+    AnnotationAppearance,
+    ClosedPopupInAnnots,
+    AttachedFile,
+    ToUnicode,
+    CidSet,
+    BoxColorInfo,
+    WidgetIcon,
+    ReferenceChainToMissing,
+}
+
+const FATAL_DAMAGE: [Damage; 14] = [
+    Damage::Contents,
+    Damage::FontInResources,
+    Damage::EmbeddedFontProgram,
+    Damage::ImageXObject,
+    Damage::PageInKids,
+    Damage::InheritedResources,
+    Damage::InheritedAboveRoot,
+    Damage::FontNamedP,
+    Damage::Type3GlyphNamedA,
+    Damage::FontInsideFormNamedB,
+    Damage::OptionalContentConfig,
+    Damage::DanglingRootParentMissingContents,
+    Damage::DanglingRootParentMissingFont,
+    Damage::DanglingGrandparentMissingContents,
+];
+
+const TOLERATED_DAMAGE: [Damage; 9] = [
+    Damage::AnnotationEntry,
+    Damage::AnnotationAppearance,
+    Damage::ClosedPopupInAnnots,
+    Damage::AttachedFile,
+    Damage::ToUnicode,
+    Damage::CidSet,
+    Damage::BoxColorInfo,
+    Damage::WidgetIcon,
+    Damage::ReferenceChainToMissing,
+];
+
+fn damaged_page_graph(damage: Damage) -> Vec<u8> {
+    let mut d = vector_pdf(&[A4, A4]);
+    let pages = d.get_pages();
+    let p1 = pages[&1];
+    let pages_id = d
+        .catalog()
+        .unwrap()
+        .get(b"Pages")
+        .unwrap()
+        .as_reference()
+        .unwrap();
+    let form = |d: &mut Document, content: &[u8]| {
+        d.add_object(Stream::new(
+            dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),100.into(),20.into()]},
+            content.to_vec(),
+        ))
+    };
+    let set_resources = |d: &mut Document, resources: Dictionary| {
+        d.get_dictionary_mut(p1)
+            .unwrap()
+            .set("Resources", resources);
+    };
+    let set_annots = |d: &mut Document, annots: Vec<Object>| {
+        d.get_dictionary_mut(p1).unwrap().set("Annots", annots);
+    };
+    let remove = match damage {
+        Damage::Contents => d
+            .get_dictionary(p1)
+            .unwrap()
+            .get(b"Contents")
+            .unwrap()
+            .as_reference()
+            .unwrap(),
+        Damage::FontInResources => {
+            let font = d.add_object(font_dict());
+            set_resources(&mut d, dictionary! {"Font"=>dictionary!{"F1"=>font}});
+            font
+        }
+        Damage::EmbeddedFontProgram | Damage::CidSet => {
+            let file = d.add_object(Stream::new(
+                dictionary! {"Length1"=>8},
+                b"TTFDATA!".to_vec(),
+            ));
+            let cidset = d.add_object(Stream::new(dictionary! {}, vec![0xff]));
+            let descriptor = d.add_object(dictionary! {"Type"=>"FontDescriptor","FontName"=>"Gomulu","Flags"=>32,"FontFile2"=>file,"CIDSet"=>cidset});
+            let font = d.add_object(dictionary! {"Type"=>"Font","Subtype"=>"TrueType","BaseFont"=>"Gomulu","FontDescriptor"=>descriptor});
+            set_resources(&mut d, dictionary! {"Font"=>dictionary!{"F1"=>font}});
+            if matches!(damage, Damage::CidSet) {
+                cidset
+            } else {
+                file
+            }
+        }
+        Damage::ImageXObject => {
+            let image = d.add_object(Stream::new(
+                dictionary! {"Type"=>"XObject","Subtype"=>"Image","Width"=>1,"Height"=>1,"ColorSpace"=>"DeviceGray","BitsPerComponent"=>8},
+                vec![128],
+            ));
+            set_resources(&mut d, dictionary! {"XObject"=>dictionary!{"Im1"=>image}});
+            image
+        }
+        Damage::PageInKids => pages[&2],
+        Damage::InheritedResources => {
+            let font = d.add_object(font_dict());
+            let shared = d.add_object(dictionary! {"Font"=>dictionary!{"F1"=>font}});
+            for id in pages.values() {
+                d.get_dictionary_mut(*id).unwrap().remove(b"Resources");
+            }
+            d.get_dictionary_mut(pages_id)
+                .unwrap()
+                .set("Resources", shared);
+            shared
+        }
+        Damage::InheritedAboveRoot => {
+            let font = d.add_object(font_dict());
+            let upper = d.add_object(dictionary! {"Type"=>"Pages","Resources"=>dictionary!{"Font"=>dictionary!{"F1"=>font}}});
+            for id in pages.values() {
+                d.get_dictionary_mut(*id).unwrap().remove(b"Resources");
+            }
+            d.get_dictionary_mut(pages_id).unwrap().set("Parent", upper);
+            font
+        }
+        Damage::FontNamedP => {
+            let font = d.add_object(font_dict());
+            set_resources(&mut d, dictionary! {"Font"=>dictionary!{"P"=>font}});
+            font
+        }
+        Damage::Type3GlyphNamedA => {
+            let glyph = |d: &mut Document| {
+                d.add_object(Stream::new(
+                    dictionary! {},
+                    b"10 0 0 0 10 10 d1 0 0 10 10 re f".to_vec(),
+                ))
+            };
+            let (a, b) = (glyph(&mut d), glyph(&mut d));
+            let font = d.add_object(dictionary! {"Type"=>"Font","Subtype"=>"Type3",
+                "FontBBox"=>vec![0.into(),0.into(),10.into(),10.into()],
+                "FontMatrix"=>vec![0.1.into(),0.into(),0.into(),0.1.into(),0.into(),0.into()],
+                "CharProcs"=>dictionary!{"A"=>a,"B"=>b},
+                "Encoding"=>dictionary!{"Type"=>"Encoding","Differences"=>vec![65.into(),"A".into(),"B".into()]},
+                "FirstChar"=>65,"LastChar"=>66,"Widths"=>vec![10.into(),10.into()],"Resources"=>dictionary!{}});
+            set_resources(&mut d, dictionary! {"Font"=>dictionary!{"T3"=>font}});
+            a
+        }
+        Damage::FontInsideFormNamedB => {
+            let font = d.add_object(font_dict());
+            let header = d.add_object(Stream::new(
+                dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),100.into(),20.into()],
+                "Resources"=>dictionary!{"Font"=>dictionary!{"F9"=>font}}},
+                b"BT /F9 10 Tf (x) Tj ET".to_vec(),
+            ));
+            set_resources(&mut d, dictionary! {"XObject"=>dictionary!{"B"=>header}});
+            font
+        }
+        Damage::OptionalContentConfig => {
+            let ocg = d.add_object(
+                dictionary! {"Type"=>"OCG","Name"=>Object::string_literal("Gizli katman")},
+            );
+            let config = d.add_object(dictionary! {"OFF"=>vec![Object::Reference(ocg)]});
+            d.catalog_mut().unwrap().set(
+                "OCProperties",
+                dictionary! {"OCGs"=>vec![Object::Reference(ocg)],"D"=>config},
+            );
+            config
+        }
+        Damage::DanglingRootParentMissingContents | Damage::DanglingRootParentMissingFont => {
+            let missing_parent = d.new_object_id();
+            d.get_dictionary_mut(pages_id)
+                .unwrap()
+                .set("Parent", missing_parent);
+            if matches!(damage, Damage::DanglingRootParentMissingContents) {
+                d.get_dictionary(p1)
+                    .unwrap()
+                    .get(b"Contents")
+                    .unwrap()
+                    .as_reference()
+                    .unwrap()
+            } else {
+                let font = d.add_object(font_dict());
+                set_resources(&mut d, dictionary! {"Font"=>dictionary!{"F1"=>font}});
+                font
+            }
+        }
+        Damage::DanglingGrandparentMissingContents => {
+            let missing_parent = d.new_object_id();
+            let upper = d.add_object(dictionary! {"Type"=>"Pages","Parent"=>missing_parent});
+            d.get_dictionary_mut(pages_id).unwrap().set("Parent", upper);
+            d.get_dictionary(p1)
+                .unwrap()
+                .get(b"Contents")
+                .unwrap()
+                .as_reference()
+                .unwrap()
+        }
+        Damage::AnnotationEntry => {
+            let annot = d.add_object(visible_square_dict([72., 600., 172., 620.]));
+            set_annots(&mut d, vec![Object::Reference(annot)]);
+            annot
+        }
+        Damage::AnnotationAppearance => {
+            let mut square = visible_square_dict([72., 600., 172., 620.]);
+            let ap = form(&mut d, b"1 0 0 rg 0 0 100 20 re f");
+            square.set("AP", dictionary! {"N"=>ap});
+            let annot = d.add_object(square);
+            set_annots(&mut d, vec![Object::Reference(annot)]);
+            ap
+        }
+        Damage::ClosedPopupInAnnots => {
+            let popup = d.new_object_id();
+            let note = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Text",
+            "Rect"=>vec![540.into(),780.into(),560.into(),800.into()],"Popup"=>popup});
+            set_annots(
+                &mut d,
+                vec![Object::Reference(note), Object::Reference(popup)],
+            );
+            popup
+        }
+        Damage::AttachedFile => {
+            let file = d.add_object(Stream::new(
+                dictionary! {"Type"=>"EmbeddedFile"},
+                b"ek dosya".to_vec(),
+            ));
+            let ap = form(&mut d, b"0 0 1 rg 0 0 20 20 re f");
+            let annot = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"FileAttachment",
+                "Rect"=>vec![72.into(),600.into(),92.into(),620.into()],
+                "FS"=>dictionary!{"Type"=>"Filespec","F"=>Object::string_literal("ek.txt"),"EF"=>dictionary!{"F"=>file}},
+                "AP"=>dictionary!{"N"=>ap}});
+            set_annots(&mut d, vec![Object::Reference(annot)]);
+            file
+        }
+        Damage::ToUnicode => {
+            let cmap = d.add_object(Stream::new(dictionary! {}, b"begincmap endcmap".to_vec()));
+            let font = d.add_object(dictionary! {"Type"=>"Font","Subtype"=>"Type1","BaseFont"=>"Helvetica","ToUnicode"=>cmap});
+            set_resources(&mut d, dictionary! {"Font"=>dictionary!{"F1"=>font}});
+            cmap
+        }
+        Damage::BoxColorInfo => {
+            let info = d.add_object(
+                dictionary! {"CropBox"=>dictionary!{"C"=>vec![0.into(),0.into(),0.into()]}},
+            );
+            d.get_dictionary_mut(p1).unwrap().set("BoxColorInfo", info);
+            info
+        }
+        Damage::WidgetIcon => {
+            let icon = form(&mut d, b"0 1 0 rg 0 0 10 10 re f");
+            let ap = form(&mut d, b"0 0 0 rg 0 0 100 20 re f");
+            let widget = d.add_object(
+                dictionary! {"Type"=>"Annot","Subtype"=>"Widget","FT"=>"Btn",
+                "Rect"=>vec![72.into(),600.into(),172.into(),620.into()],
+                "MK"=>dictionary!{"I"=>icon},"AP"=>dictionary!{"N"=>ap}},
+            );
+            set_annots(&mut d, vec![Object::Reference(widget)]);
+            icon
+        }
+        Damage::ReferenceChainToMissing => {
+            let missing = d.new_object_id();
+            let link = d.add_object(Object::Reference(missing));
+            d.catalog_mut().unwrap().set("Outlines", link);
+            missing
+        }
+    };
+    d.objects.remove(&remove);
+    let mut bytes = Vec::new();
+    d.save_to(&mut bytes).unwrap();
+    bytes
+}
+
+fn visible_square_dict(rect: [f32; 4]) -> Dictionary {
+    dictionary! {"Type"=>"Annot","Subtype"=>"Square",
+    "Rect"=>rect.iter().map(|v| Object::Real(*v)).collect::<Vec<_>>(),"F"=>4}
+}
+
+#[test]
+fn missing_object_in_page_graph_is_still_fatal() {
+    for damage in FATAL_DAMAGE {
+        let bytes = damaged_page_graph(damage);
+        let err = load_pdf_tolerant(&bytes, "hasarli.pdf")
+            .map(|_| ())
+            .expect_err(&format!(
+                "{damage:?}: sayfa ağacı/içerik/kaynaklarda eksik nesne kabul edildi"
+            ));
+        assert!(
+            err.to_string().contains("Eksik nesne referansı"),
+            "{damage:?}: {err}"
+        );
+        let lab = Lab::new();
+        let src = lab.write_bytes("hasarli.pdf", &bytes);
+        let before = calculate_sha256(&src).unwrap();
+        let out = lab.path("kopya.pdf");
+        assert!(
+            run_tool_with_outcome(
+                std::slice::from_ref(&src),
+                &ToolOperation::Select { pages: vec![1] },
+                &out,
+                false
+            )
+            .is_err(),
+            "{damage:?}"
+        );
+        assert!(!out.exists(), "{damage:?}: kısmi çıktı kaldı");
+        assert_eq!(calculate_sha256(&src).unwrap(), before, "{damage:?}");
+    }
+}
+
+#[test]
+fn missing_object_outside_page_graph_opens_and_saves_clean() {
+    use ekler_core::pdf::tolerant::RepairStrategy;
+    for damage in TOLERATED_DAMAGE {
+        let bytes = damaged_page_graph(damage);
+        let loaded = load_pdf_tolerant(&bytes, "duzensiz.pdf").unwrap_or_else(|e| {
+            panic!("{damage:?}: görünüm dışı eksik nesne belgeyi açtırmadı: {e}")
+        });
+        assert_eq!(
+            loaded.strategy,
+            RepairStrategy::DanglingReferences,
+            "{damage:?}"
+        );
+        assert_no_dangling_or_dead_destinations(&format!("{damage:?}"), &loaded.document);
+        let lab = Lab::new();
+        let src = lab.write_bytes("duzensiz.pdf", &bytes);
+        let (o, out) = run(
+            &lab,
+            std::slice::from_ref(&src),
+            ToolOperation::Select { pages: vec![1] },
+            "kopya.pdf",
+            false,
+        );
+        published(&o);
+        let d = reopen(&out);
+        assert_eq!(markers(&d), ["Sayfa 1"], "{damage:?}");
+        assert_no_dangling_or_dead_destinations(&format!("{damage:?}/kopya"), &d);
+    }
+}
+
+// ------------------------------------------------ paylaşılan kaynak kitapları
+
+/// Deterministik, sıkıştırılamaz bayt: gömülü font programı ve tarama görseli
+/// gerçek dosyalardaki gibi yer kaplasın.
+fn noise(len: usize, seed: u32) -> Vec<u8> {
+    let mut x = seed.wrapping_mul(2_654_435_761).max(1);
+    (0..len)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            (x >> 24) as u8
+        })
+        .collect()
+}
+
+fn embedded_font(d: &mut Document, name: &str, seed: u32) -> ObjectId {
+    let file = d.add_object(Stream::new(
+        dictionary! {"Length1"=>40_000},
+        noise(40_000, seed),
+    ));
+    let descriptor = d.add_object(
+        dictionary! {"Type"=>"FontDescriptor","FontName"=>name,"Flags"=>32,
+        "FontBBox"=>vec![0.into(),(-200).into(),1000.into(),900.into()],"ItalicAngle"=>0,
+        "Ascent"=>900,"Descent"=>-200,"CapHeight"=>700,"StemV"=>80,"FontFile2"=>file},
+    );
+    d.add_object(dictionary! {"Type"=>"Font","Subtype"=>"TrueType","BaseFont"=>name,
+        "FirstChar"=>32,"LastChar"=>126,"Widths"=>(32..=126).map(|_| 500.into()).collect::<Vec<Object>>(),
+        "FontDescriptor"=>descriptor,"Encoding"=>"WinAnsiEncoding"})
+}
+
+/// ICCBased renk uzaylı, SMask'lı Flate görsel.
+fn noise_image(d: &mut Document, w: i64, h: i64, seed: u32, icc: ObjectId) -> ObjectId {
+    let smask = d.add_object(Stream::new(
+        dictionary! {"Type"=>"XObject","Subtype"=>"Image","Width"=>w,"Height"=>h,"ColorSpace"=>"DeviceGray","BitsPerComponent"=>8,"Filter"=>"FlateDecode"},
+        zlib(&noise((w * h) as usize, seed.wrapping_mul(7919) ^ 0x5eed)),
+    ));
+    d.add_object(Stream::new(
+        dictionary! {"Type"=>"XObject","Subtype"=>"Image","Width"=>w,"Height"=>h,
+        "ColorSpace"=>vec![Object::Name(b"ICCBased".to_vec()), Object::Reference(icc)],
+        "BitsPerComponent"=>8,"Filter"=>"FlateDecode","SMask"=>smask},
+        zlib(&noise((w * h * 3) as usize, seed)),
+    ))
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Book {
+    /// A — 40 sayfa, aynı gömülü font.
+    SameFont,
+    /// B — 40 sayfa, aynı logo görseli (ICC + SMask).
+    SameImage,
+    /// C — 40 sayfa, aynı font + aynı görsel.
+    FontAndImage,
+    /// D — 40 sayfa, farklı kaynaklar: üç font farklı sayfa kümelerinde, üç
+    /// görsel farklı sayfalarda, ortak ExtGState, kendi kaynağı olan ortak
+    /// başlık Form XObject'i, ortak ICC profili.
+    Mixed,
+    /// C'nin kaynakları sayfalarda değil, Pages düğümünde (miras).
+    InheritedFontAndImage,
+}
+
+fn resource_book(book: Book) -> Document {
+    const WORDS: [&str; 16] = [
+        "taraflar",
+        "sozlesme",
+        "hizmet",
+        "gizlilik",
+        "veri",
+        "proje",
+        "teklif",
+        "madde",
+        "yukumluluk",
+        "sure",
+        "fesih",
+        "bildirim",
+        "ucret",
+        "teslim",
+        "kabul",
+        "ek",
+    ];
+    let mut d = Document::with_version("1.7");
+    let pages_id = d.new_object_id();
+    // Kaynakta yalnız kullanılan nesneler bulunur: yetim nesne kaynağı
+    // şişirip oranları olduğundan iyi gösterirdi.
+    let uses_image = !matches!(book, Book::SameFont);
+    let helvetica = matches!(book, Book::SameImage).then(|| d.add_object(font_dict()));
+    let icc = uses_image.then(|| {
+        d.add_object(Stream::new(
+            dictionary! {"N"=>3,"Alternate"=>"DeviceRGB"},
+            noise(3_000, 7),
+        ))
+    });
+    let serif = (!matches!(book, Book::SameImage)).then(|| embedded_font(&mut d, "OrnekSerif", 11));
+    let (sans, mono) = match book {
+        Book::Mixed => (
+            Some(embedded_font(&mut d, "OrnekSans", 12)),
+            Some(embedded_font(&mut d, "OrnekMono", 13)),
+        ),
+        _ => (None, None),
+    };
+    let logo = icc.map(|icc| noise_image(&mut d, 160, 60, 21, icc));
+    let (scan, stamp) = match book {
+        Book::Mixed => (
+            Some(noise_image(&mut d, 400, 300, 22, icc.unwrap())),
+            Some(noise_image(&mut d, 200, 200, 23, icc.unwrap())),
+        ),
+        _ => (None, None),
+    };
+    let gstate = matches!(book, Book::Mixed)
+        .then(|| d.add_object(dictionary! {"Type"=>"ExtGState","ca"=>0.9f32,"CA"=>0.9f32}));
+    let header = match (book, sans) {
+        (Book::Mixed, Some(sans)) => Some(d.add_object(Stream::new(
+            dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),500.into(),30.into()],
+            "Resources"=>dictionary!{"Font"=>dictionary!{"F2"=>sans}}},
+            b"BT /F2 10 Tf 0 10 Td (ORNEK YAZILIM A.S.) Tj ET".to_vec(),
+        ))),
+        _ => None,
+    };
+    let inherited = matches!(book, Book::InheritedFontAndImage);
+    if inherited {
+        let shared = d.add_object(dictionary! {
+        "Font"=>dictionary!{"F1"=>serif.unwrap()},"XObject"=>dictionary!{"Im1"=>logo.unwrap()}});
+        d.objects.insert(
+            pages_id,
+            dictionary! {"Type"=>"Pages","Kids"=>vec![],"Count"=>0,"Resources"=>shared}.into(),
+        );
+    }
+    let mut kids = Vec::new();
+    for n in 1..=40u32 {
+        let mut fonts = Dictionary::new();
+        let mut xobjects = Dictionary::new();
+        let mut text = String::new();
+        let body_font = "F1";
+        fonts.set("F1", helvetica.or(serif).unwrap());
+        text.push_str(&format!(
+            "BT /{body_font} 24 Tf 72 760 Td (Sayfa {n}) Tj ET\n"
+        ));
+        let lines = if matches!(book, Book::SameImage) {
+            20
+        } else {
+            60
+        };
+        for line in 0..lines {
+            let words: Vec<&str> = (0..9)
+                .map(|w| WORDS[((n as usize * 31 + line * 7 + w * 13) ^ (line * w)) % WORDS.len()])
+                .collect();
+            let font = match (book, line % 5, line % 2) {
+                (Book::Mixed, 0, _) if n % 5 == 0 => "F3",
+                (Book::Mixed, _, 0) if n % 2 == 0 => "F2",
+                _ => body_font,
+            };
+            text.push_str(&format!(
+                "BT /{font} 9 Tf 72 {} Td ({} {n}-{line}) Tj ET\n",
+                730 - line as i64 * 11,
+                words.join(" ")
+            ));
+        }
+        let mut draw = |name: &str, id: ObjectId, x: i64, xobjects: &mut Dictionary| {
+            xobjects.set(name, id);
+            text.push_str(&format!("q 120 0 0 45 {x} 40 cm /{name} Do Q\n"));
+        };
+        match book {
+            Book::SameImage | Book::FontAndImage => draw("Im1", logo.unwrap(), 72, &mut xobjects),
+            Book::InheritedFontAndImage => text.push_str("q 120 0 0 45 72 40 cm /Im1 Do Q\n"),
+            Book::Mixed => {
+                if n == 1 {
+                    draw("Im1", logo.unwrap(), 72, &mut xobjects);
+                }
+                if n % 10 == 0 {
+                    draw("Im2", scan.unwrap(), 200, &mut xobjects);
+                }
+                if n % 8 == 0 {
+                    draw("Im3", stamp.unwrap(), 330, &mut xobjects);
+                }
+                draw("Hdr", header.unwrap(), 72, &mut xobjects);
+                if n % 2 == 0 {
+                    fonts.set("F2", sans.unwrap());
+                }
+                if n % 5 == 0 {
+                    fonts.set("F3", mono.unwrap());
+                }
+                text.insert_str(0, "/GS1 gs\n");
+            }
+            Book::SameFont => {}
+        }
+        let contents = d.add_object(Stream::new(
+            dictionary! {"Filter"=>"FlateDecode"},
+            zlib(text.as_bytes()),
+        ));
+        let mut page = dictionary! {"Type"=>"Page","Parent"=>pages_id,"MediaBox"=>media(A4[0], A4[1]),"Contents"=>contents};
+        if !inherited {
+            let mut resources = dictionary! {"Font"=>fonts};
+            if !xobjects.is_empty() {
+                resources.set("XObject", xobjects);
+            }
+            if matches!(book, Book::Mixed) {
+                resources.set("ExtGState", dictionary! {"GS1"=>gstate.unwrap()});
+            }
+            page.set("Resources", resources);
+        }
+        kids.push(Object::Reference(d.add_object(page)));
+    }
+    let mut pages = if inherited {
+        d.get_dictionary(pages_id).unwrap().clone()
+    } else {
+        Dictionary::new()
+    };
+    pages.set("Type", "Pages");
+    pages.set("Kids", kids.clone());
+    pages.set("Count", kids.len() as i64);
+    d.objects.insert(pages_id, pages.into());
+    let root = d.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
+    d.trailer.set("Root", root);
+    d
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct Census {
+    fonts: usize,
+    font_programs: usize,
+    images: usize,
+    icc_profiles: usize,
+    forms: usize,
+    gstates: usize,
+    stream_bytes: usize,
+}
+
+/// Verilen sayfaların (miras dâhil) erişebildiği dolaylı nesnelerin nüfusu.
+/// Başka sayfalar ve sayfa ağacı sayılmaz.
+fn page_census(doc: &Document, pages: &[ObjectId]) -> Census {
+    let mut c = Census::default();
+    let mut seen = std::collections::HashSet::new();
+    let mut stack: Vec<Object> = pages
+        .iter()
+        .map(|id| Object::Dictionary(pdf::resolved_page_dictionary(doc, *id).unwrap()))
+        .collect();
+    let name = |d: &Dictionary, k: &[u8]| {
+        d.get(k)
+            .ok()
+            .and_then(|v| v.as_name().ok())
+            .map(<[u8]>::to_vec)
+    };
+    while let Some(obj) = stack.pop() {
+        match obj {
+            Object::Reference(id) => {
+                if !seen.insert(id) {
+                    continue;
+                }
+                let Ok(found) = doc.get_object(id) else {
+                    continue;
+                };
+                let dict = match found {
+                    Object::Dictionary(d) => d,
+                    Object::Stream(s) => &s.dict,
+                    _ => {
+                        stack.push(found.clone());
+                        continue;
+                    }
+                };
+                match (
+                    name(dict, b"Type").as_deref(),
+                    name(dict, b"Subtype").as_deref(),
+                ) {
+                    (Some(b"Page" | b"Pages"), _) => continue,
+                    (Some(b"Font"), _) => c.fonts += 1,
+                    (Some(b"ExtGState"), _) => c.gstates += 1,
+                    (_, Some(b"Image")) => c.images += 1,
+                    (_, Some(b"Form")) => c.forms += 1,
+                    _ if dict.has(b"Length1") => c.font_programs += 1,
+                    _ if dict.has(b"N") && matches!(found, Object::Stream(_)) => {
+                        c.icc_profiles += 1
+                    }
+                    _ => {}
+                }
+                if let Object::Stream(s) = found {
+                    c.stream_bytes += s.content.len();
+                }
+                stack.push(found.clone());
+            }
+            Object::Array(items) => stack.extend(items),
+            Object::Dictionary(d) => stack.extend(
+                d.iter()
+                    .filter(|(k, _)| k.as_slice() != b"Parent")
+                    .map(|(_, v)| v.clone()),
+            ),
+            Object::Stream(s) => stack.extend(s.dict.iter().map(|(_, v)| v.clone())),
+            _ => {}
+        }
+    }
+    c
+}
+
+/// Aynı baytları taşıyan birden çok akış grubu (kanonik olmayan kopya).
+fn duplicate_streams(doc: &Document) -> usize {
+    let mut groups: std::collections::HashMap<&[u8], usize> = std::collections::HashMap::new();
+    for obj in doc.objects.values() {
+        if let Object::Stream(s) = obj {
+            *groups.entry(s.content.as_slice()).or_default() += 1;
+        }
+    }
+    groups.values().filter(|n| **n > 1).count()
+}
+
+/// A–D kitaplarında Seç 40→1, Seç 40→10, Sırala 40→40, Sil 40→39: paylaşılan
+/// her kaynak çıktıda TEK nesne; boyut seçilen sayfaların gerçekten ihtiyaç
+/// duyduğu baytla sınırlı. Ölçümler `SIZE_REPORT` ortam değişkeniyle yazılır.
+fn assert_shared_resources_stay_single(book: Book) {
+    let lab = Lab::new();
+    let mut doc = resource_book(book);
+    let src = lab.write(&format!("{book:?}.pdf"), &mut doc);
+    let source = load_pdf_tolerant(&std::fs::read(&src).unwrap(), "kaynak.pdf")
+        .unwrap()
+        .document;
+    let src_bytes = std::fs::metadata(&src).unwrap().len() as usize;
+    assert_eq!(
+        duplicate_streams(&source),
+        0,
+        "{book:?}: fixture'da aynı baytlı akış var"
+    );
+    let all = source.get_pages();
+    let ten: Vec<usize> = (0..10).map(|k| 1 + 4 * k).collect();
+    for (label, op, keep) in [
+        ("sec-1", ToolOperation::Select { pages: vec![1] }, vec![1]),
+        (
+            "sec-10",
+            ToolOperation::Select { pages: ten.clone() },
+            ten.clone(),
+        ),
+        (
+            "sirala-40",
+            ToolOperation::Reorder {
+                pages: (1..=40).rev().collect(),
+            },
+            (1..=40).rev().collect(),
+        ),
+        (
+            "sil-39",
+            ToolOperation::Delete { pages: vec![20] },
+            (1..=40).filter(|p| *p != 20).collect(),
+        ),
+    ] {
+        let (o, out) = run(
+            &lab,
+            std::slice::from_ref(&src),
+            op,
+            &format!("{label}.pdf"),
+            false,
+        );
+        let out_bytes = published(&o) as usize;
+        let d = reopen(&out);
+        let name = format!("{book:?}/{label}");
+        assert_eq!(
+            markers(&d),
+            keep.iter()
+                .map(|p| format!("Sayfa {p}"))
+                .collect::<Vec<_>>(),
+            "{name}"
+        );
+        let wanted = page_census(
+            &source,
+            &keep.iter().map(|p| all[&(*p as u32)]).collect::<Vec<_>>(),
+        );
+        let got = page_census(&d, &d.get_pages().into_values().collect::<Vec<_>>());
+        // Boyut: seçilen sayfaların akış baytları + sayfa başına sözlük/marka payı.
+        let bound = wanted.stream_bytes + 12_000 + 700 * keep.len();
+        if std::env::var("SIZE_REPORT").is_ok() {
+            println!(
+                "{name:<32} kaynak {src_bytes:>8} B · çıktı {out_bytes:>8} B ({:.2}×) · gereken akış {:>8} B · sınır {bound:>8} B · font programı {} · görsel {}",
+                out_bytes as f64 / src_bytes as f64,
+                wanted.stream_bytes,
+                got.font_programs,
+                got.images
+            );
+        }
+        // Marka: ortak vektör + form (2 Form XObject); başka kaynak eklenmez.
+        let expected = Census {
+            forms: wanted.forms + 2,
+            stream_bytes: got.stream_bytes,
+            ..wanted
+        };
+        assert_eq!(got, expected, "{name}: paylaşılan kaynak tek nesne kalmalı");
+        assert_eq!(duplicate_streams(&d), 0, "{name}: aynı baytlı ikinci akış");
+        assert!(
+            out_bytes <= bound,
+            "{name}: çıktı {out_bytes} B, gereken {} B + pay = {bound} B",
+            wanted.stream_bytes
+        );
+        if keep.len() >= 39 {
+            assert!(
+                out_bytes * 100 <= src_bytes * 115,
+                "{name}: tam belge çıktısı kaynaktan anlamsız büyük: {out_bytes} / {src_bytes}"
+            );
+        }
+    }
+}
+
+#[test]
+fn shared_resources_stay_single_a_same_font() {
+    assert_shared_resources_stay_single(Book::SameFont);
+}
+
+#[test]
+fn shared_resources_stay_single_b_same_image() {
+    assert_shared_resources_stay_single(Book::SameImage);
+}
+
+#[test]
+fn shared_resources_stay_single_c_font_and_image() {
+    assert_shared_resources_stay_single(Book::FontAndImage);
+}
+
+#[test]
+fn shared_resources_stay_single_d_mixed_resources() {
+    assert_shared_resources_stay_single(Book::Mixed);
+}
+
+#[test]
+fn shared_resources_stay_single_with_inherited_resources() {
+    assert_shared_resources_stay_single(Book::InheritedFontAndImage);
+}
+
+// ---------------------------------------------------------------- iç bağlantılar
+
+/// 40 sayfa; 1. sayfa içindekiler: açık hedef (5), doğrudan GoTo (20), dolaylı
+/// GoTo (30), `/Names /Dests` ad ağacında dize ad (35), PDF 1.1 `/Dests`
+/// sözlüğünde ad (40), dış URI. 20. sayfadan 1. sayfaya geri bağlantı.
+fn linked_book() -> Document {
+    let mut d = vector_pdf(&[A4; 40]);
+    let pages = d.get_pages();
+    let page = |n: u32| Object::Reference(pages[&n]);
+    fn link(d: &mut Document, nm: &str, y: i64, key: &str, value: Object) -> Object {
+        Object::Reference(d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link",
+        "NM"=>Object::string_literal(nm),
+        "Rect"=>vec![72.into(),y.into(),300.into(),(y+14).into()],
+        "Border"=>vec![0.into(),0.into(),0.into()], key=>value}))
+    }
+    let goto_30 = d.add_object(dictionary! {"S"=>"GoTo","D"=>vec![page(30),"Fit".into()]});
+    let leaf = d.add_object(dictionary! {
+    "Limits"=>vec![Object::string_literal("bolum-30"),Object::string_literal("bolum-39")],
+    "Names"=>vec![Object::string_literal("bolum-35"),
+        vec![page(35),"XYZ".into(),0.into(),800.into(),0.into()].into()]});
+    let tree = d.add_object(dictionary! {"Kids"=>vec![Object::Reference(leaf)]});
+    let dests = d.add_object(dictionary! {"ek-40"=>dictionary!{"D"=>vec![page(40),"Fit".into()]}});
+    let toc = vec![
+        link(
+            &mut d,
+            "L1-5",
+            700,
+            "Dest",
+            vec![page(5), "XYZ".into(), 0.into(), 800.into(), 0.into()].into(),
+        ),
+        link(
+            &mut d,
+            "L2-20",
+            680,
+            "A",
+            dictionary! {"S"=>"GoTo","D"=>vec![page(20),"Fit".into()]}.into(),
+        ),
+        link(&mut d, "L3-30", 660, "A", Object::Reference(goto_30)),
+        link(
+            &mut d,
+            "L4-35",
+            640,
+            "Dest",
+            Object::string_literal("bolum-35"),
+        ),
+        link(&mut d, "L5-40", 620, "Dest", "ek-40".into()),
+        link(
+            &mut d,
+            "L6-uri",
+            600,
+            "A",
+            dictionary! {"S"=>"URI","URI"=>Object::string_literal("https://ornek.test")}.into(),
+        ),
+    ];
+    d.get_dictionary_mut(pages[&1]).unwrap().set("Annots", toc);
+    let back = link(
+        &mut d,
+        "B20-1",
+        700,
+        "Dest",
+        vec![page(1), "Fit".into()].into(),
+    );
+    d.get_dictionary_mut(pages[&20])
+        .unwrap()
+        .set("Annots", vec![back]);
+    let catalog = d.catalog_mut().unwrap();
+    catalog.set("Names", dictionary! {"Dests"=>tree});
+    catalog.set("Dests", dests);
+    d
+}
+
+/// Sayfadaki bağlantılar: `/NM` → hedef sayfanın işareti. Çıktıda hedef açık
+/// dizi olmalı (ad ağacı taşınmaz). Hedefi olmayan bağlantı `None`.
+fn link_targets(doc: &Document, page: u32) -> std::collections::BTreeMap<String, Option<String>> {
+    let number_of: std::collections::HashMap<ObjectId, u32> =
+        doc.get_pages().into_iter().map(|(n, id)| (id, n)).collect();
+    let page_markers = markers(doc);
+    let dict = doc.get_dictionary(doc.get_pages()[&page]).unwrap();
+    let Ok(annots) = dict.get(b"Annots") else {
+        return Default::default();
+    };
+    let annots = doc.dereference(annots).unwrap().1.as_array().unwrap();
+    annots
+        .iter()
+        .map(|a| {
+            let a = doc.dereference(a).unwrap().1.as_dict().unwrap();
+            let nm = String::from_utf8_lossy(a.get(b"NM").unwrap().as_str().unwrap()).into_owned();
+            let action = a
+                .get(b"A")
+                .ok()
+                .map(|x| doc.dereference(x).unwrap().1.as_dict().unwrap());
+            let dest = a.get(b"Dest").ok().or_else(|| {
+                action
+                    .filter(|x| x.get(b"S").unwrap().as_name().unwrap() == b"GoTo")
+                    .map(|x| x.get(b"D").expect("GoTo eylemi hedefsiz kaldı"))
+            });
+            let target = dest.map(|dest| {
+                let array = doc
+                    .dereference(dest)
+                    .unwrap()
+                    .1
+                    .as_array()
+                    .unwrap_or_else(|_| panic!("{nm}: hedef açık diziye çözülmemiş: {dest:?}"));
+                let id = array[0]
+                    .as_reference()
+                    .unwrap_or_else(|_| panic!("{nm}: hedef sayfası başvuru değil: {array:?}"));
+                page_markers[number_of[&id] as usize - 1].clone()
+            });
+            (nm, target)
+        })
+        .collect()
+}
+
+/// `L6-uri` bağlantısı dış URI eylemini koruyor mu?
+fn keeps_uri(doc: &Document) -> bool {
+    doc.objects
+        .values()
+        .filter_map(|o| o.as_dict().ok())
+        .any(|d| {
+            d.get(b"NM").ok().and_then(|n| n.as_str().ok()) == Some(b"L6-uri".as_slice())
+                && d.get(b"A")
+                    .ok()
+                    .and_then(|a| doc.dereference(a).ok())
+                    .and_then(|(_, a)| a.as_dict().ok())
+                    .and_then(|a| a.get(b"URI").ok())
+                    .and_then(|u| u.as_str().ok())
+                    == Some(b"https://ornek.test".as_slice())
+        })
+}
+
+#[test]
+fn internal_links_follow_retained_pages_and_leave_nothing_for_removed_ones() {
+    let lab = Lab::new();
+    let src = lab.write("icindekiler.pdf", &mut linked_book());
+    let some = |s: &str| Some(s.to_string());
+
+    // Seç 1, 5, 20, 35: hedefi kalan bağlantılar yeni sayfalara; 30 ve 40'a
+    // gidenler hedefsiz kalır, sarkan başvuru bırakmaz.
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Select {
+            pages: vec![1, 5, 20, 35],
+        },
+        "secim.pdf",
+        false,
+    );
+    published(&o);
+    let d = reopen(&out);
+    assert_eq!(markers(&d), ["Sayfa 1", "Sayfa 5", "Sayfa 20", "Sayfa 35"]);
+    let toc = link_targets(&d, 1);
+    assert_eq!(toc["L1-5"], some("Sayfa 5"));
+    assert_eq!(toc["L2-20"], some("Sayfa 20"));
+    assert_eq!(toc["L3-30"], None);
+    assert_eq!(
+        toc["L4-35"],
+        some("Sayfa 35"),
+        "ad ağacındaki hedef açık hedefe çözülmeli"
+    );
+    assert_eq!(toc["L5-40"], None);
+    assert_eq!(toc["L6-uri"], None);
+    assert!(keeps_uri(&d), "dış bağlantı korunmalı");
+    assert_eq!(link_targets(&d, 3)["B20-1"], some("Sayfa 1"));
+    assert_eq!(toc.len(), 6, "hedefi çıkarılan bağlantı da sayfada durur");
+    assert_no_dangling_or_dead_destinations("secim", &d);
+
+    // Sırala (ters): bütün hedefler kalır ve doğru sayfaya gider.
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Reorder {
+            pages: (1..=40).rev().collect(),
+        },
+        "sirala.pdf",
+        false,
+    );
+    published(&o);
+    let d = reopen(&out);
+    let toc = link_targets(&d, 40);
+    for (nm, target) in [
+        ("L1-5", "Sayfa 5"),
+        ("L2-20", "Sayfa 20"),
+        ("L3-30", "Sayfa 30"),
+        ("L4-35", "Sayfa 35"),
+        ("L5-40", "Sayfa 40"),
+    ] {
+        assert_eq!(toc[nm], some(target), "sirala/{nm}");
+    }
+    assert_eq!(toc["L6-uri"], None);
+    assert!(keeps_uri(&d), "sirala: dış bağlantı korunmalı");
+    assert_eq!(link_targets(&d, 21)["B20-1"], some("Sayfa 1"));
+    assert_no_dangling_or_dead_destinations("sirala", &d);
+
+    // Sil 5: yalnız 5'e giden bağlantı hedefsiz kalır.
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Delete { pages: vec![5] },
+        "sil.pdf",
+        false,
+    );
+    published(&o);
+    let d = reopen(&out);
+    let toc = link_targets(&d, 1);
+    assert_eq!(toc["L1-5"], None);
+    assert_eq!(toc["L2-20"], some("Sayfa 20"));
+    assert_eq!(toc["L3-30"], some("Sayfa 30"));
+    assert_eq!(toc["L4-35"], some("Sayfa 35"));
+    assert_eq!(toc["L5-40"], some("Sayfa 40"));
+    assert_eq!(toc["L6-uri"], None);
+    assert!(keeps_uri(&d), "sil: dış bağlantı korunmalı");
+    assert_eq!(link_targets(&d, 19)["B20-1"], some("Sayfa 1"));
+    assert_no_dangling_or_dead_destinations("sil", &d);
+
+    // Birleştir: her belgenin bağlantısı kendi sayfasına; belgeler karışmaz.
+    let second = lab.write("icindekiler-2.pdf", &mut linked_book());
+    let (o, out) = run(
+        &lab,
+        &[src.clone(), second],
+        ToolOperation::Merge,
+        "birlesik.pdf",
+        false,
+    );
+    published(&o);
+    let d = reopen(&out);
+    assert_eq!(d.get_pages().len(), 80);
+    let number_of: std::collections::HashMap<ObjectId, u32> =
+        d.get_pages().into_iter().map(|(n, id)| (id, n)).collect();
+    let first_target = |page: u32| {
+        let a = d
+            .get_dictionary(d.get_pages()[&page])
+            .unwrap()
+            .get(b"Annots")
+            .unwrap()
+            .as_array()
+            .unwrap()[0]
+            .clone();
+        let dest = d
+            .dereference(&a)
+            .unwrap()
+            .1
+            .as_dict()
+            .unwrap()
+            .get(b"Dest")
+            .unwrap()
+            .as_array()
+            .unwrap()[0]
+            .as_reference()
+            .unwrap();
+        number_of[&dest]
+    };
+    assert_eq!(first_target(1), 5);
+    assert_eq!(first_target(41), 45);
+    assert_no_dangling_or_dead_destinations("birlesik", &d);
+}
+
+// ----------------------------------- şüpheci turu: kopyalayıcının sınırları
+
+/// Çıktıda bu türde bir nesne var mı?
+fn has_type(doc: &Document, kind: &[u8]) -> bool {
+    doc.objects.values().any(|o| {
+        let dict = match o {
+            Object::Dictionary(d) => d,
+            Object::Stream(s) => &s.dict,
+            _ => return false,
+        };
+        dict.get(b"Type").ok().and_then(|t| t.as_name().ok()) == Some(kind)
+    })
+}
+
+#[test]
+fn page_copy_carries_nothing_from_removed_pages() {
+    // Her sızıntı yolu 2. sayfanın bir sırrına çıkar; Seç 1 çıktısı hiçbirini
+    // taşımamalı. Yollar: form alanı hiyerarşisi, imza değeri → DocMDP
+    // /Data → Catalog (AcroForm, anahat, ad ağacı), ResetForm /Fields ve
+    // /Next Hide /T, makale boncuğu /N, yapı hedefi /SD → yapı ağacı → OBJR.
+    let mut d = vector_pdf(&[A4, A4]);
+    let pages = d.get_pages();
+    let (p1, p2) = (pages[&1], pages[&2]);
+    let secret_form = |d: &mut Document, secret: &str| {
+        d.add_object(Stream::new(
+            dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),100.into(),20.into()]},
+            format!("BT /F1 8 Tf ({secret}) Tj ET").into_bytes(),
+        ))
+    };
+    let rect = || vec![72.into(), 600.into(), 172.into(), 620.into()];
+    // (a) Alan hiyerarşisi: kardeş widget 2. sayfada, değeri gizli.
+    let field = d.new_object_id();
+    let ap1 = secret_form(&mut d, "gorunur");
+    let w1 = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Widget","Rect"=>rect(),"Parent"=>field,"AP"=>dictionary!{"N"=>ap1},"P"=>p1});
+    let ap2 = secret_form(&mut d, "GIZLI-AP2");
+    let w2 = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Widget","Rect"=>rect(),"Parent"=>field,
+        "T"=>Object::string_literal("tc"),"V"=>Object::string_literal("GIZLI-TCKN-12345678901"),"AP"=>dictionary!{"N"=>ap2},"P"=>p2});
+    d.objects.insert(field, dictionary! {"FT"=>"Tx","T"=>Object::string_literal("Ad"),"Kids"=>vec![Object::Reference(w1),Object::Reference(w2)]}.into());
+    // (b) İmza alanı: /V → imza → /Reference /Data → Catalog.
+    let root = d.trailer.get(b"Root").unwrap().as_reference().unwrap();
+    let sig = d.add_object(dictionary! {"Type"=>"Sig","Filter"=>"Adobe.PPKLite",
+        "Contents"=>Object::string_literal("imza"),"ByteRange"=>vec![0.into(),0.into(),0.into(),0.into()],
+        "Reference"=>vec![dictionary!{"Type"=>"SigRef","TransformMethod"=>"DocMDP","Data"=>root}.into()]});
+    let sig_widget = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Widget","FT"=>"Sig","Rect"=>vec![0.into(),0.into(),0.into(),0.into()],"V"=>sig});
+    let field2 = d.add_object(dictionary! {"FT"=>"Tx","T"=>Object::string_literal("p2"),"V"=>Object::string_literal("GIZLI-P2-DEGER")});
+    let outline_item = d.new_object_id();
+    let outlines =
+        d.add_object(dictionary! {"Type"=>"Outlines","First"=>outline_item,"Last"=>outline_item});
+    d.objects.insert(outline_item, dictionary! {"Title"=>Object::string_literal("GIZLI-ANAHAT"),"Parent"=>outlines,"Dest"=>vec![Object::Reference(p2),"Fit".into()]}.into());
+    // (c) Eylemler: ResetForm /Fields ve /Next Hide /T 2. sayfanın açıklamasına.
+    let ap3 = secret_form(&mut d, "GIZLI-AP3");
+    let w3 = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Square","Rect"=>rect(),"AP"=>dictionary!{"N"=>ap3},"P"=>p2});
+    let reset = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link","Rect"=>rect(),
+        "A"=>dictionary!{"S"=>"ResetForm","Fields"=>vec![Object::Reference(field2)],"Next"=>dictionary!{"S"=>"Hide","T"=>w3}}});
+    // (d) Makale boncukları: 1. sayfanın boncuğu 2. sayfanınkine bağlı.
+    let (bead1, bead2) = (d.new_object_id(), d.new_object_id());
+    let thread = d.add_object(dictionary! {"Type"=>"Thread","F"=>bead1,"I"=>dictionary!{"Title"=>Object::string_literal("GIZLI-MAKALE")}});
+    d.objects.insert(
+        bead1,
+        dictionary! {"Type"=>"Bead","T"=>thread,"N"=>bead2,"V"=>bead2,"P"=>p1,"R"=>rect()}.into(),
+    );
+    d.objects.insert(
+        bead2,
+        dictionary! {"Type"=>"Bead","N"=>bead1,"V"=>bead1,"P"=>p2,"R"=>rect()}.into(),
+    );
+    // (e) Yapı hedefi: /SD → yapı öğesi → OBJR → 2. sayfanın bağlantısı.
+    let ap4 = secret_form(&mut d, "GIZLI-AP4");
+    let w4 = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link","Rect"=>rect(),"AP"=>dictionary!{"N"=>ap4},"P"=>p2});
+    let tree = d.new_object_id();
+    let element = d.add_object(dictionary! {"Type"=>"StructElem","S"=>"Link","P"=>tree,"K"=>vec![dictionary!{"Type"=>"OBJR","Obj"=>w4}.into()]});
+    d.objects.insert(
+        tree,
+        dictionary! {"Type"=>"StructTreeRoot","K"=>vec![Object::Reference(element)]}.into(),
+    );
+    let sd = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link","Rect"=>rect(),
+        "A"=>dictionary!{"S"=>"GoTo","D"=>vec![Object::Reference(p1),"Fit".into()],"SD"=>vec![Object::Reference(element),"Fit".into()]}});
+    // Sayfalara ve Catalog'a bağla.
+    d.get_dictionary_mut(p1).unwrap().set(
+        "Annots",
+        vec![w1.into(), sig_widget.into(), reset.into(), sd.into()],
+    );
+    d.get_dictionary_mut(p1)
+        .unwrap()
+        .set("B", vec![Object::Reference(bead1)]);
+    d.get_dictionary_mut(p2)
+        .unwrap()
+        .set("Annots", vec![w2.into(), w3.into(), w4.into()]);
+    d.get_dictionary_mut(p2)
+        .unwrap()
+        .set("B", vec![Object::Reference(bead2)]);
+    let catalog = d.catalog_mut().unwrap();
+    catalog.set("AcroForm", dictionary! {"Fields"=>vec![Object::Reference(field), Object::Reference(field2), Object::Reference(sig_widget)]});
+    catalog.set("Outlines", outlines);
+    catalog.set("StructTreeRoot", tree);
+    catalog.set("Threads", vec![Object::Reference(thread)]);
+    catalog.set("Names", dictionary! {"Dests"=>dictionary!{"Names"=>vec![Object::string_literal("to-p2"), vec![Object::Reference(p2),"Fit".into()].into()]}});
+    catalog.set("Perms", dictionary! {"DocMDP"=>sig});
+
+    let lab = Lab::new();
+    let src = lab.write("sizinti.pdf", &mut d);
+    // İmza sözlüğü taşıdığı için türetilmiş kopya onayla yapılır.
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Select { pages: vec![1] },
+        "tek.pdf",
+        true,
+    );
+    published(&o);
+    let raw = std::fs::read(&out).unwrap();
+    assert!(
+        !raw.windows(5).any(|w| w == b"GIZLI"),
+        "çıkarılan sayfanın verisi tek sayfalık çıktıya sızdı"
+    );
+    let out_doc = reopen(&out);
+    for kind in [
+        b"StructTreeRoot".as_slice(),
+        b"StructElem",
+        b"Outlines",
+        b"Thread",
+        b"Bead",
+        b"Sig",
+    ] {
+        assert!(
+            !has_type(&out_doc, kind),
+            "{} çıktıya taşındı",
+            String::from_utf8_lossy(kind)
+        );
+    }
+    assert_eq!(
+        out_doc
+            .objects
+            .values()
+            .filter(|o| o
+                .as_dict()
+                .ok()
+                .and_then(|d| d.get(b"Type").ok())
+                .and_then(|t| t.as_name().ok())
+                == Some(b"Catalog".as_slice()))
+            .count(),
+        1,
+        "kaynağın Catalog'u çıktıya ikinci kez kopyalandı"
+    );
+    assert_eq!(
+        annot_count(&out_doc, 1),
+        4,
+        "1. sayfanın kendi açıklamaları yerinde"
+    );
+    assert_no_dangling_or_dead_destinations("sizinti", &out_doc);
+}
+
+#[test]
+fn removed_goto_actions_do_not_survive_in_any_position() {
+    // Hedefi 2. sayfa olan GoTo eylemleri: URI'nin /Next'inde, bağlantının
+    // /AA /E'sinde ve 1. sayfanın /AA /O'sunda. Sil 2 → hiçbiri /D'siz kalmaz.
+    let mut d = vector_pdf(&[A4; 6]);
+    let pages = d.get_pages();
+    let goto2 = || dictionary! {"S"=>"GoTo","D"=>vec![Object::Reference(pages[&2]),"Fit".into()]};
+    let rect = || vec![72.into(), 600.into(), 172.into(), 620.into()];
+    let uri = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link","NM"=>Object::string_literal("uri"),"Rect"=>rect(),
+        "A"=>dictionary!{"S"=>"URI","URI"=>Object::string_literal("https://ornek.test"),"Next"=>goto2()}});
+    let chained = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link","NM"=>Object::string_literal("zincir"),"Rect"=>rect(),
+        "A"=>dictionary!{"S"=>"URI","URI"=>Object::string_literal("https://a.test"),
+            "Next"=>dictionary!{"S"=>"GoTo","D"=>vec![Object::Reference(pages[&2]),"Fit".into()],
+                "Next"=>dictionary!{"S"=>"JavaScript","JS"=>Object::string_literal("KORUNACAK-JS")}}}});
+    let enter = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link","NM"=>Object::string_literal("aa"),"Rect"=>rect(),
+        "AA"=>dictionary!{"E"=>goto2()}});
+    let page1 = d.get_dictionary_mut(pages[&1]).unwrap();
+    page1.set("Annots", vec![uri.into(), enter.into(), chained.into()]);
+    page1.set("AA", dictionary! {"O"=>goto2()});
+    let lab = Lab::new();
+    let src = lab.write("eylem.pdf", &mut d);
+
+    let incomplete_goto = |doc: &Document| {
+        fn visit(obj: &Object, found: &mut usize) {
+            match obj {
+                Object::Dictionary(d) => {
+                    if d.get(b"S").ok().and_then(|s| s.as_name().ok()) == Some(b"GoTo".as_slice())
+                        && !d.has(b"D")
+                    {
+                        *found += 1;
+                    }
+                    d.iter().for_each(|(_, v)| visit(v, found));
+                }
+                Object::Array(a) => a.iter().for_each(|v| visit(v, found)),
+                Object::Stream(s) => s.dict.iter().for_each(|(_, v)| visit(v, found)),
+                _ => {}
+            }
+        }
+        let mut found = 0;
+        doc.objects.values().for_each(|o| visit(o, &mut found));
+        found
+    };
+
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Delete { pages: vec![2] },
+        "sil.pdf",
+        false,
+    );
+    published(&o);
+    let deleted = reopen(&out);
+    assert_eq!(incomplete_goto(&deleted), 0, "hedefsiz GoTo eylemi kaldı");
+    assert!(
+        format!("{:?}", deleted.objects).contains("KORUNACAK-JS"),
+        "kaldırılan GoTo'nun ardındaki eylem de düştü"
+    );
+    assert!(
+        format!("{:?}", deleted.objects).contains("https://ornek.test"),
+        "URI eylemi korunmalı"
+    );
+    assert_no_dangling_or_dead_destinations("sil", &deleted);
+
+    // Hedef kalınca üç eylem de yeni 2. sayfaya gider.
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Select { pages: vec![1, 2] },
+        "sec.pdf",
+        false,
+    );
+    published(&o);
+    let kept = reopen(&out);
+    let second = kept.get_pages()[&2];
+    let text = format!("{:?}", kept.objects);
+    assert_eq!(incomplete_goto(&kept), 0);
+    assert_eq!(
+        text.matches(&format!("/D [{} {} R /Fit]", second.0, second.1))
+            .count(),
+        4,
+        "kalan hedefe giden dört GoTo yeni sayfaya bağlanmalı: {text}"
+    );
+}
+
+#[test]
+fn null_integer_and_named_destinations_resolve_like_viewers() {
+    let mut d = vector_pdf(&[A4; 6]);
+    let pages = d.get_pages();
+    let page = |n: u32| Object::Reference(pages[&n]);
+    let missing = d.new_object_id();
+    let via_object = d.add_object(Object::Reference(pages[&2]));
+    let chain_end = d.new_object_id();
+    let to_missing = d.add_object(Object::Reference(chain_end));
+    let link = |d: &mut Document, nm: &str, key: &str, value: Object| {
+        Object::Reference(d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link",
+            "NM"=>Object::string_literal(nm),"Rect"=>vec![72.into(),600.into(),172.into(),620.into()], key=>value}))
+    };
+    let annots = vec![
+        // Dosyada olmayan sayfa: yükleyici null sayar, kopya hedefi bırakmaz.
+        link(
+            &mut d,
+            "yok-dest",
+            "Dest",
+            vec![Object::Reference(missing), "Fit".into()].into(),
+        ),
+        link(
+            &mut d,
+            "yok-goto",
+            "A",
+            dictionary! {"S"=>"GoTo","D"=>vec![Object::Reference(missing),"Fit".into()]}.into(),
+        ),
+        // Sayfaya bir başvuru NESNESİ üzerinden gidilen hedef (`40 0 obj 12 0 R`).
+        link(
+            &mut d,
+            "sayfa-zinciri",
+            "Dest",
+            vec![Object::Reference(via_object), "Fit".into()].into(),
+        ),
+        // Dosyada olmayan nesneye zincirlenen sayfa: yükleyici null yapar, hedef düşer.
+        link(
+            &mut d,
+            "null-zinciri",
+            "Dest",
+            vec![Object::Reference(to_missing), "Fit".into()].into(),
+        ),
+        // Tamsayı: 0 tabanlı sayfa numarası → 4. sayfa.
+        link(
+            &mut d,
+            "tamsayi",
+            "Dest",
+            vec![3.into(), "Fit".into()].into(),
+        ),
+        // Dize ad ağacında, ad /Dests sözlüğünde aranır (ISO 32000-1 12.3.2.3).
+        link(&mut d, "dize", "Dest", Object::string_literal("giris")),
+        link(&mut d, "ad", "Dest", "giris".into()),
+    ];
+    d.get_dictionary_mut(pages[&1])
+        .unwrap()
+        .set("Annots", annots);
+    let catalog = d.catalog_mut().unwrap();
+    catalog.set("Dests", dictionary! {"giris"=>vec![page(5),"Fit".into()]});
+    catalog.set("Names", dictionary! {"Dests"=>dictionary!{"Names"=>vec![Object::string_literal("giris"), vec![page(2),"Fit".into()].into()]}});
+    let lab = Lab::new();
+    let src = lab.write("hedefler.pdf", &mut d);
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Reorder {
+            pages: (1..=6).rev().collect(),
+        },
+        "ters.pdf",
+        false,
+    );
+    published(&o);
+    let reversed = reopen(&out);
+    let links = link_targets(&reversed, 6);
+    let some = |s: &str| Some(s.to_string());
+    assert_eq!(links["yok-dest"], None);
+    assert_eq!(links["yok-goto"], None);
+    assert_eq!(links["tamsayi"], some("Sayfa 4"));
+    assert_eq!(links["sayfa-zinciri"], some("Sayfa 2"));
+    assert_eq!(links["null-zinciri"], None);
+    assert_eq!(links["dize"], some("Sayfa 2"));
+    assert_eq!(links["ad"], some("Sayfa 5"));
+    assert_no_dangling_or_dead_destinations("ters", &reversed);
+}
+
+#[test]
+fn page_listed_through_a_reference_object_keeps_its_links_and_stays_single() {
+    // `/Kids [p1 40 0 R p3]`, `40 0 obj 12 0 R`: sayfa ağacı 2. sayfayı bir
+    // başvuru NESNESİ üzerinden listeliyor. lopdf'in `get_pages`i zincirin
+    // başını (40) verir; bağlantı sayfanın kendi kimliğini (12) ya da zinciri
+    // (40) gösterebilir. İkisi de aynı sayfaya gitmeli, sayfa tek kopya kalmalı.
+    let mut d = vector_pdf(&[A4; 3]);
+    let pages = d.get_pages();
+    let via = d.add_object(Object::Reference(pages[&2]));
+    let root = d
+        .catalog()
+        .unwrap()
+        .get(b"Pages")
+        .unwrap()
+        .as_reference()
+        .unwrap();
+    d.get_dictionary_mut(root)
+        .unwrap()
+        .set("Kids", vec![pages[&1].into(), via.into(), pages[&3].into()]);
+    let link = |d: &mut Document, nm: &str, target: ObjectId| {
+        Object::Reference(d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link",
+        "NM"=>Object::string_literal(nm),"Rect"=>vec![72.into(),600.into(),172.into(),620.into()],
+        "Dest"=>vec![Object::Reference(target),"Fit".into()]}))
+    };
+    let annots = vec![
+        link(&mut d, "sayfa-kimligi", pages[&2]),
+        link(&mut d, "kids-zinciri", via),
+    ];
+    d.get_dictionary_mut(pages[&1])
+        .unwrap()
+        .set("Annots", annots);
+    let lab = Lab::new();
+    let src = lab.write("kids-zinciri.pdf", &mut d);
+    let some = |s: &str| Some(s.to_string());
+    let page_objects = |doc: &Document| {
+        doc.objects
+            .values()
+            .filter(|o| {
+                o.as_dict()
+                    .is_ok_and(|d| d.get(b"Type").and_then(|t| t.as_name()).ok() == Some(b"Page"))
+            })
+            .count()
+    };
+
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Reorder {
+            pages: vec![3, 2, 1],
+        },
+        "ters.pdf",
+        false,
+    );
+    published(&o);
+    let reversed = reopen(&out);
+    assert_eq!(markers(&reversed), ["Sayfa 3", "Sayfa 2", "Sayfa 1"]);
+    assert_eq!(page_objects(&reversed), 3, "sayfa iki kez kopyalandı");
+    let links = link_targets(&reversed, 3);
+    assert_eq!(links["sayfa-kimligi"], some("Sayfa 2"));
+    assert_eq!(links["kids-zinciri"], some("Sayfa 2"));
+    assert_no_dangling_or_dead_destinations("ters", &reversed);
+
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Delete { pages: vec![2] },
+        "sil.pdf",
+        false,
+    );
+    published(&o);
+    let deleted = reopen(&out);
+    assert_eq!(markers(&deleted), ["Sayfa 1", "Sayfa 3"]);
+    assert_eq!(page_objects(&deleted), 2, "silinen sayfa çıktıya taşındı");
+    let links = link_targets(&deleted, 1);
+    assert_eq!(links["sayfa-kimligi"], None);
+    assert_eq!(links["kids-zinciri"], None);
+    assert_no_dangling_or_dead_destinations("sil", &deleted);
+}
+
+#[test]
+fn looped_name_tree_cannot_hang_preview_or_select() {
+    // `/Kids [7 0 R 7 0 R 7 0 R]`: kendini gösteren ad ağacı düğümü.
+    let mut d = vector_pdf(&[A4, A4]);
+    let pages = d.get_pages();
+    let tree = d.new_object_id();
+    d.objects.insert(
+        tree,
+        dictionary! {"Kids"=>vec![Object::Reference(tree); 3]}.into(),
+    );
+    d.catalog_mut()
+        .unwrap()
+        .set("Names", dictionary! {"Dests"=>tree});
+    let annot = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link","Rect"=>vec![72.into(),600.into(),172.into(),620.into()],"Dest"=>Object::string_literal("yok")});
+    d.get_dictionary_mut(pages[&1])
+        .unwrap()
+        .set("Annots", vec![Object::Reference(annot)]);
+    let lab = Lab::new();
+    let src = lab.write("dongu.pdf", &mut d);
+    let out = lab.path("tek.pdf");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let job = (src.clone(), out.clone());
+    std::thread::spawn(move || {
+        let selected = run_tool_with_outcome(
+            std::slice::from_ref(&job.0),
+            &ToolOperation::Select { pages: vec![1] },
+            &job.1,
+            false,
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string());
+        #[cfg(target_os = "macos")]
+        let preview = ekler_core::raster::preview_page(&job.0, 1, 72, 0)
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+        #[cfg(not(target_os = "macos"))]
+        let preview: std::result::Result<(), String> = Ok(());
+        let _ = tx.send((selected, preview));
+    });
+    let (selected, preview) = rx
+        .recv_timeout(std::time::Duration::from_secs(30))
+        .expect("döngülü ad ağacı Seç/önizlemeyi kilitledi");
+    selected.unwrap();
+    preview.unwrap();
+    assert_eq!(reopen(&out).get_pages().len(), 1);
+}
+
+#[test]
+fn long_object_chains_cannot_overflow_the_stack() {
+    // Kabuk araçları ve önizlemeyi 2 MiB yığınlı spawn_blocking iş
+    // parçacığında koşar. Görünüm grafiğinde 3.000 halkalı iç içe Form
+    // XObject zinciri ve bağlantıda 3.000 halkalı /Next eylem zinciri.
+    let mut d = vector_pdf(&[A4, A4]);
+    let pages = d.get_pages();
+    let mut inner: Option<ObjectId> = None;
+    for n in 0..3_000 {
+        let mut dict = dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),10.into(),10.into()]};
+        let content = match inner {
+            Some(child) => {
+                dict.set(
+                    "Resources",
+                    dictionary! {"XObject"=>dictionary!{"X"=>child}},
+                );
+                b"/X Do".to_vec()
+            }
+            None => format!("0 0 {n} 1 re f").into_bytes(),
+        };
+        inner = Some(d.add_object(Stream::new(dict, content)));
+    }
+    let mut next = dictionary! {"S"=>"URI","URI"=>Object::string_literal("https://ornek.test/son")};
+    for _ in 0..3_000 {
+        let id = d.add_object(next);
+        next =
+            dictionary! {"S"=>"URI","URI"=>Object::string_literal("https://ornek.test"),"Next"=>id};
+    }
+    let link = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link","Rect"=>vec![72.into(),600.into(),172.into(),620.into()],"A"=>next});
+    let page1 = d.get_dictionary_mut(pages[&1]).unwrap();
+    page1.set(
+        "Resources",
+        dictionary! {"Font"=>dictionary!{"F1"=>d_font_placeholder()},"XObject"=>dictionary!{"Zincir"=>inner.unwrap()}},
+    );
+    page1.set("Annots", vec![Object::Reference(link)]);
+    let lab = Lab::new();
+    let src = lab.write("zincir.pdf", &mut d);
+    let out = lab.path("tek.pdf");
+    let job = (src.clone(), out.clone());
+    let result = std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(move || {
+            run_tool_with_outcome(
+                std::slice::from_ref(&job.0),
+                &ToolOperation::Select { pages: vec![1] },
+                &job.1,
+                false,
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+        })
+        .unwrap()
+        .join()
+        .expect("iş parçacığı düştü");
+    result.unwrap();
+    assert_eq!(reopen(&out).get_pages().len(), 1);
+}
+
+/// `vector_pdf`'in sayfa fontu yerine kullanılan bağımsız Helvetica.
+fn d_font_placeholder() -> Object {
+    Object::Dictionary(font_dict())
+}
+
+#[test]
+fn hidden_optional_content_stays_hidden_in_page_copies() {
+    // Kaynakta kapalı katman. Catalog `/OCProperties` taşınmazsa kopyada
+    // gizli içerik görünür olur. Tek kaynak (Seç) ve farklı taban durumlu iki
+    // kaynağın birleşimi (Birleştir) denenir.
+    fn layered(base_state_off: bool) -> Document {
+        let mut d = vector_pdf(&[A4, A4]);
+        let hidden =
+            d.add_object(dictionary! {"Type"=>"OCG","Name"=>Object::string_literal("Gizli")});
+        let shown =
+            d.add_object(dictionary! {"Type"=>"OCG","Name"=>Object::string_literal("Acik")});
+        for id in d.get_pages().into_values() {
+            let resources = d
+                .get_dictionary_mut(id)
+                .unwrap()
+                .get_mut(b"Resources")
+                .unwrap()
+                .as_dict_mut()
+                .unwrap();
+            resources.set("Properties", dictionary! {"L1"=>hidden,"L2"=>shown});
+        }
+        let config = if base_state_off {
+            dictionary! {"BaseState"=>"OFF","ON"=>vec![Object::Reference(shown)]}
+        } else {
+            dictionary! {"OFF"=>vec![Object::Reference(hidden)]}
+        };
+        d.catalog_mut().unwrap().set(
+            "OCProperties",
+            dictionary! {"OCGs"=>vec![Object::Reference(hidden), Object::Reference(shown)],"D"=>config},
+        );
+        d
+    }
+    fn off_names(doc: &Document) -> Vec<String> {
+        let props = doc
+            .catalog()
+            .unwrap()
+            .get(b"OCProperties")
+            .expect("katman yapılandırması taşınmadı");
+        let props = doc.dereference(props).unwrap().1.as_dict().unwrap();
+        let config = doc
+            .dereference(props.get(b"D").unwrap())
+            .unwrap()
+            .1
+            .as_dict()
+            .unwrap();
+        let mut names: Vec<String> = config
+            .get(b"OFF")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|g| {
+                let g = doc.dereference(g).unwrap().1.as_dict().unwrap();
+                String::from_utf8_lossy(g.get(b"Name").unwrap().as_str().unwrap()).into_owned()
+            })
+            .collect();
+        names.sort();
+        names
+    }
+    let lab = Lab::new();
+    let single = lab.write("katman.pdf", &mut layered(false));
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&single),
+        ToolOperation::Select { pages: vec![2] },
+        "sec.pdf",
+        false,
+    );
+    published(&o);
+    let d = reopen(&out);
+    assert_eq!(off_names(&d), ["Gizli"]);
+    // Sayfanın başvurduğu grup ile kapalı listedeki grup AYNI nesne.
+    let page = pdf::resolved_page_dictionary(&d, d.get_pages()[&1]).unwrap();
+    let resources = d
+        .dereference(page.get(b"Resources").unwrap())
+        .unwrap()
+        .1
+        .as_dict()
+        .unwrap();
+    let l1 = resources
+        .get(b"Properties")
+        .unwrap()
+        .as_dict()
+        .unwrap()
+        .get(b"L1")
+        .unwrap()
+        .as_reference()
+        .unwrap();
+    let props = d
+        .dereference(d.catalog().unwrap().get(b"OCProperties").unwrap())
+        .unwrap()
+        .1
+        .as_dict()
+        .unwrap();
+    let off = d
+        .dereference(props.get(b"D").unwrap())
+        .unwrap()
+        .1
+        .as_dict()
+        .unwrap()
+        .get(b"OFF")
+        .unwrap()
+        .as_array()
+        .unwrap()[0]
+        .as_reference()
+        .unwrap();
+    assert_eq!(
+        l1, off,
+        "sayfadaki katman grubu yapılandırmadakinden farklı nesneye kopyalandı"
+    );
+
+    let base_off = lab.write("katman-taban-kapali.pdf", &mut layered(true));
+    let (o, out) = run(
+        &lab,
+        &[single, base_off],
+        ToolOperation::Merge,
+        "birlesik.pdf",
+        false,
+    );
+    published(&o);
+    let d = reopen(&out);
+    assert_eq!(
+        off_names(&d),
+        ["Gizli", "Gizli"],
+        "taban durumu OFF olan kaynağın gizli grubu açık listeye çevrilmeli"
+    );
+    assert_no_dangling_or_dead_destinations("katman", &d);
+}
+
+// ================================== İMZALI KAYNAKTAN TÜRETİLEN KOPYA (2026-09-15)
+//
+// Yeniden yazılan PDF'te imzanın /ByteRange'i artık imzalanan baytları
+// göstermez; imza kriptografik olarak geçersizdir. Döndür, Kırp, Numara,
+// Filigran ve Sıkıştır belgeyi yerinde yeniden yazdığı için imza sözlüğünü,
+// /Perms ve /SigFlags'i çıktıya taşıyordu: kopya görüntüleyicide bozuk imzalı,
+// GölgeDosya'nın tarayıcısında "imzalı" görünüyordu. Temizlik ANLAMSALDIR:
+// imza sözlüğü ISO 32000-1 §12.8.1 biçimiyle tanınır, anahtar adıyla değil.
+// Benzer görünen yapılar — sayfanın /Contents'i, metin alanının /V'si,
+// boncuğun /V'si, imza olmayan bir sözlükteki /Reference ve /Contents —
+// korunmak zorundadır.
+
+const SIGNATURE_BLOB: &[u8] = b"GIZLI-PKCS7-IMZA-DEGERI";
+const TIMESTAMP_BLOB: &[u8] = b"GIZLI-RFC3161-ZAMAN-DAMGASI";
+const USAGE_RIGHTS_BLOB: &[u8] = b"GIZLI-UR3-KULLANIM-HAKKI";
+const CERTIFICATE_BLOB: &[u8] = b"GIZLI-DSS-SERTIFIKA";
+const SIGNATURE_APPEARANCE: &[u8] = b"0 0 1 rg 0 0 150 40 re f";
+
+fn signed_pdf() -> Document {
+    let mut d = vector_pdf(&[A4, A4, A4]);
+    let pages = d.get_pages();
+    // 2. sayfada yeniden kodlanabilir bir tarama: Sıkıştır gerçekten yayınlasın.
+    let scan = d.add_object(flate_rgb_stream(
+        &scan_pixels(1200, 900),
+        "DeviceRGB".into(),
+    ));
+    let content = d.add_object(Stream::new(
+        dictionary! {},
+        b"BT /F1 24 Tf 72 720 Td (Sayfa 2) Tj ET q 480 0 0 360 60 200 cm /Im1 Do Q".to_vec(),
+    ));
+    let page2 = d.get_dictionary_mut(pages[&2]).unwrap();
+    page2.set("Contents", content);
+    page2.set(
+        "Resources",
+        dictionary! {"Font"=>dictionary!{"F1"=>font_dict()},"XObject"=>dictionary!{"Im1"=>scan}},
+    );
+    let hex = |b: &[u8]| Object::String(b.to_vec(), lopdf::StringFormat::Hexadecimal);
+    let byte_range = || vec![0.into(), 100.into(), 200.into(), 300.into()];
+    // Sertifika imzası (DocMDP), belge zaman damgası, kullanım hakları (UR3).
+    let signature = d.add_object(dictionary! {"Type"=>"Sig","Filter"=>"Adobe.PPKLite",
+    "SubFilter"=>"adbe.pkcs7.detached","ByteRange"=>byte_range(),"Contents"=>hex(SIGNATURE_BLOB),
+    "Reference"=>vec![dictionary!{"Type"=>"SigRef","TransformMethod"=>"DocMDP",
+        "TransformParams"=>dictionary!{"Type"=>"TransformParams","P"=>2,"V"=>"1.2"}}.into()]});
+    let timestamp = d.add_object(
+        dictionary! {"Type"=>"DocTimeStamp","Filter"=>"Adobe.PPKLite",
+        "SubFilter"=>"ETSI.RFC3161","ByteRange"=>byte_range(),"Contents"=>hex(TIMESTAMP_BLOB)},
+    );
+    // /Type'sız imza sözlüğü: yalnız biçimiyle (Filter + ByteRange + Contents) tanınır.
+    let usage_rights = d.add_object(dictionary! {"Filter"=>"Adobe.PPKLite",
+    "SubFilter"=>"adbe.pkcs7.sha1","ByteRange"=>byte_range(),"Contents"=>hex(USAGE_RIGHTS_BLOB)});
+    let certificate = d.add_object(Stream::new(dictionary! {}, CERTIFICATE_BLOB.to_vec()));
+    let form = |d: &mut Document, content: &[u8]| {
+        d.add_object(Stream::new(
+            dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),150.into(),40.into()]},
+            content.to_vec(),
+        ))
+    };
+    let appearance = form(&mut d, SIGNATURE_APPEARANCE);
+    let sig_widget = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Widget","FT"=>"Sig",
+        "T"=>Object::string_literal("Imza1"),"Rect"=>vec![400.into(),80.into(),550.into(),120.into()],
+        "V"=>signature,"Lock"=>dictionary!{"Type"=>"SigFieldLock","Action"=>"All"},
+        "AP"=>dictionary!{"N"=>appearance},"P"=>pages[&1]});
+    let stamp_widget = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Widget","FT"=>"Sig",
+        "T"=>Object::string_literal("ZamanDamgasi"),"Rect"=>vec![0.into(),0.into(),0.into(),0.into()],
+        "V"=>timestamp,"P"=>pages[&1]});
+    // Benzer görünen, imza OLMAYAN yapılar.
+    let text_appearance = form(&mut d, b"BT /Helv 10 Tf 2 5 Td (Ali Veli) Tj ET");
+    let text_field = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Widget","FT"=>"Tx",
+        "T"=>Object::string_literal("Ad"),"V"=>Object::string_literal("Ali Veli"),
+        "Rect"=>vec![72.into(),600.into(),272.into(),620.into()],"AP"=>dictionary!{"N"=>text_appearance},"P"=>pages[&1]});
+    let private = d.add_object(dictionary! {"Type"=>"GolgeTest","Filter"=>"Yok",
+        "Reference"=>Object::string_literal("imza-degil"),"Contents"=>Object::string_literal("ozel veri")});
+    let (thread, bead) = (d.new_object_id(), d.new_object_id());
+    d.objects.insert(
+        bead,
+        dictionary! {"Type"=>"Bead","T"=>thread,"N"=>bead,"V"=>bead,"P"=>pages[&1],
+        "R"=>vec![72.into(),72.into(),500.into(),700.into()]}
+        .into(),
+    );
+    d.objects
+        .insert(thread, dictionary! {"Type"=>"Thread","F"=>bead}.into());
+    let page1 = d.get_dictionary_mut(pages[&1]).unwrap();
+    page1.set(
+        "Annots",
+        vec![sig_widget.into(), stamp_widget.into(), text_field.into()],
+    );
+    page1.set(
+        "PieceInfo",
+        dictionary! {"GolgeTest"=>dictionary!{"Private"=>private,
+        "LastModified"=>Object::string_literal("D:20260915")}},
+    );
+    page1.set("B", vec![Object::Reference(bead)]);
+    let acro_form = d.add_object(dictionary! {
+    "Fields"=>vec![sig_widget.into(), stamp_widget.into(), text_field.into()],"SigFlags"=>3});
+    let catalog = d.catalog_mut().unwrap();
+    catalog.set("AcroForm", acro_form);
+    catalog.set(
+        "Perms",
+        dictionary! {"DocMDP"=>signature,"UR3"=>usage_rights},
+    );
+    catalog.set(
+        "DSS",
+        dictionary! {"Certs"=>vec![Object::Reference(certificate)]},
+    );
+    catalog.set("Threads", vec![Object::Reference(thread)]);
+    d
+}
+
+/// ISO 32000-1 §12.8.1 biçimi, üründen bağımsız yazılmış hâli.
+fn looks_like_signature(doc: &Document, dict: &Dictionary) -> bool {
+    let get = |k: &[u8]| dict.get(k).ok().map(|v| doc.dereference(v).unwrap().1);
+    matches!(get(b"Type"), Some(Object::Name(n)) if n == b"Sig" || n == b"DocTimeStamp")
+        || (matches!(get(b"Filter"), Some(Object::Name(_)))
+            && matches!(get(b"ByteRange"), Some(Object::Array(_)))
+            && matches!(get(b"Contents"), Some(Object::String(..))))
+}
+
+/// Trailer'dan erişilen her sözlük (akış sözlükleri dâhil).
+fn reachable_dictionaries(doc: &Document) -> Vec<Dictionary> {
+    let mut seen = std::collections::HashSet::new();
+    let mut stack: Vec<Object> = doc.trailer.iter().map(|(_, v)| v.clone()).collect();
+    let mut out = Vec::new();
+    while let Some(obj) = stack.pop() {
+        match obj {
+            Object::Reference(id) => {
+                if seen.insert(id) {
+                    if let Ok(found) = doc.get_object(id) {
+                        stack.push(found.clone());
+                    }
+                }
+            }
+            Object::Array(items) => stack.extend(items),
+            Object::Dictionary(d) => {
+                stack.extend(d.iter().map(|(_, v)| v.clone()));
+                out.push(d);
+            }
+            Object::Stream(s) => {
+                stack.extend(s.dict.iter().map(|(_, v)| v.clone()));
+                out.push(s.dict);
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn annotations_on(doc: &Document, page: u32) -> Vec<Dictionary> {
+    doc.get_dictionary(doc.get_pages()[&page])
+        .unwrap()
+        .get(b"Annots")
+        .map(|a| doc.dereference(a).unwrap().1.as_array().unwrap().clone())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|a| doc.dereference(&a).unwrap().1.as_dict().unwrap().clone())
+        .collect()
+}
+
+fn stream_bytes(doc: &Document, value: &Object) -> Vec<u8> {
+    let stream = doc.dereference(value).unwrap().1.as_stream().unwrap();
+    stream
+        .decompressed_content()
+        .unwrap_or_else(|_| stream.content.clone())
+}
+
+/// İmzalı kaynaktan türetilen kopyanın on değişmezi.
+fn assert_signature_free_copy(name: &str, source: &Document, out: &Path, in_place: bool) {
+    let raw = std::fs::read(out).unwrap();
+    // PDF yeniden açılıyor (katı + onarımsız) ve tarayıcı imzasız görüyor.
+    let d = reopen(out);
+    let receipt = scan_source_files(&[out]);
+    assert!(
+        !receipt.sources[0].is_signed,
+        "{name}: tarayıcı kopyayı imzalı saydı"
+    );
+    assert!(!pdf::detect_signature(&d), "{name}");
+    // Eski kriptografik imza, /ByteRange ve imza /Contents'i erişilemez; imza
+    // malzemesinin baytları dosyada hiç yok.
+    for dict in reachable_dictionaries(&d) {
+        assert!(
+            !looks_like_signature(&d, &dict),
+            "{name}: erişilebilir imza sözlüğü: {dict:?}"
+        );
+        assert!(!dict.has(b"ByteRange"), "{name}: erişilebilir /ByteRange");
+    }
+    for blob in [
+        SIGNATURE_BLOB,
+        TIMESTAMP_BLOB,
+        USAGE_RIGHTS_BLOB,
+        CERTIFICATE_BLOB,
+    ] {
+        let hex_upper: Vec<u8> = blob
+            .iter()
+            .flat_map(|b| format!("{b:02X}").into_bytes())
+            .collect();
+        let hex_lower = hex_upper.to_ascii_lowercase();
+        for needle in [blob.to_vec(), hex_upper, hex_lower] {
+            assert!(
+                !raw.windows(needle.len()).any(|w| w == needle.as_slice()),
+                "{name}: imza malzemesi dosyada kaldı: {}",
+                String::from_utf8_lossy(blob)
+            );
+        }
+    }
+    // Catalog /Perms ve /DSS yok; /SigFlags imzalı belge bildirmiyor.
+    let catalog = d.catalog().unwrap();
+    assert!(!catalog.has(b"Perms") && !catalog.has(b"DSS"), "{name}");
+    if let Ok(form) = catalog.get(b"AcroForm") {
+        let form = d.dereference(form).unwrap().1.as_dict().unwrap();
+        assert!(!form.has(b"SigFlags"), "{name}: /SigFlags kaldı");
+    }
+    // Sayfa içerikleri, görünür imza görünümü, imza alanının boş semantiği ve
+    // benzer görünen yapılar: kaynakta "Sayfa N" olan her çıktı sayfasında.
+    let source_markers = markers(source);
+    for (index, marker) in markers(&d).iter().enumerate() {
+        let out_page = index as u32 + 1;
+        let src_page = source_markers.iter().position(|m| m == marker).unwrap() as u32 + 1;
+        let original = source
+            .get_page_content(source.get_pages()[&src_page])
+            .unwrap();
+        let copied = d.get_page_content(d.get_pages()[&out_page]).unwrap();
+        assert!(
+            copied
+                .windows(original.len())
+                .any(|w| w == original.as_slice()),
+            "{name}/{marker}: sayfa içeriği değişti"
+        );
+        if src_page != 1 {
+            continue;
+        }
+        let annotations = annotations_on(&d, out_page);
+        let signature_fields: Vec<_> = annotations
+            .iter()
+            .filter(|a| a.get(b"FT").and_then(|t| t.as_name()).ok() == Some(b"Sig"))
+            .collect();
+        assert_eq!(
+            signature_fields.len(),
+            2,
+            "{name}: imza alanları sayfada kalmalı"
+        );
+        for field in &signature_fields {
+            assert!(!field.has(b"V"), "{name}: imza alanı değer taşıyor");
+        }
+        let visible = signature_fields
+            .iter()
+            .find(|f| f.get(b"T").and_then(|t| t.as_str()).ok() == Some(b"Imza1".as_slice()))
+            .unwrap();
+        let ap = visible
+            .get(b"AP")
+            .unwrap()
+            .as_dict()
+            .unwrap()
+            .get(b"N")
+            .unwrap();
+        assert_eq!(
+            stream_bytes(&d, ap),
+            SIGNATURE_APPEARANCE,
+            "{name}: imza görünümü değişti"
+        );
+        let text = annotations
+            .iter()
+            .find(|a| a.get(b"FT").and_then(|t| t.as_name()).ok() == Some(b"Tx"))
+            .expect("metin alanı");
+        assert_eq!(
+            text.get(b"V").unwrap().as_str().unwrap(),
+            b"Ali Veli",
+            "{name}: metin alanının /V'si silindi"
+        );
+        let page = pdf::resolved_page_dictionary(&d, d.get_pages()[&out_page]).unwrap();
+        let private = page
+            .get(b"PieceInfo")
+            .and_then(|p| p.as_dict())
+            .and_then(|p| p.get(b"GolgeTest"))
+            .and_then(|g| g.as_dict())
+            .and_then(|g| g.get(b"Private"))
+            .map(|p| d.dereference(p).unwrap().1.as_dict().unwrap().clone())
+            .unwrap_or_else(|_| panic!("{name}: sayfanın özel verisi düştü"));
+        assert_eq!(
+            private.get(b"Reference").unwrap().as_str().unwrap(),
+            b"imza-degil",
+            "{name}"
+        );
+        assert_eq!(
+            private.get(b"Contents").unwrap().as_str().unwrap(),
+            b"ozel veri",
+            "{name}"
+        );
+        if in_place {
+            // Yerinde yazımda makale zinciri korunur; boncuğun /V'si silinmez.
+            let bead = page.get(b"B").unwrap().as_array().unwrap()[0].clone();
+            let bead = d.dereference(&bead).unwrap().1.as_dict().unwrap();
+            assert!(bead.has(b"V"), "{name}: boncuğun /V'si silindi");
+        }
+    }
+}
+
+#[test]
+fn derived_copies_of_signed_pdfs_carry_no_signature_semantics() {
+    let lab = Lab::new();
+    let mut source = signed_pdf();
+    let src = lab.write("imzali.pdf", &mut source);
+    let second = lab.write("imzali-2.pdf", &mut signed_pdf());
+    let source = load_pdf_tolerant(&std::fs::read(&src).unwrap(), "imzali.pdf")
+        .unwrap()
+        .document;
+    assert!(scan_source_files(std::slice::from_ref(&src)).sources[0].is_signed);
+    for (label, op, in_place) in [
+        ("sec", ToolOperation::Select { pages: vec![1, 2] }, false),
+        (
+            "sirala",
+            ToolOperation::Reorder {
+                pages: vec![3, 2, 1],
+            },
+            false,
+        ),
+        ("sil", ToolOperation::Delete { pages: vec![3] }, false),
+        ("dondur", ToolOperation::Rotate { degrees: 90 }, true),
+        ("kirp", ToolOperation::Crop { margin_pt: 5.0 }, true),
+        ("numara", ToolOperation::Number { start: 1 }, true),
+        (
+            "filigran",
+            ToolOperation::Watermark {
+                text: "KOPYA".into(),
+            },
+            true,
+        ),
+    ] {
+        // `run` kaynak SHA-256'yı işlem öncesi ve sonrası karşılaştırır.
+        let (o, out) = run(
+            &lab,
+            std::slice::from_ref(&src),
+            op,
+            &format!("{label}.pdf"),
+            true,
+        );
+        published(&o);
+        assert_signature_free_copy(label, &source, &out, in_place);
+    }
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Compress {
+            level: Level::BalancedCompression,
+        },
+        "sikistir.pdf",
+        true,
+    );
+    assert!(
+        matches!(o, ToolOutcome::Compressed { .. }),
+        "fixture sıkıştırmada yayın üretmeli: {o:?}"
+    );
+    assert_signature_free_copy("sikistir", &source, &out, true);
+    let (o, out) = run(
+        &lab,
+        &[src, second],
+        ToolOperation::Merge,
+        "birlestir.pdf",
+        true,
+    );
+    published(&o);
+    assert_signature_free_copy("birlestir", &source, &out, false);
+}
+
+#[test]
+fn signature_cleanup_keeps_objects_still_used_through_reference_chains() {
+    // Sayfaların fontu bir başvuru NESNESİ üzerinden kullanılıyor (`/F1 40 0 R`,
+    // `40 0 obj 7 0 R`); imzanın `/Reference /Data`sı aynı fonta doğrudan
+    // gidiyor. İmzadan erişilen ama belgede hâlâ kullanılan font boşaltılmamalı.
+    let mut d = vector_pdf(&[A4, A4]);
+    let pages = d.get_pages();
+    let font = d.add_object(font_dict());
+    let via = d.add_object(Object::Reference(font));
+    for n in [1, 2] {
+        d.get_dictionary_mut(pages[&n])
+            .unwrap()
+            .set("Resources", dictionary! {"Font"=>dictionary!{"F1"=>via}});
+    }
+    let signature = d.add_object(dictionary! {"Type"=>"Sig","Filter"=>"Adobe.PPKLite",
+    "SubFilter"=>"adbe.pkcs7.detached","ByteRange"=>vec![0.into(),100.into(),200.into(),300.into()],
+    "Contents"=>Object::String(SIGNATURE_BLOB.to_vec(), lopdf::StringFormat::Hexadecimal),
+    "Reference"=>vec![dictionary!{"Type"=>"SigRef","TransformMethod"=>"FieldMDP",
+        "TransformParams"=>dictionary!{"Type"=>"TransformParams","Action"=>"All","V"=>"1.2"},
+        "Data"=>font}.into()]});
+    let widget = d.add_object(
+        dictionary! {"Type"=>"Annot","Subtype"=>"Widget","FT"=>"Sig",
+        "T"=>Object::string_literal("Imza1"),"Rect"=>vec![0.into(),0.into(),0.into(),0.into()],
+        "V"=>signature,"P"=>pages[&1]},
+    );
+    d.get_dictionary_mut(pages[&1])
+        .unwrap()
+        .set("Annots", vec![widget.into()]);
+    let form = d.add_object(dictionary! {"Fields"=>vec![widget.into()],"SigFlags"=>3});
+    d.catalog_mut().unwrap().set("AcroForm", form);
+    let lab = Lab::new();
+    let src = lab.write("zincirli-imzali.pdf", &mut d);
+    assert!(scan_source_files(std::slice::from_ref(&src)).sources[0].is_signed);
+    for (label, op) in [
+        ("dondur", ToolOperation::Rotate { degrees: 90 }),
+        ("sec", ToolOperation::Select { pages: vec![1, 2] }),
+    ] {
+        let (o, out) = run(
+            &lab,
+            std::slice::from_ref(&src),
+            op,
+            &format!("{label}.pdf"),
+            true,
+        );
+        published(&o);
+        let copy = reopen(&out);
+        assert!(!pdf::detect_signature(&copy), "{label}: imza kaldı");
+        for page in [1, 2] {
+            let dict = pdf::resolved_page_dictionary(&copy, copy.get_pages()[&page]).unwrap();
+            let resolve = |value: &Object| copy.dereference(value).unwrap().1.clone();
+            let resources = resolve(dict.get(b"Resources").unwrap());
+            let fonts = resolve(resources.as_dict().unwrap().get(b"Font").unwrap());
+            let f1 = resolve(fonts.as_dict().unwrap().get(b"F1").unwrap());
+            assert_eq!(
+                f1.as_dict()
+                    .ok()
+                    .and_then(|f| f.get(b"BaseFont").ok())
+                    .and_then(|b| b.as_name().ok()),
+                Some(b"Helvetica".as_slice()),
+                "{label}: sayfa {page} fontu boşaltıldı: {f1:?}"
+            );
+        }
+    }
+}
+
+// =============================== MARKA İDEMPOTENTTİR — ZİNCİRLEME TÜRETME (2026-09-15)
+//
+// Kullanıcı kaydettiği kopyayı açıp başka bir araç uygular. Her araç marka
+// payı ekliyordu: sırala → döndür → sil zincirinde 1. sayfa iki kez 34 pt
+// büyüyor, üç logo ve altı marka formu birikiyordu. İşareti görünür alanda
+// duran sayfaya ikinci pay/logo eklenmez; kırpma işareti görünür alanın dışında
+// bıraktıysa sayfa yeniden işaretlenir.
+
+/// Sayfanın içeriğinde marka formunu çizen `Do` sayısı.
+fn brand_draws(doc: &Document, page: u32) -> usize {
+    let content = doc.get_page_content(doc.get_pages()[&page]).unwrap();
+    let text = String::from_utf8_lossy(&content);
+    text.matches("/DuzenEkBrand").count()
+}
+
+fn brand_form_count(doc: &Document) -> usize {
+    doc.objects
+        .values()
+        .filter_map(|o| o.as_stream().ok())
+        .filter(|s| {
+            let data = if s.dict.has(b"Filter") {
+                s.decompressed_content().unwrap_or_default()
+            } else {
+                s.content.clone()
+            };
+            data == b"q /BrandAlpha gs /Mark Do Q"
+        })
+        .count()
+}
+
+#[test]
+fn branding_is_idempotent_across_chained_derivations() {
+    let lab = Lab::new();
+    let mut d = vector_pdf(&[A4, A4, A4]);
+    let pages = d.get_pages();
+    let scan = d.add_object(flate_rgb_stream(
+        &scan_pixels(1200, 900),
+        "DeviceRGB".into(),
+    ));
+    let content = d.add_object(Stream::new(
+        dictionary! {},
+        b"BT /F1 24 Tf 72 720 Td (Sayfa 2) Tj ET q 480 0 0 360 60 200 cm /Im1 Do Q".to_vec(),
+    ));
+    let page2 = d.get_dictionary_mut(pages[&2]).unwrap();
+    page2.set("Contents", content);
+    page2.set(
+        "Resources",
+        dictionary! {"Font"=>dictionary!{"F1"=>font_dict()},"XObject"=>dictionary!{"Im1"=>scan}},
+    );
+    let src = lab.write("kaynak.pdf", &mut d);
+    let branded_box = [0.0, -BRAND_GUTTER, A4[0], A4[1]];
+
+    let check = |name: &str, doc: &Document| {
+        assert_eq!(brand_form_count(doc), 1, "{name}: marka formu birikti");
+        for page in 1..=doc.get_pages().len() as u32 {
+            assert_eq!(
+                brand_draws(doc, page),
+                1,
+                "{name}/s.{page}: tek işaret olmalı"
+            );
+            let (media, crop) = boxes(doc, page);
+            for (value, expected) in media.iter().zip(branded_box) {
+                assert!(
+                    (value - expected).abs() < 0.01,
+                    "{name}/s.{page}: MediaBox {media:?}"
+                );
+            }
+            assert_eq!(
+                crop.map(|c| c.map(|v| (v * 100.).round())),
+                Some(media.map(|v| (v * 100.).round())),
+                "{name}/s.{page}"
+            );
+        }
+    };
+
+    let (o, a) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Reorder {
+            pages: vec![3, 2, 1],
+        },
+        "1-sirala.pdf",
+        false,
+    );
+    published(&o);
+    check("sirala", &reopen(&a));
+    let (o, b) = run(
+        &lab,
+        std::slice::from_ref(&a),
+        ToolOperation::RotatePages {
+            rotations: vec![PageRotation {
+                page: 1,
+                degrees: 90,
+            }],
+        },
+        "2-dondur.pdf",
+        false,
+    );
+    published(&o);
+    let rotated = reopen(&b);
+    check("dondur", &rotated);
+    assert_eq!(rotation(&rotated, 1), 90);
+    let (o, c) = run(
+        &lab,
+        std::slice::from_ref(&b),
+        ToolOperation::Delete { pages: vec![3] },
+        "3-sil.pdf",
+        false,
+    );
+    published(&o);
+    let deleted = reopen(&c);
+    check("sil", &deleted);
+    assert_eq!(markers(&deleted), ["Sayfa 3", "Sayfa 2"]);
+    let (o, e) = run(
+        &lab,
+        std::slice::from_ref(&c),
+        ToolOperation::Compress {
+            level: Level::BalancedCompression,
+        },
+        "4-sikistir.pdf",
+        false,
+    );
+    assert!(matches!(o, ToolOutcome::Compressed { .. }), "{o:?}");
+    check("sikistir", &reopen(&e));
+    // Markalı iki belgenin birleşimi: sayfa başına yine tek işaret.
+    let (o, m) = run(
+        &lab,
+        &[a.clone(), c.clone()],
+        ToolOperation::Merge,
+        "5-birlestir.pdf",
+        false,
+    );
+    published(&o);
+    let merged = reopen(&m);
+    for page in 1..=merged.get_pages().len() as u32 {
+        assert_eq!(brand_draws(&merged, page), 1, "birlestir/s.{page}");
+        let (media, _) = boxes(&merged, page);
+        assert!(
+            (media[1] + BRAND_GUTTER).abs() < 0.01,
+            "birlestir/s.{page}: {media:?}"
+        );
+    }
+    // İşareti görünür alanın dışında bırakan kırpma: yeni işaret eklenir.
+    let (o, k) = run(
+        &lab,
+        std::slice::from_ref(&a),
+        ToolOperation::Crop { margin_pt: 20.0 },
+        "6-kirp.pdf",
+        false,
+    );
+    published(&o);
+    let cropped = reopen(&k);
+    for page in 1..=3 {
+        assert_eq!(
+            brand_draws(&cropped, page),
+            2,
+            "kirp/s.{page}: gizlenen işaretin yerine yenisi"
+        );
+        let (_, crop) = boxes(&cropped, page);
+        let crop = crop.unwrap();
+        assert!(
+            (crop[1] - (-BRAND_GUTTER + 20.0 - BRAND_GUTTER)).abs() < 0.01,
+            "kirp/s.{page}: {crop:?}"
+        );
+    }
+    assert_eq!(
+        brand_form_count(&cropped),
+        1,
+        "kirp: form yeniden kullanılmalı"
+    );
+}
+
+// ------------------------------------------ şüpheci turu 2: kalan sızıntılar ve anlam
+
+fn raw_contains(path: &Path, needle: &str) -> bool {
+    let raw = std::fs::read(path).unwrap();
+    raw.windows(needle.len()).any(|w| w == needle.as_bytes())
+}
+
+#[test]
+fn document_parts_threads_and_structure_of_removed_pages_do_not_leak() {
+    // Tür adı yazılmamış (/Type isteğe bağlı) yapılar da kesilir: PDF 2.0
+    // belge parçaları (/DPart, /DPM meta verisi, /AF ilişkili dosyaları),
+    // makale zinciri ve boncukları, yapı öğeleri.
+    let mut d = vector_pdf(&[A4; 3]);
+    let pages = d.get_pages();
+    let rect = || vec![72.into(), 600.into(), 172.into(), 620.into()];
+    // (1) Belge parçaları: her sayfa kendi kaydına ait.
+    let (dpart_root, dpart_node) = (d.new_object_id(), d.new_object_id());
+    let leaves: Vec<ObjectId> = (1..=3u32)
+        .map(|n| {
+            let file = d.add_object(Stream::new(
+                dictionary! {"Type"=>"EmbeddedFile"},
+                format!("GIZLI-KAYIT-DOSYASI-{n}").into_bytes(),
+            ));
+            d.add_object(dictionary! {"Type"=>"DPart","Parent"=>dpart_node,"Start"=>pages[&n],"End"=>pages[&n],
+                "DPM"=>dictionary!{"Musteri"=>Object::string_literal(format!("GIZLI-MUSTERI-{n}"))},
+                "AF"=>vec![dictionary!{"Type"=>"Filespec","F"=>Object::string_literal(format!("kayit-{n}.txt")),"EF"=>dictionary!{"F"=>file}}.into()]})
+        })
+        .collect();
+    d.objects.insert(
+        dpart_node,
+        dictionary! {"Type"=>"DPart","Parent"=>dpart_root,
+        "DParts"=>vec![Object::Array(leaves.iter().map(|l| Object::Reference(*l)).collect())]}
+        .into(),
+    );
+    d.objects.insert(
+        dpart_root,
+        dictionary! {"Type"=>"DPartRoot","DPartRootNode"=>dpart_node}.into(),
+    );
+    for n in 1..=3u32 {
+        d.get_dictionary_mut(pages[&n])
+            .unwrap()
+            .set("DPart", leaves[n as usize - 1]);
+    }
+    // (2) /Type'sız makale zinciri.
+    let (thread, bead1, bead2) = (d.new_object_id(), d.new_object_id(), d.new_object_id());
+    d.objects.insert(thread, dictionary! {"F"=>bead1,"I"=>dictionary!{"Title"=>Object::string_literal("GIZLI-MAKALE"),"Author"=>Object::string_literal("GIZLI-YAZAR")}}.into());
+    d.objects.insert(
+        bead1,
+        dictionary! {"T"=>thread,"N"=>bead2,"V"=>bead2,"P"=>pages[&1],"R"=>rect()}.into(),
+    );
+    d.objects.insert(
+        bead2,
+        dictionary! {"T"=>thread,"N"=>bead1,"V"=>bead1,"P"=>pages[&2],"R"=>rect()}.into(),
+    );
+    d.get_dictionary_mut(pages[&1])
+        .unwrap()
+        .set("B", vec![Object::Reference(bead1)]);
+    d.get_dictionary_mut(pages[&2])
+        .unwrap()
+        .set("B", vec![Object::Reference(bead2)]);
+    // (3) /Type'sız yapı öğeleri; 1. sayfanın bağlantısı /SD ile birine gider.
+    let (document, e1, e2) = (d.new_object_id(), d.new_object_id(), d.new_object_id());
+    d.objects.insert(
+        e1,
+        dictionary! {"S"=>"Link","P"=>document,"Pg"=>pages[&1]}.into(),
+    );
+    d.objects.insert(e2, dictionary! {"S"=>"P","P"=>document,"Pg"=>pages[&2],
+        "ActualText"=>Object::string_literal("GIZLI-P2-METIN"),"Alt"=>Object::string_literal("GIZLI-ALT")}.into());
+    d.objects.insert(
+        document,
+        dictionary! {"S"=>"Document","K"=>vec![Object::Reference(e1), Object::Reference(e2)]}
+            .into(),
+    );
+    let link = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link","Rect"=>rect(),
+        "A"=>dictionary!{"S"=>"GoTo","D"=>vec![Object::Reference(pages[&1]),"Fit".into()],"SD"=>vec![Object::Reference(e1),"Fit".into()]}});
+    let goto_part = d.add_object(
+        dictionary! {"Type"=>"Annot","Subtype"=>"Link","Rect"=>rect(),
+        "A"=>dictionary!{"S"=>"GoToDp","Dp"=>leaves[2]}},
+    );
+    d.get_dictionary_mut(pages[&1]).unwrap().set(
+        "Annots",
+        vec![Object::Reference(link), Object::Reference(goto_part)],
+    );
+    d.catalog_mut().unwrap().set("DPartRoot", dpart_root);
+
+    let lab = Lab::new();
+    let src = lab.write("parcalar.pdf", &mut d);
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Select { pages: vec![1] },
+        "tek.pdf",
+        false,
+    );
+    published(&o);
+    reopen(&out);
+    for secret in [
+        "GIZLI-MUSTERI-2",
+        "GIZLI-MUSTERI-3",
+        "GIZLI-KAYIT-DOSYASI-2",
+        "GIZLI-KAYIT-DOSYASI-3",
+        "GIZLI-MAKALE",
+        "GIZLI-YAZAR",
+        "GIZLI-P2-METIN",
+        "GIZLI-ALT",
+    ] {
+        assert!(
+            !raw_contains(&out, secret),
+            "çıkarılan sayfanın verisi sızdı: {secret}"
+        );
+    }
+}
+
+#[test]
+fn retained_widgets_keep_their_field_and_removed_fields_do_not_leak() {
+    // Alanın iki widget'ı 1. sayfada, biri 2. sayfada. Değer yalnız alan
+    // düğümündedir: kalan widget alanını (/FT /T /V /DA) kaybetmemeli; kalmayan
+    // widget ve widget'ı olmayan bir alanın değeri tek sayfalık çıktıya sızmamalı.
+    let mut d = vector_pdf(&[A4; 3]);
+    let pages = d.get_pages();
+    let rect = |y: i64| vec![72.into(), y.into(), 272.into(), (y + 20).into()];
+    let field = d.new_object_id();
+    let appearance = |d: &mut Document, text: &str| {
+        d.add_object(Stream::new(
+            dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>vec![0.into(),0.into(),200.into(),20.into()]},
+            format!("BT /Helv 10 Tf 2 5 Td ({text}) Tj ET").into_bytes(),
+        ))
+    };
+    let ap1 = appearance(&mut d, "Ali Veli");
+    let w1 = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Widget","Rect"=>rect(600),"Parent"=>field,"AP"=>dictionary!{"N"=>ap1},"P"=>pages[&1]});
+    let w2 = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Widget","Rect"=>rect(560),"Parent"=>field,"P"=>pages[&1]});
+    let ap3 = appearance(&mut d, "GIZLI-W3");
+    let w3 = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Widget","Rect"=>rect(600),"Parent"=>field,"AP"=>dictionary!{"N"=>ap3},"P"=>pages[&2]});
+    d.objects.insert(field, dictionary! {"FT"=>"Tx","T"=>Object::string_literal("adsoyad"),"V"=>Object::string_literal("Ali Veli"),
+        "DA"=>Object::string_literal("/Helv 10 Tf 0 g"),"Kids"=>vec![w1.into(), w2.into(), w3.into()]}.into());
+    // Widget'ı olmayan alan (/FT ve /Kids yok), gönderme eyleminin /Fields'ında.
+    let person = d.new_object_id();
+    let tckn = d.add_object(dictionary! {"T"=>Object::string_literal("tckn"),"V"=>Object::string_literal("GIZLI-TCKN-99"),"Parent"=>person});
+    d.objects.insert(person, dictionary! {"FT"=>"Tx","T"=>Object::string_literal("kisi"),"Kids"=>vec![Object::Reference(tckn)]}.into());
+    let submit = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link","Rect"=>rect(500),
+        "A"=>dictionary!{"S"=>"SubmitForm","F"=>dictionary!{"FS"=>"URL","F"=>Object::string_literal("https://ornek.test/gonder")},"Fields"=>vec![Object::Reference(tckn)]}});
+    d.get_dictionary_mut(pages[&1])
+        .unwrap()
+        .set("Annots", vec![w1.into(), w2.into(), submit.into()]);
+    d.get_dictionary_mut(pages[&2])
+        .unwrap()
+        .set("Annots", vec![Object::Reference(w3)]);
+    d.catalog_mut().unwrap().set(
+        "AcroForm",
+        dictionary! {"Fields"=>vec![Object::Reference(field), Object::Reference(person)]},
+    );
+
+    /// Sayfadaki widget'ların /Parent'ı üzerinden eriştiği alan sözlükleri.
+    fn widget_fields(doc: &Document, page: u32) -> Vec<Dictionary> {
+        annotations_on(doc, page)
+            .into_iter()
+            .filter(|a| a.get(b"Subtype").and_then(|s| s.as_name()).ok() == Some(b"Widget"))
+            .map(|w| {
+                let parent = w.get(b"Parent").expect("widget alanını kaybetti");
+                doc.dereference(parent)
+                    .unwrap()
+                    .1
+                    .as_dict()
+                    .expect("alan null oldu")
+                    .clone()
+            })
+            .collect()
+    }
+    fn assert_field_semantics(name: &str, field: &Dictionary) {
+        assert_eq!(
+            field.get(b"FT").unwrap().as_name().unwrap(),
+            b"Tx",
+            "{name}"
+        );
+        assert_eq!(
+            field.get(b"T").unwrap().as_str().unwrap(),
+            b"adsoyad",
+            "{name}"
+        );
+        assert_eq!(
+            field.get(b"V").unwrap().as_str().unwrap(),
+            b"Ali Veli",
+            "{name}"
+        );
+        assert!(field.has(b"DA"), "{name}");
+    }
+
+    let lab = Lab::new();
+    let src = lab.write("form.pdf", &mut d);
+    // Sırala ve Birleştir: hiçbir sayfa çıkmıyor, alan semantiği aynen kalmalı.
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Reorder {
+            pages: vec![3, 2, 1],
+        },
+        "sirala.pdf",
+        false,
+    );
+    published(&o);
+    let reordered = reopen(&out);
+    let fields = widget_fields(&reordered, 3);
+    assert_eq!(fields.len(), 2);
+    fields
+        .iter()
+        .for_each(|f| assert_field_semantics("sirala", f));
+    let second = lab.write("form-2.pdf", &mut d.clone());
+    let (o, out) = run(
+        &lab,
+        &[src.clone(), second],
+        ToolOperation::Merge,
+        "birlestir.pdf",
+        false,
+    );
+    published(&o);
+    let merged = reopen(&out);
+    for page in [1, 4] {
+        let fields = widget_fields(&merged, page);
+        assert_eq!(fields.len(), 2, "birlestir/s.{page}");
+        fields
+            .iter()
+            .for_each(|f| assert_field_semantics("birlestir", f));
+    }
+    // Seç 1: kalan widget'lar alanını korur; alanın /Kids'inde yalnız onlar var.
+    let (o, out) = run(
+        &lab,
+        std::slice::from_ref(&src),
+        ToolOperation::Select { pages: vec![1] },
+        "tek.pdf",
+        false,
+    );
+    published(&o);
+    let single = reopen(&out);
+    let fields = widget_fields(&single, 1);
+    assert_eq!(fields.len(), 2);
+    for field in &fields {
+        assert_field_semantics("sec", field);
+        let kids = field.get(b"Kids").unwrap().as_array().unwrap();
+        assert_eq!(
+            kids.len(),
+            2,
+            "alanın /Kids'inde çıkarılan widget kaldı: {kids:?}"
+        );
+        assert!(kids.iter().all(|k| matches!(k, Object::Reference(_))));
+    }
+    for secret in ["GIZLI-W3", "GIZLI-TCKN-99"] {
+        assert!(
+            !raw_contains(&out, secret),
+            "çıkarılan sayfanın form verisi sızdı: {secret}"
+        );
+    }
+    assert_no_dangling_or_dead_destinations("form", &single);
+}
+
+#[test]
+fn inherited_resource_maps_are_checked_once_not_per_page() {
+    // Kök Pages düğümünde DOĞRUDAN, 1.000 girdili bir /XObject haritası; 2.100
+    // sayfa onu miras alır. Görünüm denetimi haritayı sayfa başına çoğaltırsa
+    // 2 milyonluk bütçe aşılıyor, sağlam belge "nesne sınırı" ile reddediliyordu.
+    let mut d = Document::with_version("1.7");
+    let pages_id = d.new_object_id();
+    let font = d.add_object(font_dict());
+    let mut xobjects = Dictionary::new();
+    for n in 0..1_000 {
+        let image = d.add_object(Stream::new(
+            dictionary! {"Type"=>"XObject","Subtype"=>"Image","Width"=>1,"Height"=>1,"ColorSpace"=>"DeviceGray","BitsPerComponent"=>8},
+            vec![(n % 251) as u8],
+        ));
+        xobjects.set(format!("Im{n}"), image);
+    }
+    let content = d.add_object(Stream::new(
+        dictionary! {},
+        b"BT /F1 24 Tf 72 720 Td (Sayfa) Tj ET".to_vec(),
+    ));
+    let kids: Vec<Object> = (0..2_100)
+        .map(|_| {
+            Object::Reference(
+                d.add_object(dictionary! {"Type"=>"Page","Parent"=>pages_id,"Contents"=>content}),
+            )
+        })
+        .collect();
+    d.objects.insert(pages_id, dictionary! {"Type"=>"Pages","Kids"=>kids.clone(),"Count"=>kids.len() as i64,
+        "MediaBox"=>media(A4[0], A4[1]),"Resources"=>dictionary!{"Font"=>dictionary!{"F1"=>font},"XObject"=>xobjects}}.into());
+    let root = d.add_object(dictionary! {"Type"=>"Catalog","Pages"=>pages_id});
+    d.trailer.set("Root", root);
+    let mut bytes = Vec::new();
+    d.save_to(&mut bytes).unwrap();
+    let started = std::time::Instant::now();
+    let loaded = load_pdf_tolerant(&bytes, "miras.pdf").expect("sağlam belge reddedildi");
+    assert_eq!(loaded.document.get_pages().len(), 2_100);
+    assert!(!loaded.is_repaired);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(20),
+        "yükleme denetimi sayfa × girdi ölçeğinde: {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn page_copy_scales_linearly_with_flat_name_arrays_and_off_layer_lists() {
+    // Düz `/Names /Dests` dizisinde (Qt/wkhtmltopdf biçimi) her bağlantı için
+    // doğrusal arama ve taban durumu OFF olan katman yapılandırmasında her grup
+    // için `/ON` listesinde doğrusal arama sayfa kopyasını KARESEL büyütüyordu
+    // (release: 40.000 sayfa 3,6 s, 160.000 grup 14,7 s). Süre değil ölçeklenme
+    // denenir: boyut 8 katına çıkınca doğrusal kopya ≈8–10 kat, karesel ≈40–60
+    // kat yavaşlar. Küçük ve büyük ölçüm iç içe üç kez alınır, en iyisi sayılır;
+    // paralel testlerin yükü iki ölçüme de benzer düşer.
+    fn book(pages: usize, groups: usize) -> Document {
+        let mut d = vector_pdf(&vec![A4; pages]);
+        let ids: Vec<ObjectId> = d.get_pages().into_values().collect();
+        let mut names = Vec::new();
+        for (i, id) in ids.iter().enumerate() {
+            names.push(Object::string_literal(format!("hedef-{i:06}")));
+            names.push(vec![Object::Reference(*id), "Fit".into()].into());
+        }
+        for (i, id) in ids.iter().enumerate() {
+            let link = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Link",
+            "Rect"=>vec![72.into(),600.into(),172.into(),620.into()],
+            "Dest"=>Object::string_literal(format!("hedef-{:06}", (i + 1) % pages))});
+            d.get_dictionary_mut(*id)
+                .unwrap()
+                .set("Annots", vec![Object::Reference(link)]);
+        }
+        let ocgs: Vec<Object> = (0..groups)
+            .map(|g| {
+                Object::Reference(d.add_object(
+                    dictionary! {"Type"=>"OCG","Name"=>Object::string_literal(format!("K{g}"))},
+                ))
+            })
+            .collect();
+        let on: Vec<Object> = ocgs.iter().step_by(2).cloned().collect();
+        let catalog = d.catalog_mut().unwrap();
+        catalog.set("Names", dictionary! {"Dests"=>dictionary!{"Names"=>names}});
+        if groups > 0 {
+            catalog.set(
+                "OCProperties",
+                dictionary! {"OCGs"=>ocgs,"D"=>dictionary!{"BaseState"=>"OFF","ON"=>on}},
+            );
+        }
+        let mut bytes = Vec::new();
+        d.save_to(&mut bytes).unwrap();
+        load_pdf_tolerant(&bytes, "olcek.pdf").unwrap().document
+    }
+    fn growth(small: &Document, large: &Document, pages: impl Fn(&Document) -> Vec<usize>) -> f64 {
+        let (small_pages, large_pages) = (pages(small), pages(large));
+        let time = |doc: &Document, pages: &[usize]| {
+            let started = std::time::Instant::now();
+            pdf::extract_pages(doc, pages).unwrap();
+            started.elapsed().as_secs_f64()
+        };
+        let (mut best_small, mut best_large) = (f64::MAX, f64::MAX);
+        for _ in 0..3 {
+            best_small = best_small.min(time(small, &small_pages));
+            best_large = best_large.min(time(large, &large_pages));
+        }
+        best_large / best_small
+    }
+    let all_reversed = |doc: &Document| (1..=doc.get_pages().len()).rev().collect::<Vec<_>>();
+    let names = growth(&book(1_000, 0), &book(8_000, 0), all_reversed);
+    let layers = growth(&book(2, 10_000), &book(2, 80_000), |_| vec![1]);
+    println!("ölçeklenme (8× boyut): düz /Names {names:.1}×, BaseState OFF {layers:.1}×");
+    assert!(
+        names < 20.0,
+        "düz /Names dizisiyle sayfa kopyası karesel büyüyor: 8× sayfa → {names:.1}× süre"
+    );
+    assert!(
+        layers < 20.0,
+        "BaseState OFF katman listesiyle kopya karesel büyüyor: 8× grup → {layers:.1}× süre"
+    );
 }
