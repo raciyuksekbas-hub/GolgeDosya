@@ -163,13 +163,17 @@ export function ConvertFlow({
  *
  * Kaynağın değişmediği her sonuçta açıkça yazılır; motor bunu hash'le kanıtlar.
  */
-export function ConvertDone({ items, from, to, folder, onReveal, onAgain }: {
+export function ConvertDone({ items, from, to, folder, archiveName, onReveal, onAgain }: {
   items: ConversionResult[];
   /** Kaynağın biçim etiketi — akışın sol durağı için. */
   from: string | null;
   /** Hedefin biçim etiketi — akışın sağ durağı için. */
   to: string | null;
   folder: OutputFolder | null;
+  /** Toplu iş tek bir arşiv ürettiyse onun adı. Motor arşivi yazdıktan sonra
+   *  tekil çıktıları SİLER; bu ad gösterilmezse kullanıcı diskte olmayan
+   *  dosyaları arar. */
+  archiveName?: string | null;
   onReveal: () => void;
   onAgain: () => void;
 }) {
@@ -196,6 +200,12 @@ export function ConvertDone({ items, from, to, folder, onReveal, onAgain }: {
             ? `${items.length} belge dönüştürüldü`
             : "Dönüştürme tamamlandı"}
       </p>
+
+      {archiveName ? (
+        <p className="flow-note">
+          Dönüştürülen belgeler tek arşivde toplandı: <strong>{archiveName}</strong>
+        </p>
+      ) : null}
 
       {items.length > 1
         ? items.map((r) => (
@@ -342,6 +352,7 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
           {done ? (
             <ConvertDone
               items={items}
+              archiveName={outcome && "items" in outcome && outcome.is_zip ? outcome.output_name : null}
               from={usable[0]?.info?.source_format ?? null}
               to={target}
               folder={folder}
