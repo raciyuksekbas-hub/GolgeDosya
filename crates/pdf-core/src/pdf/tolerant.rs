@@ -30,6 +30,12 @@ pub enum RepairStrategy {
 ///
 /// Unknown damage is rejected; object-scanning reconstruction is intentionally disabled.
 pub fn load_pdf_tolerant(bytes: &[u8], file_name: &str) -> Result<TolerantLoadResult> {
+    // Ayrıştırma öncesi yapısal güvenlik: lopdf'in özyinelemeli ayrıştırıcısı
+    // yeterince derin bir girdide yığını taşırır ve süreç `abort` eder. Bu
+    // tarama patolojik yuvalanmayı ve `/Length` başvuru zincirini ayrıştırıcı
+    // çağrılmadan önce reddeder (bkz. guard.rs).
+    super::guard::check_structure(bytes)?;
+
     // Tier 1: Doğrudan ve müdahalesiz hızlı yükleme
     if let Ok(mut doc) = LopdfDoc::load_mem(bytes) {
         let detached = canonicalize(&mut doc)?;

@@ -66,7 +66,10 @@ fn every_product_version_source_reports_the_same_release() {
     let sources = [
         ("CARGO_PKG_VERSION (Hakkında)", product.clone()),
         ("[workspace.package] version", workspace_version(root)),
-        ("Cargo.lock belge-shell", locked_version(root, "belge-shell")),
+        (
+            "Cargo.lock belge-shell",
+            locked_version(root, "belge-shell"),
+        ),
         (
             "tauri.conf.json version (Info.plist, DMG)",
             tauri["version"].as_str().unwrap_or_default().to_string(),

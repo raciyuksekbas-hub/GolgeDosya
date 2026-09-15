@@ -99,7 +99,9 @@ fn apply_stamp_to_page(
     font_id: lopdf::ObjectId,
     config: &StampConfig,
     mut brand: Option<&mut BrandResources>,
-) -> Result<()> {
+) -> Result<bool> {
+    // Dönüş: `true` işaret eklendi, `false` sayfa (çok küçük olduğu için)
+    // güvenle atlandı. Gerçek hatalar `Err`.
     let brand_form = brand.as_ref().map(|b| b.form);
     let resolved = super::resolved_page_dictionary(doc, page_id)?;
     let bounds = resolved
@@ -112,7 +114,13 @@ fn apply_stamp_to_page(
         return Err(EklerError::InvalidPdf("Geçersiz sayfa kutusu".into()));
     }
     let number = |i: usize| bounds[i].as_float().map_err(pdf_error);
-    let (mut x0, mut y0, mut x1, mut y1) = (number(0)?, number(1)?, number(2)?, number(3)?);
+    // Kutu köşe sırası serbesttir (ISO 32000-1 §7.9.5); üreticiler ters köşeli
+    // kutu ([urx ury llx lly]) yazabilir. Görüntüleyiciler kutuyu normalize
+    // eder. Ters köşe damganın genişliğini negatif yapıp "sığmıyor" hatasıyla
+    // sağlam bir belgede bütün araçları düşürüyordu; kutu burada normalize
+    // edilir (aynı dikdörtgen, kanonik köşeler).
+    let (rx0, ry0, rx1, ry1) = (number(0)?, number(1)?, number(2)?, number(3)?);
+    let (mut x0, mut y0, mut x1, mut y1) = (rx0.min(rx1), ry0.min(ry1), rx0.max(rx1), ry0.max(ry1));
     let rotation = resolved
         .get(b"Rotate")
         .ok()
@@ -138,6 +146,25 @@ fn apply_stamp_to_page(
         (90, true) | (270, false) => x0 -= gutter,
         (90, false) | (270, true) => x1 += gutter,
         _ => return Err(EklerError::InvalidPdf("Geçersiz sayfa dönüşü".into())),
+    }
+
+    let (page_w, page_h) = if rotation == 90 || rotation == 270 {
+        (y1 - y0, x1 - x0)
+    } else {
+        (x1 - x0, y1 - y0)
+    };
+    let badge_w = if brand_form.is_some() {
+        56.0
+    } else {
+        (stamp_text.len() as f32 * config.font_size * 0.65 + 16.0).max(40.0)
+    };
+    let badge_h = config.font_size + 10.0;
+    // Sığmazlık denetimi SAYFA DEĞİŞTİRİLMEDEN önce yapılır: sığmıyorsa sayfaya
+    // hiç dokunulmaz (kutu genişletilmez, kaynak/içerik değişmez) ve sayfa
+    // işaretsiz atlanır. Marka/filigran/numara isteğe bağlı bir işarettir;
+    // tek bir küçük sayfa bütün işlemi düşürmemeli.
+    if page_w < badge_w + config.margin_pt * 2.0 || page_h < badge_h + config.margin_pt * 2.0 {
+        return Ok(false);
     }
 
     // Açıklama denetimi PAY EKLENDİKTEN SONRA ve yalnız yeni açılan şeride
@@ -167,11 +194,15 @@ fn apply_stamp_to_page(
     if media.len() != 4 {
         return Err(EklerError::InvalidPdf("Geçersiz MediaBox".into()));
     }
+    // MediaBox köşeleri de ters sırada olabilir; pay eklenmiş kutuyla min/max
+    // almadan önce normalize edilir, yoksa çıktı MediaBox'ı bozulur.
+    let mn = |i: usize| media[i].as_float().map_err(pdf_error);
+    let (m0, m1, m2, m3) = (mn(0)?, mn(1)?, mn(2)?, mn(3)?);
     let expanded_media = vec![
-        media[0].as_float().map_err(pdf_error)?.min(x0).into(),
-        media[1].as_float().map_err(pdf_error)?.min(y0).into(),
-        media[2].as_float().map_err(pdf_error)?.max(x1).into(),
-        media[3].as_float().map_err(pdf_error)?.max(y1).into(),
+        m0.min(m2).min(x0).into(),
+        m1.min(m3).min(y0).into(),
+        m0.max(m2).max(x1).into(),
+        m1.max(m3).max(y1).into(),
     ];
     // The extra strip is outside the old visible page; no source text is covered.
     let page = doc
@@ -188,11 +219,6 @@ fn apply_stamp_to_page(
         ],
     );
     page.set("MediaBox", Object::Array(expanded_media));
-    let (page_w, page_h) = if rotation == 90 || rotation == 270 {
-        (y1 - y0, x1 - x0)
-    } else {
-        (x1 - x0, y1 - y0)
-    };
     let matrix: [f32; 6] = match rotation {
         0 => [1., 0., 0., 1., x0, y0],
         90 => [0., 1., -1., 0., x1, y0],
@@ -228,17 +254,6 @@ fn apply_stamp_to_page(
         .map_err(pdf_error)?
         .set("Resources", resources);
 
-    let badge_w = if brand_form.is_some() {
-        56.0
-    } else {
-        (stamp_text.len() as f32 * config.font_size * 0.65 + 16.0).max(40.0)
-    };
-    let badge_h = config.font_size + 10.0;
-    if page_w < badge_w + config.margin_pt * 2.0 || page_h < badge_h + config.margin_pt * 2.0 {
-        return Err(EklerError::InvalidPdf(
-            "Damga bu sayfaya sığmıyor; boyut/kenar boşluğunu azaltın".into(),
-        ));
-    }
     let margin = config.margin_pt;
 
     let (badge_x, badge_y, text_x, text_y) = match config.position {
@@ -401,7 +416,7 @@ fn apply_stamp_to_page(
         .and_then(|o| o.as_dict_mut())
         .map_err(pdf_error)?
         .set("Contents", contents);
-    Ok(())
+    Ok(true)
 }
 fn pdf_error(e: lopdf::Error) -> EklerError {
     EklerError::InvalidPdf(e.to_string())

@@ -198,6 +198,34 @@ pub fn run_tool_with_outcome(
         result
     }
 }
+/// Bir sayfanın etkin (görüntüleyicinin uyguladığı) dönüşü, 90'ın katı.
+///
+/// `/Rotate` dolaylı bir başvuru (`/Rotate 12 0 R`) ya da ondalık (`90.0`)
+/// olabilir; ikisi de `as_i64` ile 0 sayılıp döndürme aracının var olan dönüşü
+/// KAYBETMESİNE yol açıyordu (90° sayfa + 90° → 90°, 180° değil). 90'ın katı
+/// olmayan üretici değeri (45) görüntüleyicide 0 sayılır; taban da 0 alınır ki
+/// kullanıcının istediği dönüş görünür olsun.
+fn existing_rotation(doc: &LopdfDoc, id: lopdf::ObjectId) -> Result<i64> {
+    let resolved = crate::pdf::resolved_page_dictionary(doc, id)?;
+    let value = match resolved.get(b"Rotate") {
+        Ok(v) => doc
+            .dereference(v)
+            .map(|(_, v)| v.clone())
+            .unwrap_or(Object::Null),
+        Err(_) => return Ok(0),
+    };
+    let raw = match value {
+        Object::Integer(n) => n,
+        Object::Real(r) => r as i64,
+        _ => 0,
+    };
+    Ok(if raw % 90 == 0 {
+        raw.rem_euclid(360)
+    } else {
+        0
+    })
+}
+
 fn run_tool_inner(
     paths: &[PathBuf],
     operation: &ToolOperation,
@@ -311,12 +339,7 @@ fn run_tool_inner(
                         continue;
                     }
                 }
-                let resolved = crate::pdf::resolved_page_dictionary(&doc, id)?;
-                let old = resolved
-                    .get(b"Rotate")
-                    .ok()
-                    .and_then(|o| o.as_i64().ok())
-                    .unwrap_or(0);
+                let old = existing_rotation(&doc, id)?;
                 doc.get_dictionary_mut(id)
                     .map_err(|e| EklerError::InvalidPdf(e.to_string()))?
                     .set("Rotate", (old + i64::from(*degrees)).rem_euclid(360));
@@ -336,12 +359,7 @@ fn run_tool_inner(
             let ids = doc.get_pages();
             for r in rotations {
                 let id = ids[&(r.page as u32)];
-                let resolved = crate::pdf::resolved_page_dictionary(&doc, id)?;
-                let old = resolved
-                    .get(b"Rotate")
-                    .ok()
-                    .and_then(|v| v.as_i64().ok())
-                    .unwrap_or(0);
+                let old = existing_rotation(&doc, id)?;
                 doc.get_dictionary_mut(id)
                     .map_err(|e| EklerError::InvalidPdf(e.to_string()))?
                     .set("Rotate", (old + i64::from(r.degrees)).rem_euclid(360));
@@ -414,13 +432,22 @@ fn run_tool_inner(
                 if a.len() != 4 {
                     return Err(EklerError::InvalidPdf("Geçersiz sayfa kutusu".into()));
                 }
-                let mut a = a
+                let raw = a
                     .iter()
                     .map(|v| {
                         v.as_float()
                             .map_err(|e| EklerError::InvalidPdf(e.to_string()))
                     })
                     .collect::<Result<Vec<_>>>()?;
+                // Kutu köşe sırası serbesttir (ISO 32000-1 §7.9.5); ters köşeli
+                // bir kutu ([urx ury llx lly]) normalize edilmezse kenar
+                // boşluğu çıkarınca "sayfayı kaldırıyor" hatası veriyordu.
+                let mut a = vec![
+                    raw[0].min(raw[2]),
+                    raw[1].min(raw[3]),
+                    raw[0].max(raw[2]),
+                    raw[1].max(raw[3]),
+                ];
                 a[0] += margin_pt;
                 a[1] += margin_pt;
                 a[2] -= margin_pt;
