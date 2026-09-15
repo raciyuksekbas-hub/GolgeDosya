@@ -2382,3 +2382,113 @@ fn c57_awkward_file_names_produce_usable_outputs() {
     assert_sources_untouched(&srcs, &before);
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ---------------------------------------------------------------- hardening: field-code leak (skeptic 3, P1)
+
+/// Ham bir DOCX paketi kur: yalnızca `word/document.xml`. Okuyucu bu tek parçayı
+/// zorunlu tutar, gerisi opsiyoneldir (reader.rs `load_package`).
+fn raw_docx(document_xml: &str) -> Vec<u8> {
+    use std::io::Write;
+    let mut cur = std::io::Cursor::new(Vec::new());
+    {
+        let mut z = zip::ZipWriter::new(&mut cur);
+        let o: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        z.start_file("word/document.xml", o).unwrap();
+        z.write_all(document_xml.as_bytes()).unwrap();
+        z.finish().unwrap();
+    }
+    cur.into_inner()
+}
+
+fn doc_all_text(d: &Document) -> String {
+    fn blocks(out: &mut String, bs: &[Block]) {
+        for b in bs {
+            match b {
+                Block::Paragraph(p) => {
+                    out.push_str(&p.text());
+                    out.push('\n');
+                }
+                Block::Table(t) => {
+                    for r in &t.rows {
+                        for c in &r.cells {
+                            blocks(out, &c.blocks);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut s = String::new();
+    for sec in &d.sections {
+        blocks(&mut s, &sec.blocks);
+    }
+    s
+}
+
+/// P1 (skeptic 3): Word'ün "complex field" yapısı `fldChar(begin) → instrText(KOD)
+/// → fldChar(separate) → önbelleğe alınmış görünen değer → fldChar(end)` biçimindedir.
+/// `instrText` içindeki alan kodu (HYPERLINK hedefi, REF/PAGEREF yer imi, MERGEFIELD
+/// veri adı) KULLANICIYA GÖSTERİLMEZ; yalnızca separate'ten sonraki değer gösterilir.
+/// Okuyucu instrText metnini bastırmazsa alan kodu gövde metnine sızar — kullanıcı
+/// belgesine ait olmayan, hatta gizli olabilecek (iç URL, yer imi) veri Dönüştür
+/// çıktısında görünür.
+#[test]
+fn hardening_complex_field_instruction_codes_never_leak_into_body() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:t xml:space="preserve">Görülen: </w:t></w:r>
+      <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+      <w:r><w:instrText xml:space="preserve"> HYPERLINK "http://ic-sunucu.example/kayit?dava=2026-42&amp;gizli=1" </w:instrText></w:r>
+      <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+      <w:r><w:t>Ek-3 numaralı belge</w:t></w:r>
+      <w:r><w:fldChar w:fldCharType="end"/></w:r>
+    </w:p>
+    <w:p>
+      <w:r><w:t xml:space="preserve">Bakınız </w:t></w:r>
+      <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+      <w:r><w:instrText xml:space="preserve"> REF _Ref123456 \h </w:instrText></w:r>
+      <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+      <w:r><w:t>madde 5</w:t></w:r>
+      <w:r><w:fldChar w:fldCharType="end"/></w:r>
+      <w:r><w:t>.</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+      <w:r><w:instrText xml:space="preserve"> MERGEFIELD MusteriTCKN </w:instrText></w:r>
+      <w:r><w:fldChar w:fldCharType="end"/></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#;
+    let (d, warns) = read_docx(&raw_docx(xml));
+    let text = doc_all_text(&d);
+
+    // Görünen değerler korunur.
+    assert!(text.contains("Görülen: Ek-3 numaralı belge"), "görünen değer kayıp: {text:?}");
+    assert!(text.contains("Bakınız madde 5."), "REF görünen değeri kayıp: {text:?}");
+
+    // Alan kodunun HİÇBİR parçası gövdeye sızmamalı.
+    for needle in [
+        "HYPERLINK",
+        "ic-sunucu.example",
+        "gizli=1",
+        "REF _Ref123456",
+        "_Ref123456",
+        "MERGEFIELD",
+        "MusteriTCKN",
+        "\\h",
+    ] {
+        assert!(
+            !text.contains(needle),
+            "alan kodu gövde metnine sızdı: {needle:?} in {text:?}"
+        );
+    }
+
+    // Kayıp sessiz olmamalı: kullanıcı alanların düzleştirildiğini görmeli.
+    assert!(
+        warns.contains(&WarningCode::FieldFlattened),
+        "alan düzleştirme uyarısı verilmedi: {warns:?}"
+    );
+}

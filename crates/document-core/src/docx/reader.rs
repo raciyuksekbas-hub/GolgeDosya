@@ -698,6 +698,11 @@ impl<'a> BodyBuilder<'a> {
         let mut run_direct = PartialRun::default();
         let mut pending_break_page = false;
         let mut in_deleted = false;
+        // Word "complex field" komut metni (`<w:instrText>`): HYPERLINK hedefi,
+        // REF/PAGEREF yer imi, MERGEFIELD veri adı gibi KULLANICIYA GÖSTERİLMEYEN
+        // alan kodu. Görünen değer separate'ten sonra ayrı gelir; kod bastırılmazsa
+        // gövde metnine sızar. `in_deleted` ile aynı mantık.
+        let mut in_instr = false;
         let mut preserve_space = false;
 
         let mut tables: Vec<Table> = Vec::new();
@@ -910,7 +915,16 @@ impl<'a> BodyBuilder<'a> {
                         b"object" | b"OLEObject" => {
                             self.warn.warn(WarningCode::EmbeddedObjectDropped)
                         }
-                        b"fldChar" | b"instrText" => self.warn.warn(WarningCode::FieldFlattened),
+                        b"fldChar" => self.warn.warn(WarningCode::FieldFlattened),
+                        b"instrText" => {
+                            // Boş `<w:instrText/>` metin taşımaz ve End üretmez; bayrağı
+                            // yalnızca gerçek Start için kur, yoksa sonraki paragrafın
+                            // metni yanlışlıkla bastırılır.
+                            if !is_empty {
+                                in_instr = true;
+                            }
+                            self.warn.warn(WarningCode::FieldFlattened);
+                        }
                         _ => {}
                     }
                     if in_ppr && !in_para_rpr && !in_tabs {
@@ -927,6 +941,9 @@ impl<'a> BodyBuilder<'a> {
                 Ok(Event::Text(t)) => {
                     if in_deleted {
                         continue; // deleted text is not part of the current document
+                    }
+                    if in_instr {
+                        continue; // alan komut kodu; kullanıcıya gösterilen metin değil
                     }
                     if let Some(p) = para.as_mut() {
                         let s = t.unescape().unwrap_or_default().to_string();
@@ -975,6 +992,7 @@ impl<'a> BodyBuilder<'a> {
                         b"trPr" => in_trpr = false,
                         b"t" => preserve_space = false,
                         b"del" => in_deleted = false,
+                        b"instrText" => in_instr = false,
                         b"extent" => in_drawing_extent = false,
                         b"r" => run_direct = PartialRun::default(),
                         b"p" => {
