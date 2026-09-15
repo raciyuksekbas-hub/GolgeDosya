@@ -71,7 +71,7 @@ describe("DOCX raporu", () => {
     // Node bağlamında mammoth `buffer` bekler; tarayıcıda `arrayBuffer` kullanılır.
     const { value, messages } = await mammoth.convertToHtml({ buffer: Buffer.from(bytes) });
     expect(messages.filter((message) => message.type === "error")).toHaveLength(0);
-    expect(value).toContain("Değişikİş — Karşılaştırma Raporu");
+    expect(value).toContain("GölgeDosya — Karşılaştırma Raporu");
     expect(value).toContain("Hizmet Sözleşmesi_v3.docx");
     expect(value).toContain("Madde 3.1");
     expect(value).toContain("Madde 6.3");
@@ -88,14 +88,14 @@ describe("DOCX raporu", () => {
     const html = new TextDecoder().decode(await buildReportBytes(input, "html"));
     expect(html.startsWith("<!doctype html>")).toBe(true);
     const markdown = new TextDecoder().decode(await buildReportBytes(input, "markdown"));
-    expect(markdown.startsWith("# Değişikİş")).toBe(true);
+    expect(markdown.startsWith("# GölgeDosya")).toBe(true);
     const json = JSON.parse(new TextDecoder().decode(await buildReportBytes(input, "json")));
     expect(json.summary.total).toBe(3);
   });
 
   it("dosya adı uzantısı doğrudur ve güvenli karakterlerden oluşur", () => {
     const name = reportFileName(input, "docx");
-    expect(name).toBe("DegisikIs-Rapor-20260821-1523.docx");
+    expect(name).toBe("GolgeDosya-Karsilastirma-20260821-1523.docx");
     expect(name).toMatch(/^[A-Za-z0-9._-]+$/);
   });
 });

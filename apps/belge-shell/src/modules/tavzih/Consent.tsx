@@ -26,7 +26,7 @@ export function FirstUseAcceptance({ onAccept }: { onAccept: () => void }) {
         <h2 id="onay-baslik">Kullanım Koşulları</h2>
         <div className="selectable" style={{ color: "var(--text-secondary)" }}>
           <p>
-            Tavzih, Word ve UDF belgeleri arasında biçimsel dönüşüm sağlar. Dönüşüm sonucunda
+            GölgeDosya, Word ve UDF belgeleri arasında biçimsel dönüşüm sağlar. Dönüşüm sonucunda
             kaynak belgenin görünümünün, düzeninin ve biçimsel özelliklerinin birebir
             korunacağı garanti edilmez. Yazı tipi, paragraf düzeni, sekmeler, tablolar, sayfa
             yapısı, üst/alt bilgiler ve benzeri unsurlarda farklılıklar veya aktarım hataları
@@ -35,7 +35,7 @@ export function FirstUseAcceptance({ onAccept }: { onAccept: () => void }) {
           <p>
             Dönüştürülen belgenin doğruluğu, bütünlüğü ve kullanıma uygunluğu kullanıcı
             tarafından kontrol edilmelidir. Belge, özellikle resmî veya hukuki bir işlemde
-            kullanılmadan önce mutlaka gözden geçirilmelidir. Tavzih, kullanıcı kontrolü
+            kullanılmadan önce mutlaka gözden geçirilmelidir. GölgeDosya, kullanıcı kontrolü
             yapılmaksızın kullanılan belgelerden doğabilecek sonuçlardan sorumlu değildir.
           </p>
           <p>Devam ederek bu hususları okuduğunuzu ve kabul ettiğinizi beyan edersiniz.</p>

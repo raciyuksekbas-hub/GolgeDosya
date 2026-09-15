@@ -51,7 +51,7 @@ export function reportFileName(input: ReportInput, format: ReportFormat): string
     String(input.generatedAt.getHours()).padStart(2, "0"),
     String(input.generatedAt.getMinutes()).padStart(2, "0"),
   ].join("");
-  return `DegisikIs-Rapor-${stamp}.${EXTENSION[format]}`;
+  return `GolgeDosya-Karsilastirma-${stamp}.${EXTENSION[format]}`;
 }
 
 function escapeHtml(value: string): string {
@@ -82,7 +82,7 @@ export function buildReportHtml(input: ReportInput): string {
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<title>Değişikİş — Karşılaştırma Raporu</title>
+<title>GölgeDosya — Karşılaştırma Raporu</title>
 <style>
   :root { --ink:#111417; --petrol:#1e2f3d; --teal:#2a7f8e; --coral:#e06a5c; --gray:#8c9196; --line:#d4d7db; --stone:#f3f4f2; }
   * { box-sizing:border-box }
@@ -122,7 +122,7 @@ export function buildReportHtml(input: ReportInput): string {
 </head>
 <body><div class="sheet">
   <header class="doc">
-    <div><h1>Değişikİş — Karşılaştırma Raporu</h1><p>İki belge, bütün farklar.</p></div>
+    <div><h1>GölgeDosya — Karşılaştırma Raporu</h1><p>İki belge, bütün farklar.</p></div>
     <p>${escapeHtml(formatTimestamp(input.generatedAt))}</p>
   </header>
 
@@ -146,14 +146,14 @@ export function buildReportHtml(input: ReportInput): string {
   <h2>FARK LİSTESİ</h2>
   ${rows || "<p>Fark bulunamadı.</p>"}
 
-  <footer>Değişikİş ile yerel olarak üretilmiştir. Karşılaştırma sonuçları yardımcı niteliktedir; nihai kontrol kullanıcıya aittir.</footer>
+  <footer>GölgeDosya ile yerel olarak üretilmiştir. Karşılaştırma sonuçları yardımcı niteliktedir; nihai kontrol kullanıcıya aittir.</footer>
 </div></body></html>`;
 }
 
 export function buildReportMarkdown(input: ReportInput): string {
   const { summary, changes } = input;
   const lines = [
-    "# Değişikİş — Karşılaştırma Raporu",
+    "# GölgeDosya — Karşılaştırma Raporu",
     "",
     `- **Temel sürüm:** ${input.baseName}`,
     `- **Değişik sürüm:** ${input.revisedName}`,
@@ -178,13 +178,13 @@ export function buildReportMarkdown(input: ReportInput): string {
     if (change.summary.length) lines.push("");
     lines.push(`**Temel sürüm:** ${change.leftText ?? "—"}`, "", `**Değişik sürüm:** ${change.rightText ?? "—"}`, "");
   }
-  lines.push("---", "Değişikİş ile yerel olarak üretilmiştir.");
+  lines.push("---", "GölgeDosya ile yerel olarak üretilmiştir.");
   return lines.join("\n");
 }
 
 export function buildReportJson(input: ReportInput): string {
   return JSON.stringify({
-    product: "Değişikİş",
+    product: "GölgeDosya",
     generatedAt: input.generatedAt.toISOString(),
     documents: { base: input.baseName, revised: input.revisedName },
     summary: input.summary,

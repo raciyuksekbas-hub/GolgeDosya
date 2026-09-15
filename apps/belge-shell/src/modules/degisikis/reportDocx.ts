@@ -145,7 +145,7 @@ function documentXml(input: ReportInput): string {
   ]);
 
   const body = [
-    paragraph(run("Değişikİş — Karşılaştırma Raporu"), { style: "Baslik1", spaceAfter: 40 }),
+    paragraph(run("GölgeDosya — Karşılaştırma Raporu"), { style: "Baslik1", spaceAfter: 40 }),
     paragraph(
       run("İki belge, bütün farklar.", { color: MUTED, size: 9.5 }) +
       run(`     ${formatTimestamp(input.generatedAt)}`, { color: MUTED, size: 9.5 }),
@@ -161,7 +161,7 @@ function documentXml(input: ReportInput): string {
       ? input.changes.map(changeBlock).join("")
       : paragraph(run("Fark bulunamadı.", { color: MUTED })),
     paragraph(
-      run("Değişikİş ile yerel olarak üretilmiştir. Karşılaştırma sonuçları yardımcı niteliktedir; nihai kontrol kullanıcıya aittir.", { color: MUTED, size: 8.5 }),
+      run("GölgeDosya ile yerel olarak üretilmiştir. Karşılaştırma sonuçları yardımcı niteliktedir; nihai kontrol kullanıcıya aittir.", { color: MUTED, size: 8.5 }),
       { spaceBefore: 320 },
     ),
   ].join("");

@@ -150,7 +150,7 @@ describe("karşılaştırma akışı: motordan raya, panele ve rapora", () => {
     const json = JSON.parse(buildReportJson(input));
     expect(json.summary.total).toBe(changes.length);
     expect(json.changes).toHaveLength(changes.length);
-    expect(reportFileName(input, "html")).toBe("DegisikIs-Rapor-20260821-0930.html");
+    expect(reportFileName(input, "html")).toBe("GolgeDosya-Karsilastirma-20260821-0930.html");
   });
 
   it("rapor kaydetme yerel komuta gider, ağ kullanılmaz", async () => {

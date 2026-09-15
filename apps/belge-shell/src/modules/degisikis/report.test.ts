@@ -62,7 +62,7 @@ describe("rapor üretimi", () => {
 
   it("Markdown raporu özet tablosu ve fark başlıkları içerir", () => {
     const markdown = buildReportMarkdown(input);
-    expect(markdown).toContain("# Değişikİş — Karşılaştırma Raporu");
+    expect(markdown).toContain("# GölgeDosya — Karşılaştırma Raporu");
     expect(markdown).toContain("| Ekleme | 1 |");
     expect(markdown).toContain("### 01 · Değiştirilen · Madde 3.1");
     expect(markdown).toContain("### 02 · Eklenen · Madde 3.3");
@@ -77,14 +77,14 @@ describe("rapor üretimi", () => {
   });
 
   it("biçim seçimi doğru üreticiye gider", () => {
-    expect(buildReport(input, "markdown").startsWith("# Değişikİş")).toBe(true);
+    expect(buildReport(input, "markdown").startsWith("# GölgeDosya")).toBe(true);
     expect(buildReport(input, "json").startsWith("{")).toBe(true);
     expect(buildReport(input, "html").startsWith("<!doctype html>")).toBe(true);
   });
 
   it("dosya adı zaman damgalı ve güvenli karakterlerden oluşur", () => {
     const name = reportFileName(input, "html");
-    expect(name).toBe("DegisikIs-Rapor-20260821-1405.html");
+    expect(name).toBe("GolgeDosya-Karsilastirma-20260821-1405.html");
     expect(name).toMatch(/^[A-Za-z0-9._-]+$/);
     expect(reportFileName(input, "markdown").endsWith(".md")).toBe(true);
     expect(reportFileName(input, "json").endsWith(".json")).toBe(true);
@@ -108,9 +108,9 @@ describe("üret → kaydet → aç akışı", () => {
 
   it("kaydetme başarılıysa açma çağrılır ve tam başarı bildirilir", async () => {
     const open = vi.fn(async () => undefined);
-    const save = vi.fn(async () => ({ path: "/Users/x/Downloads/DegisikIs-Rapor-20260821-1405.html" }));
+    const save = vi.fn(async () => ({ path: "/Users/x/Downloads/GolgeDosya-Karsilastirma-20260821-1405.html" }));
     const outcome = await generateAndOpenReport(input, "html", { save, open });
-    expect(open).toHaveBeenCalledWith("/Users/x/Downloads/DegisikIs-Rapor-20260821-1405.html");
+    expect(open).toHaveBeenCalledWith("/Users/x/Downloads/GolgeDosya-Karsilastirma-20260821-1405.html");
     expect(outcome.opened).toBe(true);
     expect(outcome.message).toContain("açıldı");
   });
@@ -123,7 +123,7 @@ describe("üret → kaydet → aç akışı", () => {
   });
 
   it("kaydedildi fakat açılamadıysa dosya korunur ve yol bildirilir", async () => {
-    const path = "/Users/x/Downloads/DegisikIs-Rapor-20260821-1405.docx";
+    const path = "/Users/x/Downloads/GolgeDosya-Karsilastirma-20260821-1405.docx";
     const open = vi.fn(async () => { throw new Error("REPORT_OPEN"); });
     const outcome = await generateAndOpenReport(input, "docx", { save: async () => ({ path }), open });
     expect(outcome.opened).toBe(false);
@@ -133,7 +133,7 @@ describe("üret → kaydet → aç akışı", () => {
   });
 
   it("DOCX yolu açma katmanına olduğu gibi iletilir", async () => {
-    const path = "/Users/x/Downloads/DegisikIs-Rapor-20260821-1405.docx";
+    const path = "/Users/x/Downloads/GolgeDosya-Karsilastirma-20260821-1405.docx";
     const open = vi.fn(async () => undefined);
     const save = vi.fn(async (fileName: string, bytes: Uint8Array) => {
       expect(fileName.endsWith(".docx")).toBe(true);
@@ -165,7 +165,7 @@ describe("üret → kaydet → aç akışı", () => {
 
   it("açma katmanına yalnız yol geçer, komut dizesi kurulmaz", async () => {
     const received: unknown[] = [];
-    const path = "/Users/x/Downloads/DegisikIs-Rapor-20260821-1405.json";
+    const path = "/Users/x/Downloads/GolgeDosya-Karsilastirma-20260821-1405.json";
     await generateAndOpenReport(input, "json", {
       save: async () => ({ path }),
       open: async (...args) => { received.push(args); },

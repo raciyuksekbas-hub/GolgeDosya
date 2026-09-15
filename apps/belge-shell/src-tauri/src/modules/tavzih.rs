@@ -134,6 +134,20 @@ fn engine_failure(detail: String) -> AppError {
     }
 }
 
+/// DOCX ve UDF birer ZIP konteyneridir; ilk baytlar `PK` olmalıdır. Yalnız
+/// başlığı okur, belgeyi açmaz (inceleme ucuz kalmalı).
+fn has_zip_header(path: &Path) -> bool {
+    use std::io::Read;
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut magic = [0u8; 2];
+    match f.read_exact(&mut magic) {
+        Ok(()) => &magic == b"PK",
+        Err(_) => false,
+    }
+}
+
 /// Bırakılan veya seçilen dosyayı tanımla. Ucuzdur: dosyayı stat'lar, uzantısını ve
 /// konteyner başlığını okur; belgenin tamamını asla okumaz.
 #[tauri::command]
@@ -154,6 +168,18 @@ pub fn tavzih_inspect_file(path: String) -> Result<FileInfo, AppError> {
         )));
     }
     let direction = convert::detect_direction(&p).map_err(AppError::from)?;
+    // Konteyner başlığını gerçekten doğrula. `detect_direction` yalnız UZANTIYA
+    // bakar; yanlış adlandırılmış ya da bozuk bir dosya (ör. .docx uzantılı düz
+    // metin) arayüzde "Word (.docx) → UDF (.udf)" diye listelenip çıktı adı bile
+    // vaat ediliyordu — dönüştürme ancak çok sonra düşüyordu. DOCX ve UDF'nin
+    // ikisi de ZIP konteyneridir; dört baytlık bu denetim vaadi dürüst kılar
+    // ve bu komutun sözleşmesi de zaten "konteyner başlığını okur" diyor.
+    if !has_zip_header(&p) {
+        return Err(AppError::from(tavzih_core::ConvError::new(
+            tavzih_core::ErrorCode::InvalidExtension,
+            "dosya bir DOCX/UDF konteyneri değil",
+        )));
+    }
     let planned =
         convert::unique_output_path(&p, direction.target_ext()).map_err(AppError::from)?;
     let default_name = format!(
