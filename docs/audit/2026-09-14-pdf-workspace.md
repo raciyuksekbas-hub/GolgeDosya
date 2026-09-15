@@ -1068,3 +1068,155 @@ Final correctness pass (B14, B15):
     ("Türetilmiş PDF kaynak elektronik imzanın doğrulanabilirliğini
     taşımaz"); çıktının kendisinde ayrıca bir "imza doğrulanamaz" işareti
     yok. Ürün kararı.
+
+---
+
+# v0.2.0 — Düşmanca sağlamlaştırma & işkence testi (2026-09-15)
+
+Kapsam **dağıtım değil, DAYANIKLILIK**. Yeni özellik, yeni arayüz, yeni PDF
+algoritması yok. Amaç: bütün mevcut özellikleri beklenmedik girdi, ardışık
+işlem, büyük/bozuk belge, tekrar, kullanıcı hatası, state geçişi ve dosya
+sistemi kusuru altında zorlayıp kırılan yerleri sağlamlaştırmak. Soru her
+adımda: *"Bunu nasıl bozabilirim?"* Bütün fixture'lar koddan üretilir; **hiçbir
+gerçek kullanıcı belgesi kullanılmadı**, yalnız `tempfile::tempdir()` altına
+yazıldı, ağ çıkışı yok, eski kullanıcı-veri dizinlerine dokunulmadı.
+
+## Sürüm
+Tek canonical ürün sürümü `0.0.1` → `0.2.0` (workspace Cargo → `CARGO_PKG_VERSION`
+/Hakkında/Cargo.lock, tauri.conf.json → Info.plist/DMG, package.json, iki
+package-lock kökü, geliştirme IPC taklidi, QA fixture). `tavzih-core` 1.0.1 ve
+preflight 0.0.0 ürün sürümünü temsil etmez, dokunulmadı.
+`tests/version_consistency.rs` kaynaklar arası fark ya da `0.0.x` yer tutucusunda
+düşer.
+
+## Temel (baseline)
+Bütün fixler işlendikten sonra ölçülen yeşil temel (bu makinede, CLT
+araç zinciri, `DEVELOPER_DIR=/Library/Developer/CommandLineTools`):
+`cargo test --workspace --locked` → 49 takım, **719 test, 0 başarısız**, çıkış 0;
+frontend `vitest` → 27 dosya, **254 test**, `tsc --noEmit` temiz.
+`version_consistency` yeşil (0.2.0). Kaynak değişmezliği: `be49507` HEAD'in atası.
+
+## Test katmanları
+- **A — Deterministik regresyon:** mevcut workspace testleri + bu turda eklenenler
+  (yukarıdaki 719 + 254 buna dâhil).
+- **B — Değişmez/property:** tohumlu fuzz, soak zinciri, boyut/kaynak nüfusu.
+- **C — Adversarial fixture:** sentetik corpus (~55 fixture + yükleyici-kabul
+  seti), her biri aç/reddet kararını AÇIKÇA taşır; deterministik olmayan ya da
+  panic/hang üreten → başarısızlık.
+- **D — Soak:** 600 zincir işlem, 200/500 aç-işle-kapat, fd/temp sızıntısı.
+
+Yeni test dosyaları: `crates/ekler-core/tests/hardening_pdf_corpus.rs`,
+`hardening_pdf_fuzz.rs`, `hardening_soak.rs`, `hardening_loader_acceptance.rs`
+(+ `tests/hardening/` koşum takımı: rng/check/corpus/raw); document-core
+`tests/corpus.rs` alan-kodu + kapatılmamış-instrText testleri; belge-shell
+`atomic` birim testleri + `ikincigoz_parity_tests.rs` clobber testi.
+
+## Şüpheci turları (≥3 bağımsız tur; "reproduce before fixing")
+Her tur "mevcut testlerin kaçırdığı bug bul" göreviyle koştu. Her ajan bulgusu
+HİPOTEZ kabul edildi; **kendim yeniden üretmeden (kırmızı test) düzeltme
+yapılmadı**, kritik düzeltmeler red-proof edildi (fix öncesi kırmızı → sonrası
+yeşil).
+
+- **Tur 1–3 (uygulama sırasında):** yapısal çökme (H1), damga/araç geometrisi
+  (H2–H4), state/veri güvenliği (H5–H7), gizlilik/başarısızlık (H8).
+- **Tur 4 (bağımsız ajan · PDF structural):** yükleyicinin iki aşırı-reddi
+  (H11, H12); H13 (damga yazma yolu) benim agresif uçtan-uca assertion'ımla
+  türedi. Ajan araç tarafını (Crop→Rotate→Watermark→Number→Compress, 40 adım
+  rastgele zincir, merge dedup, 3-derin Pages ağacı) **kıramadı** — sağlam.
+- **Tur 5 (bağımsız ajan · state/publication):** İkinciGöz apply-to-copy'nin
+  sessiz clobber + atomik-olmayan yazımı (H10, P0).
+- **Tur 6 (bağımsız ajan · privacy/convert):** Word complex-field `instrText`
+  alan-kodu sızıntısı (H9).
+- **Tur 7 (kendi düzeltmelerime karşı):** H9'un `in_instr` bayrağının
+  kapatılmamış instrText'te takılıp metin yutması (H15); `/Contents`
+  dereference-etmeme deseninin sistematik taraması (6 tüketici) → boş-sayfa
+  tespitinde aynı hata (H14). Diğer tüm /Contents tüketicileri temiz doğrulandı.
+  `/Contents` kendine-başvuru döngüsü (yükleyici + damga) kilitlenme üretmiyor
+  (lopdf `dereference` döngü korumalı, guard'lı zaman aşımıyla doğrulandı).
+
+## Bulunan ve düzeltilen (ID · önem · özellik · kök neden · fix · red-proof)
+
+| ID | Önem | Özellik | Kök neden | Fix | Red-proof |
+|---|---|---|---|---|---|
+| H1 | P0 çökme | Yükleyici | lopdf 0.34 iç içe dizi/sözlük ve dolaylı `/Length` zincirini özyinelemeli çözer; derin girdi komut yığınını taşırıp süreci `abort` eder (yakalanamaz) | `pdf/guard.rs` ayrıştırma öncesi doğrusal tarama: yuvalanma>100 ve `/Length` zinciri>50 reddedilir | pre-fix SIGABRT; guard'la kontrollü ret |
+| H2 | P1 bozuk işlem | Damga/araçlar | Ters köşeli kutu (`[urx ury llx lly]`) sayfa genişliğini negatif yapıp "sığmıyor" veriyor, tüm araçları düşürüyor | `stamp.rs`+`toolbox.rs` köşe normalizasyonu | ters-köşe fixture kırmızı |
+| H3 | P1 bozuk işlem | Damga | Gerçekten küçük sayfaya işaret sığmayınca bütün işlem düşüyor | `apply_stamp_to_page` `Ok(false)` döner, sayfa işaretsiz atlanır | tiny-page fixture kırmızı |
+| H4 | P1 yanlış sonuç | Döndür | `/Rotate` dolaylı (`12 0 R`) ya da ondalık (`90.0`) → `as_i64` 0 sayar; 45 (90 katı değil) taşınır | `existing_rotation`: dereference + Integer/Real + 90 katına normalize | rotate fixture kırmızı |
+| H5 | P1 veri kaybı | Ayarlar | `load_from` tek yanlış-tipli alanda TÜM ayarları düşürüyordu | Katı yol + alan-bazlı toleranslı kurtarma | pre-fix text_scale 100 (150 beklenir) |
+| H6 | P1 veri kaybı | Ayarlar/Sözlük | Yerinde `fs::write`; yarım yazma sonraki okumada varsayılana düşürüp ilk kayıtta kalıcı yapıyordu | `atomic::write` (geçici + fsync + rename) | atomiklik yapısal; litter-guard test |
+| H7 | P1 yanlış sonuç | Denetle | `findingKey` `charStart` (motor `char_start`) → tek onay birden çok düzeltmeyi uyguluyor | Anahtar iki yazımı + aralık + mesaj okur | pre-fix `TYPO_SPACE:p3:-1` çakışması |
+| H8 | P1 OOM | Dönüştür | DOCX/UDF okuyucu beyan edilen boyuta güvenip `read_to_end` (cap yok); yalan zip bomb GB'larca açılır | `security::read_entry_capped` (sert sınır) | cap kaldırılınca test düşer |
+| H9 | P1 gizlilik/yanlış sonuç | Dönüştür | Word complex-field `instrText` alan kodu (HYPERLINK hedefi, REF/PAGEREF yer imi, MERGEFIELD veri adı) bastırılmadan gövde metnine sızıyordu; Word'de gösterilmez | docx reader `in_instr` bastırma durumu | HYPERLINK/REF/MERGEFIELD gövdede; test kırmızı |
+| H10 | **P0 veri kaybı** | Denetle | `ikincigoz_apply_fixes` düz `fs::write`: düzenlenmiş önceki `… - İkinciGöz` kopyasını sessizce ezer; atomik değil (yarım→bozuk zip) | `atomic::write_new_unique` (no-clobber + fsync + " (2)" türet) | komut fs::write'a döndürülünce 2. çağrı adı yeniden kullanıp testi kırar |
+| H11 | P1 aşırı-ret | Yükleyici | `validate_flate_stream` `total_in != len` eşitliği: FlateDecode akışı sonundaki (üreticinin `/Length`'e kattığı) EOL baytı temiz çözmeyi reddediyordu | temiz çözme kabul; artık baytlar yok sayılır (kesik akış hâlâ çözme hatasıyla ret) | pre-fix "uzunluk tutarsız" |
+| H12 | P1 aşırı-ret | Yükleyici | `validate_document` `/Contents` dolaylı→dizi (`5 0 R`→`[6 0 R]`) dereference edilmeden tek stream sanılıp reddediliyordu | `doc.dereference` ile karardan önce çöz | pre-fix "Contents stream eksik" |
+| H13 | P1 bozuk çıktı | Damga/araçlar | `apply_stamp_to_page` yazma yolu `/Contents`'i dereference etmiyordu; dolaylı→dizi girdide çıktı doğrulamada düşüyor | yazma yolunda `doc.dereference` (okuma yolu zaten çözüyordu) | uçtan-uca filigran testi kırmızı |
+| H14 | P1 yanlış geri bildirim | Düzenle | `detect_likely_blank_pages` dolaylı→dizi `/Contents`'i çözmeden 0 bayt sayıp DOLU sayfayı "boş" (silme adayı) işaretliyor | dizi/stream kararından önce `doc.dereference` | pre-fix dolu sayfa `[1]` boş işaretlendi |
+| H15 | P1 veri kaybı | Dönüştür | H9'un `in_instr` bayrağı yalnız `</w:instrText>` ile sıfırlanıyor; bozuk/kapatılmamış instrText sonraki tüm görünür metni yutuyor | run sonunda (`</w:r>`) da sıfırla | pre-fix üç paragraf `"\n\n\n"`e çöktü |
+
+## Fuzz stratejisi ve sonuç
+Geçerli corpus fixture'larından tohumlu tek-mutation: bayt çevir, `/Length` boz,
+dolaylı başvuruyu olmayana çevir, `/Parent`/`/Contents`/`/Resources` kır, kes,
+`xref`/`endobj` boz. Her mutant guard'lı iş parçacığında (2 MiB yığın) + zaman
+aşımı ile: **kurtar VEYA güvenle reddet; panic/abort/kilitlenme YOK**. 2500
+tohum, deterministik (tohum raporlanır). Sonuç: **0 panik, 0 kilitlenme, 0
+sızıntı, 0 kaynak-değişimi**; açılan her mutantta araç ya geçerli çıktı üretti
+ya da kaynağı bozmadan/artık bırakmadan kontrollü başarısız oldu. (H11 sonrası
+"açıldı" oranı hafif arttı; test aç/reddet sayısına değil değişmezlere bakar.)
+
+## Soak stratejisi ve sonuç
+Aynı sentetik PDF üzerinde 100+ işlem zinciri (Seç/Sırala/Sil/Döndür×3/Kırp/
+Filigran/Numara), çıktı bir sonrakinin girdisi. Her adım: geçerli+katı yeniden
+açılış, doğru sayfa sayısı, İLK kaynak ve her ara girdi SHA-256 değişmez.
+5 tohum × 120 = 600 işlem, hepsi yeşil. fd: 4→4 (200 tur / 500 döngü). Geçici
+dosya artığı yok.
+
+## Çökme / timeout / bellek değişmezleri
+Hiçbir girdi panic/abort/yığın taşması/sonsuz döngü/kilitlenme üretmedi
+(guard.rs + fuzz + corpus + döngü probları). Döngülü ad ağacı, dev başvuru
+tabloları, derin zincirler ve kendine-başvuran `/Contents` zaman aşımı içinde
+güvenle işlenir. Bellek: zip-bomb cap (H8); guard patolojik yuvalanmayı reddeder.
+
+## Özellik bazında durum
+- **Düzenle (PDF araçları):** Seç/Sırala/Sil/Döndür/Kırp/Filigran/Numara/
+  Sıkıştır/Birleştir — geometri, rotasyon, paylaşılan kaynak, dolaylı/dizi
+  `/Contents` ve büyük/derin yapılar altında sağlam; boş-sayfa tespiti düzeltildi
+  (H14). 40-adım rastgele zincir + soak yeşil.
+- **Dönüştür (DOCX/UDF ↔ PDF):** alan-kodu sızıntısı (H9) ve kapatılmamış-alan
+  veri kaybı (H15) kapandı; zip-bomb cap (H8). Batch adlandırma çakışmasız.
+- **Karşılaştır:** çekirdek diff deterministik; büyük N·M'de UI donması bilinen
+  frontend borcu (aşağıda P2).
+- **Denetle (İkinciGöz):** tek-onay-çoklu-düzeltme (H7) kapandı; apply-to-copy
+  artık no-clobber + atomik (H10) — kaynak ve önceki kopyalar korunur.
+- **Ayarlar/Sözlük/Recents:** toleranslı yükleme (H5) + atomik yazım (H6).
+- **Yükleyici:** görüntüleyicinin açtığı iki PDF sınıfı artık açılıyor (H11, H12);
+  yapısal çökme guard'ı (H1).
+
+## Kalan borç (bilinçli kabul ya da kapsam dışı)
+- **P0:** yok.
+- **P1:** yok (bulunanların tümü kapatıldı).
+- **P2 / bilinçli:**
+  - Yükleyici kalan aşırı-retleri (yanlış `/Length` uzunluğu, kaymış ofset,
+    baştaki çöp, metadata döngüsü): nesne-tarayan yeniden kurulum bilinçli
+    kapalı — "güvenle reddediyoruz" sınırı; kaynağı asla bozmaz.
+  - Tauri sync-command panic → app abort (mimari): girdi-kaynaklı tek onaylı
+    abort (yığın taşması) kapandı; kalan yüzeyler için `catch_unwind` ayrı iş.
+  - Karşılaştır O(N·M) UI thread donması (frontend cap/timeout gerekir).
+  - process-bridge kill yalnız doğrudan çocuk (killpg yok); pencere kapanışında
+    orphan olasılığı.
+  - `in_deleted` de teorik olarak kapatılmamış `<w:del>`'de takılabilir (H15 ile
+    aynı sınıf); Word bunu üretmez, kayda geçti.
+  - Araç değiştirmek düzenlemeyi sıfırlar (üstteki "Kalan borç" md. 2).
+
+## Git
+Bu turun commit'leri (baseline `be49507` ata olarak korunur):
+`0df5ce6` (guard+stamp+rotate), `9b0063b` (settings+atomic+findingKey),
+`bf84f21` (zip cap+soak), `e5cb0a2` (0.2.0), `a9ff3a9` (H9), `efc7a6e` (H10),
+`a9859f8` (H11–H13), `49176f0` (H15), `5cb124c` (H14). Push/tag/release YOK
+(izin bekleniyor).
+
+## Durum
+**v0.2.0 HARDENING ACCEPTED** — P0=0, P1=0, ≥3 bağımsız şüpheci turu + kendi
+düzeltmelerime karşı ek tur yapıldı, her bulgu yeniden üretilip (kırmızı) sonra
+düzeltildi, regresyon/fuzz/soak yeşil, kaynak değişmezliği (`be49507` ata)
+korundu, açıklanamayan çökme/sızıntı yok. Kalanlar bilinçli P2.
