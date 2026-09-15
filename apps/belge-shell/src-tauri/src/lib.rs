@@ -55,10 +55,40 @@ fn get_settings() -> Settings {
     settings::load_from(&paths::app_config_dir())
 }
 
+/// Tercihleri kaydet — **birleştirerek**, ezmeden.
+///
+/// Tercihler penceresi ayarların TAMAMINI gönderir, ama elindeki anlık görüntü
+/// bayat olabilir: kullanıcı o arada Dönüştür'de çıktı klasörünü seçmiş ya da
+/// kullanım koşullarını kabul etmiş olabilir. Blind overwrite bunları sessizce
+/// geri alıyordu (tema değiştirmek çıktı klasörünü siliyordu).
+///
+/// Sözleşme: kendi komutu olan alanların sahibi o komuttur ve değerleri
+/// DİSKTEN korunur; `save_settings` yalnız Tercihler yüzeyinin sahibi olduğu
+/// alanları yazar.
 #[tauri::command]
 fn save_settings(next: Settings) -> Result<Settings, String> {
     let dir = paths::app_config_dir();
-    settings::save_to(&dir, &next).map_err(|e| e.to_string())?;
+    let mut merged = settings::load_from(&dir);
+
+    // --- Tercihler yüzeyinin sahibi olduğu alanlar ---
+    merged.theme = next.theme;
+    merged.text_scale = next.text_scale;
+    merged.high_contrast = next.high_contrast;
+    merged.reduce_motion = next.reduce_motion;
+    merged.respect_reduced_motion = next.respect_reduced_motion;
+    merged.disabled_rules = next.disabled_rules;
+    merged.include_review = next.include_review;
+    merged.source_read_only = next.source_read_only;
+    merged.linear_results = next.linear_results;
+
+    // --- Kendi komutu olan alanlar: diskten korunur ---
+    // accepted_terms   → tavzih_accept_terms
+    // output_dir       → tavzih_set_output_folder
+    // renderer_path    → duzenek_select_renderer
+    // recent_documents → remember_documents / forget_documents
+    // migrated_from    → migrate_legacy_settings
+
+    settings::save_to(&dir, &merged).map_err(|e| e.to_string())?;
     Ok(settings::load_from(&dir))
 }
 
@@ -357,6 +387,51 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P1: Tercihler penceresi ayarların TAMAMINI gönderir. Arayüzün elindeki
+    /// anlık görüntü, bir modül aynı dosyaya yazdıktan sonra BAYATLAR; o bayat
+    /// görüntüyle yapılan herhangi bir kayıt (tema değiştirmek bile) modülün
+    /// yazdığını sessizce geri alır. Kullanıcı seçtiği çıktı klasörünü ve
+    /// kabul ettiği kullanım koşullarını kaybeder.
+    #[test]
+    fn saving_preferences_must_not_revert_settings_written_by_other_modules() {
+        let dir = paths::app_config_dir();
+
+        // 1) Kullanıcı uygulamayı açar; arayüz o anki ayarları alır.
+        let snapshot = get_settings();
+        assert!(snapshot.output_dir.is_none());
+        assert!(snapshot.accepted_terms.is_none());
+
+        // 2) Kullanıcı Dönüştür'de çıktı klasörünü seçer ve koşulları kabul eder.
+        //    (Bu komutlar diske oku-değiştir-yaz yapar; arayüz state'i tazelenmez.)
+        let chosen = std::env::temp_dir().join("golgedosya-cikti-testi");
+        std::fs::create_dir_all(&chosen).unwrap();
+        let mut on_disk = settings::load_from(&dir);
+        on_disk.output_dir = Some(chosen.to_string_lossy().to_string());
+        on_disk.accepted_terms = Some(settings::TERMS_VERSION);
+        settings::save_to(&dir, &on_disk).unwrap();
+
+        // 3) Kullanıcı Tercihler'den SADECE temayı değiştirir. Arayüz elindeki
+        //    BAYAT anlık görüntüyü yollar.
+        let mut stale = snapshot.clone();
+        stale.theme = "dark".into();
+        let saved = save_settings(stale).expect("tercih kaydı");
+
+        // Tema değişmeli...
+        assert_eq!(saved.theme, "dark");
+        // ...ama diğer modüllerin yazdığı DEĞERLER KAYBOLMAMALI.
+        assert_eq!(
+            saved.output_dir,
+            Some(chosen.to_string_lossy().to_string()),
+            "P1: çıktı klasörü tercihi sessizce silindi"
+        );
+        assert_eq!(
+            saved.accepted_terms,
+            Some(settings::TERMS_VERSION),
+            "P1: kullanım koşulu onayı sessizce silindi (koşullar yeniden sorulur)"
+        );
+        let _ = std::fs::remove_dir_all(&chosen);
+    }
 
     #[test]
     fn app_info_reports_the_name_as_provisional() {
