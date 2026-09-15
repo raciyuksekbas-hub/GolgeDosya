@@ -45,7 +45,7 @@ fn watermark_resource_reused_across_pages() {
             .unwrap();
         let (name, value) = x
             .iter()
-            .find(|(k, _)| k.starts_with(b"DuzenEkBrand"))
+            .find(|(k, _)| k.starts_with(b"GolgeDosyaBrand"))
             .unwrap();
         assert!(!name.is_empty());
         refs.insert(value.as_reference().unwrap());

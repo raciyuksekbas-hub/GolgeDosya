@@ -1435,18 +1435,35 @@ fn chain_d_watermark_then_rotate_keeps_both() {
         );
         assert!(c.contains("(Sayfa "), "kaynak içerik korunmalı");
     }
-    let out = lab.path("unicode.pdf");
+    // Türkçe filigran DESTEKLENİR: ürün Türk hukukçular için ve "GİZLİ"
+    // en olağan filigrandır. Metin font kodlamasına çevrilir (mojibake yok).
+    let out = lab.path("turkce.pdf");
     assert!(
         run_tool_with_outcome(
-            &[r],
+            std::slice::from_ref(&r),
             &ToolOperation::Watermark {
                 text: "GİZLİ".into()
             },
             &out,
             false
         )
+        .is_ok(),
+        "Türkçe filigran reddedilmemeli"
+    );
+    // Fontta karşılığı gerçekten olmayan karakter hâlâ AÇIKÇA reddedilir;
+    // sessizce bozuk glif basılmaz.
+    let out = lab.path("yazilamaz.pdf");
+    assert!(
+        run_tool_with_outcome(
+            &[r],
+            &ToolOperation::Watermark {
+                text: "GİZLİ 🔒".into()
+            },
+            &out,
+            false
+        )
         .is_err(),
-        "Unicode filigran bu sürümde açıkça reddedilir"
+        "yazılamayan karakter açıkça reddedilmeli"
     );
     assert!(!out.exists());
 }
@@ -3649,9 +3666,13 @@ fn assert_shared_resources_stay_single(book: Book) {
                 got.images
             );
         }
-        // Marka: ortak vektör + form (2 Form XObject); başka kaynak eklenmez.
+        // Marka: ortak vektör + form (2 Form XObject) ve kelime işaretinin TEK
+        // paylaşılan base-14 fontu (+1 Font). Başka kaynak eklenmez. "+1"in
+        // sayfa sayısından bağımsız olması (1, 10, 39, 40 sayfa) fontun sayfa
+        // başına değil bir kez eklendiğini, yani paylaşıldığını kanıtlar.
         let expected = Census {
             forms: wanted.forms + 2,
+            fonts: wanted.fonts + 1,
             stream_bytes: got.stream_bytes,
             ..wanted
         };
@@ -5027,7 +5048,7 @@ fn signature_cleanup_keeps_objects_still_used_through_reference_chains() {
 fn brand_draws(doc: &Document, page: u32) -> usize {
     let content = doc.get_page_content(doc.get_pages()[&page]).unwrap();
     let text = String::from_utf8_lossy(&content);
-    text.matches("/DuzenEkBrand").count()
+    text.matches("/GolgeDosyaBrand").count()
 }
 
 fn brand_form_count(doc: &Document) -> usize {

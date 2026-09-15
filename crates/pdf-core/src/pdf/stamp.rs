@@ -156,7 +156,7 @@ fn apply_stamp_to_page(
     let badge_w = if brand_form.is_some() {
         56.0
     } else {
-        (stamp_text.len() as f32 * config.font_size * 0.65 + 16.0).max(40.0)
+        (stamp_text.chars().count() as f32 * config.font_size * 0.65 + 16.0).max(40.0)
     };
     let badge_h = config.font_size + 10.0;
     // Sığmazlık denetimi SAYFA DEĞİŞTİRİLMEDEN önce yapılır: sığmıyorsa sayfaya
@@ -326,7 +326,18 @@ fn apply_stamp_to_page(
             ],
         ),
         Operation::new("Td", vec![text_x.into(), text_y.into()]),
-        Operation::new("Tj", vec![Object::string_literal(stamp_text)]),
+        Operation::new(
+            "Tj",
+            vec![Object::String(
+                // Font kodlamasına çevrilmiş baytlar; ham UTF-8 mojibake üretirdi.
+                encode_mark_text(stamp_text).ok_or_else(|| {
+                    EklerError::ValidationFailed(
+                        "Damga metni bu fontla yazılamayan bir karakter içeriyor".into(),
+                    )
+                })?,
+                lopdf::StringFormat::Literal,
+            )],
+        ),
         Operation::new("ET", vec![]),
         Operation::new("Q", vec![]),
     ]);
@@ -544,8 +555,67 @@ fn annotation_would_be_revealed(doc: &LopdfDoc, item: &Object, strip: [f32; 4]) 
         && uy > strip[1] + HAIRLINE
 }
 
+/// Türkçeye özgü, WinAnsi'de KARŞILIĞI OLMAYAN altı harf. Kullanılmayan düşük
+/// kodlara `/Differences` ile bağlanır; glif adları Adobe Glyph List'tendir ve
+/// base-14 Helvetica'yı sağlayan her font bunları içerir.
+const TR_GLYPHS: [(char, u8, &str); 6] = [
+    ('İ', 1, "Idotaccent"),
+    ('ı', 2, "dotlessi"),
+    ('Ş', 3, "Scedilla"),
+    ('ş', 4, "scedilla"),
+    ('Ğ', 5, "Gbreve"),
+    ('ğ', 6, "gbreve"),
+];
+
+/// Damga/filigran metnini font kodlamasına çevir.
+///
+/// Metin `Tj`'ye HAM UTF-8 olarak veriliyordu; WinAnsi bir fontta çok baytlı
+/// karakterler bozuk glif (mojibake) üretirdi. Bu yüzden metin ASCII'ye
+/// kısıtlanmıştı — ama ürün Türk hukukçular için: "GİZLİ", "ÖRNEKTİR",
+/// "SURETİDİR" gibi en olağan filigranlar reddediliyordu.
+///
+/// Burada her karakter tek bayta çevrilir: Latin-1 karşılığı olanlar doğrudan
+/// (WinAnsi bu aralıkta Latin-1 ile örtüşür), Türkçeye özgü altı harf
+/// `/Differences` kodlarına. Çevrilemeyen karakterde `None` döner ki çağıran
+/// sessizce bozuk glif basmak yerine açık hata verebilsin.
+pub fn encode_mark_text(text: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(text.len());
+    for ch in text.chars() {
+        if let Some((_, code, _)) = TR_GLYPHS.iter().find(|(c, _, _)| *c == ch) {
+            out.push(*code);
+            continue;
+        }
+        match ch as u32 {
+            // Yazdırılabilir ASCII.
+            0x20..=0x7E => out.push(ch as u8),
+            // Latin-1 ek aralığı; WinAnsi burada Latin-1 ile aynıdır.
+            0xA0..=0xFF => out.push(ch as u8),
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+/// Damga fontu: WinAnsi tabanı + Türkçeye özgü glifler için `/Differences`.
+fn mark_font(doc: &mut LopdfDoc) -> lopdf::ObjectId {
+    let mut differences: Vec<Object> = Vec::new();
+    for (_, code, glyph) in TR_GLYPHS {
+        differences.push(Object::Integer(code as i64));
+        differences.push(Object::Name(glyph.as_bytes().to_vec()));
+    }
+    let encoding = doc.add_object(dictionary! {
+        "Type"=>"Encoding",
+        "BaseEncoding"=>"WinAnsiEncoding",
+        "Differences"=>differences
+    });
+    doc.add_object(dictionary! {
+        "Type"=>"Font","Subtype"=>"Type1",
+        "BaseFont"=>"Helvetica-Bold","Encoding"=>encoding
+    })
+}
+
 pub fn apply_text_marks(doc: &mut LopdfDoc, text: Option<&str>, start: usize) -> Result<()> {
-    let font=doc.add_object(dictionary!{"Type"=>"Font","Subtype"=>"Type1","BaseFont"=>"Helvetica-Bold","Encoding"=>"WinAnsiEncoding"});
+    let font = mark_font(doc);
     let config = StampConfig {
         enabled: true,
         position: StampPosition::BottomRight,

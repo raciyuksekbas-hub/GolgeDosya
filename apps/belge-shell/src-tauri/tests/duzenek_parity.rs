@@ -573,7 +573,7 @@ fn branding_uses_one_shared_form_across_every_page() {
                 .unwrap();
             let (_, value) = xobjects
                 .iter()
-                .find(|(k, _)| k.starts_with(b"DuzenEkBrand"))
+                .find(|(k, _)| k.starts_with(b"GolgeDosyaBrand"))
                 .expect("sayfada marka kaynağı yok");
             refs.insert(value.as_reference().unwrap());
         }

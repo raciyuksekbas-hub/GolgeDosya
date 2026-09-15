@@ -21,7 +21,7 @@ fn brand_count(path: &Path) -> usize {
             x.as_dict()
                 .unwrap()
                 .iter()
-                .any(|(n, _)| n.starts_with(b"DuzenEkBrand"))
+                .any(|(n, _)| n.starts_with(b"GolgeDosyaBrand"))
         })
         .count()
 }

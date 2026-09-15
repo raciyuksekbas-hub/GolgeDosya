@@ -466,8 +466,21 @@ fn run_tool_inner(
             }
         }
         ToolOperation::Watermark { text } => {
-            if text.is_empty() || !text.is_ascii() || text.len() > 60 {
-                return Err(EklerError::ValidationFailed("Filigran 1–60 temel Latin karakteri içermeli; bu sürümde Unicode filigran desteklenmiyor".into()));
+            // Sınır KARAKTER sayısıdır (bayt değil): "GİZLİ" gibi çok baytlı
+            // metinler bayt sayılırsa haksız yere uzun görünürdü.
+            let chars = text.chars().count();
+            if chars == 0 || chars > 60 {
+                return Err(EklerError::ValidationFailed(
+                    "Filigran 1–60 karakter olmalı".into(),
+                ));
+            }
+            // Türkçe filigran ("GİZLİ", "ÖRNEKTİR", "SURETİDİR") desteklenir;
+            // yazılamayan bir karakter varsa bozuk glif basmak yerine açıkça
+            // reddedilir.
+            if crate::pdf::stamp::encode_mark_text(text).is_none() {
+                return Err(EklerError::ValidationFailed(
+                    "Filigran, damga fontunda karşılığı olmayan bir karakter içeriyor. Türkçe ve Latin harfleri, rakam ve noktalama kullanılabilir.".into(),
+                ));
             }
             crate::pdf::stamp::apply_text_marks(&mut doc, Some(text), 1)?;
         }
