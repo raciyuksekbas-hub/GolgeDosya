@@ -2492,3 +2492,38 @@ fn hardening_complex_field_instruction_codes_never_leak_into_body() {
         "alan düzleştirme uyarısı verilmedi: {warns:?}"
     );
 }
+
+/// 4. tur şüpheciliği (kendi H9 düzeltmeme karşı): `in_instr` bayrağı yalnız
+/// `</w:instrText>` ile sıfırlanıyor. BOZUK bir docx `<w:instrText>` açıp
+/// kapatmadan run'ı bitirirse (check_end_names=false, quick-xml reddetmez),
+/// bayrak takılı kalıp SONRAKİ tüm görünür metni bastırabilir — sessiz veri
+/// kaybı. İyi biçimli Word bunu üretmez ama hardening bozuk girdiyi de kapsar.
+/// Güvenlik ağı: bayrak run sonunda da sıfırlanmalı (instrText her zaman run içi).
+#[test]
+fn hardening_an_unclosed_instr_text_does_not_swallow_the_rest_of_the_document() {
+    // İlk run instrText'i açar ama KAPATMAZ; run yine de kapanır. Sonraki
+    // paragrafın görünür metni kaybolMAMALI.
+    let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+      <w:r><w:instrText xml:space="preserve"> HYPERLINK "http://x" </w:r>
+    </w:p>
+    <w:p><w:r><w:t>Bu görünür metin ASLA kaybolmamalı.</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Bu ikinci görünür paragraf da.</w:t></w:r></w:p>
+  </w:body>
+</w:document>"#;
+    let (d, _warns) = read_docx(&raw_docx(xml));
+    let text = doc_all_text(&d);
+    assert!(
+        text.contains("Bu görünür metin ASLA kaybolmamalı."),
+        "bozuk instrText sonraki görünür metni yuttu (sessiz veri kaybı): {text:?}"
+    );
+    assert!(
+        text.contains("Bu ikinci görünür paragraf da."),
+        "kayıp ikinci paragrafa kadar sürdü: {text:?}"
+    );
+    // Alan kodu yine de sızmamalı.
+    assert!(!text.contains("HYPERLINK"), "alan kodu sızdı: {text:?}");
+}

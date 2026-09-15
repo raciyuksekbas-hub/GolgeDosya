@@ -140,3 +140,41 @@ fn an_indirect_reference_to_a_contents_array_still_opens() {
         other => panic!("filigran başarısız (S1-b): {other:?}"),
     }
 }
+
+// --- 4. tur (kendi düzeltmelerime karşı şüphecilik): kenar durumlar ---
+
+/// Düzeltme 2'nin (validate_document /Contents dereference) DÖNGÜ güvenliği:
+/// `/Contents 5 0 R`, nesne 5 = `5 0 R` (kendine başvuru). doc.dereference
+/// sonsuz döngüye girerse çökme/kilitlenme değişmezi ihlal olur. Guard'lı
+/// çağrı (zaman aşımı) bunu yakalar; sonuç ne olursa olsun HANG olmamalı.
+#[test]
+fn a_self_referential_contents_reference_does_not_hang() {
+    let mut pdf = skeleton("5 0 R");
+    pdf.object(5, b"5 0 R"); // kendine dönen dolaylı başvuru
+    pdf.stream(6, "", b"BT /F1 18 Tf 72 72 Td (Mk 1) Tj ET");
+    pdf.finish_classic("/Root 1 0 R");
+    // Açılsın ya da reddedilsin; ASLA kilitlenmesin/paniklemesin.
+    let _ = open_pages(pdf.bytes);
+}
+
+/// Aynı döngü güvenliği damga yazma yolu için (stamp.rs dereference).
+#[test]
+fn stamping_a_self_referential_contents_does_not_hang() {
+    let mut pdf = skeleton("5 0 R");
+    pdf.object(5, b"5 0 R");
+    pdf.stream(6, "", b"BT /F1 18 Tf 72 72 Td (Mk 1) Tj ET");
+    pdf.finish_classic("/Root 1 0 R");
+    let lab = Lab::new();
+    let src = lab.write("dongu.pdf", &pdf.bytes);
+    let out = lab.path("o.pdf");
+    let (s, o) = (src.clone(), out.clone());
+    match guarded(Duration::from_secs(20), move || {
+        run_tool_with_outcome(std::slice::from_ref(&s), &ToolOperation::Rotate { degrees: 90 }, &o, false)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }) {
+        Guarded::Done(_) => {}
+        Guarded::Panicked(p) => panic!("damga döngüde panikledi: {p}"),
+        Guarded::TimedOut => panic!("damga döngüde KİLİTLENDİ"),
+    }
+}

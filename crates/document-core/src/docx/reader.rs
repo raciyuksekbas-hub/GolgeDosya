@@ -994,7 +994,15 @@ impl<'a> BodyBuilder<'a> {
                         b"del" => in_deleted = false,
                         b"instrText" => in_instr = false,
                         b"extent" => in_drawing_extent = false,
-                        b"r" => run_direct = PartialRun::default(),
+                        b"r" => {
+                            run_direct = PartialRun::default();
+                            // Güvenlik ağı: `<w:instrText>` her zaman bir run içindedir.
+                            // Bozuk bir belge onu kapatmadan run'ı bitirirse
+                            // (check_end_names kapalı, quick-xml reddetmez), bayrağı
+                            // burada sıfırlamazsak takılı kalıp sonraki tüm görünür
+                            // metni yutar — sessiz veri kaybı. Run sonunda kesin kapat.
+                            in_instr = false;
+                        }
                         b"p" => {
                             if let Some(mut p) = para.take() {
                                 p.props = self.para_props(&para_style, &direct_para);
