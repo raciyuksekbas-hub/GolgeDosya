@@ -180,6 +180,26 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
   const failed = items.filter((r) => r.status === "failure").length;
   const single = items.length === 1 ? items[0] : null;
   const unchanged = items.every((r) => r.source_unchanged);
+  // Başlık gerçeği söylemeli:
+  //  · HİÇBİRİ dönüşmediyse "tamamlandı" yanlıştır — hiçbir şey üretilmedi.
+  //  · İçerik KAYBI olduysa yalın yeşil ✓ kaybı gizler; hukuki belgede bu
+  //    fark önemlidir. Uyarılar zaten aşağıda listeleniyor, başlık da bunu
+  //    yansıtır.
+  const allFailed = items.length > 0 && failed === items.length;
+  const lossy = items.some((r) => r.warnings.some((w) => w.severity === "LOSS"));
+  const mark = allFailed || failed > 0 ? "✕" : lossy ? "!" : "✓";
+  const tone = failed > 0 ? "error" : lossy ? "warn" : undefined;
+  const headline = allFailed
+    ? `Dönüştürme başarısız: ${failed} belge dönüştürülemedi`
+    : failed > 0
+      ? `${items.length - failed} belge dönüştürüldü, ${failed} belge başarısız`
+      : lossy
+        ? items.length > 1
+          ? `${items.length} belge dönüştürüldü — içerik kaybı var`
+          : "Dönüştürme tamamlandı — içerik kaybı var"
+        : items.length > 1
+          ? `${items.length} belge dönüştürüldü`
+          : "Dönüştürme tamamlandı";
 
   return (
     <section className="convert-done" aria-labelledby="sonuc-baslik">
@@ -192,13 +212,9 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
         />
       ) : null}
 
-      <p className="flow-result" id="sonuc-baslik" data-tone={failed > 0 ? "error" : undefined}>
-        <span className="flow-result-mark" aria-hidden="true">{failed > 0 ? "✕" : "✓"}</span>
-        {failed > 0
-          ? `Dönüştürme tamamlandı, ${failed} belge başarısız`
-          : items.length > 1
-            ? `${items.length} belge dönüştürüldü`
-            : "Dönüştürme tamamlandı"}
+      <p className="flow-result" id="sonuc-baslik" data-tone={tone}>
+        <span className="flow-result-mark" aria-hidden="true">{mark}</span>
+        {headline}
       </p>
 
       {archiveName ? (
@@ -283,7 +299,15 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
     setOutcome(null);
     setFailure(null);
     setPhase("idle");
-    api.inspectFiles(paths).then(setSelected).catch((e) => setFailure(String(e)));
+    api
+      .inspectFiles(paths)
+      .then(setSelected)
+      // `String(e)` ham JS/Rust hatasını kullanıcıya sızdırıyordu; kategoriye
+      // indirilmiş cümle gösterilir, ayrıntı konsolda kalır.
+      .catch((e) => {
+        logFailure("tavzih inspect failure", e);
+        setFailure(safeMessage(e, "Belgeler incelenemedi. Dosyaları kontrol edip yeniden deneyin."));
+      });
   }, [paths]);
 
   const usable = selected.filter((s) => s.info);
@@ -299,8 +323,17 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
           : await api.convertBatch(list, api.localStamp());
       setOutcome(result);
       setPhase("done");
+      const total = "items" in result ? result.total : 1;
       const failed = "items" in result ? result.failed : result.status === "failure" ? 1 : 0;
-      announce(failed > 0 ? "Dönüştürme tamamlandı, hatalar var." : "Dönüştürme tamamlandı.");
+      // Ekran okuyucu kullanıcısı sonucu yalnız renkten/ikondan çıkaramaz;
+      // duyuru da başlıkla aynı gerçeği söylemeli.
+      announce(
+        failed > 0 && failed === total
+          ? `Dönüştürme başarısız. ${failed} belge dönüştürülemedi.`
+          : failed > 0
+            ? `${total - failed} belge dönüştürüldü, ${failed} belge başarısız.`
+            : "Dönüştürme tamamlandı.",
+      );
     } catch (e) {
       logFailure("tavzih convert failure", e);
       setFailure(safeMessage((e as { message?: string })?.message ?? e, "Dönüştürme tamamlanamadı. Yeniden deneyin."));

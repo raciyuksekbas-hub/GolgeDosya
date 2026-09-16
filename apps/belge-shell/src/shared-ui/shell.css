@@ -830,6 +830,9 @@ textarea {
   font-weight: 500;
 }
 .flow-result[data-tone="error"] { color: var(--danger); }
+/* İçerik kaybı: renk yalnız DESTEKLER — başlığın kendisi "içerik kaybı var"
+   yazar, işaret de "!" olur. Renk körü kullanıcı için anlam metinde. */
+.flow-result[data-tone="warn"] { color: var(--warning); }
 .flow-result-mark { flex: none; }
 
 /* Uyarı: dev kart değil, künye ölçüsünde tek satır. */

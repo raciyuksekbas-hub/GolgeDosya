@@ -288,7 +288,9 @@ describe("açma hatası sunumu", () => {
     // Açıklama boş kalırsa güvenli yedek cümle yazılır.
     expect(failed).toContain(OPEN_FAILURE_FALLBACK);
     // Eylem gerçek bir seçiciyi açar ve seçimi kabuğa bildirir.
-    expect(source).toMatch(/const openAnother = async \(\) => \{[\s\S]{0,400}?onOpenDocument\(\[picked\]\)/);
+    // Pencere, seçici HATASININ ayrı ele alınmasına yetecek kadar geniş:
+    // vazgeçme sessizdir, başarısızlık söylenir (bkz. openAnother).
+    expect(source).toMatch(/const openAnother = async \(\) => \{[\s\S]{0,800}?onOpenDocument\(\[picked\]\)/);
     expect(source).toContain("onOpenAnother={openAnother}");
   });
 
