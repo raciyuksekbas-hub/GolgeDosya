@@ -197,6 +197,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     // açık bir belge oturumunda çizilir, sayfa şeridi ise gerçekten sayfa varken.
     const [docState, setDocState] = useState<DocumentState>(initialPaths?.length ? 'loading' : 'none');
     const [failure, setFailure] = useState('');
+    const [statusTone, setStatusTone] = useState<'info' | 'busy' | 'success' | 'error'>('info');
     const [margin, setMargin] = useState(10), [text, setText] = useState('KOPYA'), [imageFormat, setImageFormat] = useState('png'), [start, setStart] = useState(1), [level, setLevel] = useState('balanced_compression'), [approved, setApproved] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
     const build = (list: SourceFile[]) => { setRotations({}); setReordered(false); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
     // Tarama gövdesi, kendi seçicisi ile kabuğun açtığı belgeler arasında ortak.
@@ -206,7 +207,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         setBusy(true);
         setDocState(previous => previous === 'ready' ? previous : 'loading');
         setFailure('');
-        setStatus('Belgeler inceleniyor…');
+        setStatus('Belgeler inceleniyor…'); setStatusTone('busy');
         const result = await invoke<ScanBatchResult>('duzenek_scan_source_files', { paths });
         if (result.errors.length)
             throw new Error(result.errors.map(e => e.reason).join('\n'));
@@ -215,7 +216,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         setApproved(false);
         // Belge ekranda: "açıldı" diyen yeşil bir kutu yeni bir bilgi taşımaz.
         // Ekran okuyucu için sonuç yine bildirilir.
-        setStatus('');
+        setStatus(''); setStatusTone('info');
         announce(result.sources.length > 1 ? 'Belgeler açıldı.' : 'Belge açıldı.');
         setDocState('ready');
     }
@@ -225,7 +226,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         logFailure('duzenek open failure', e);
         const detail = describeOpenFailure(e);
         setFailure(detail);
-        setStatus(`${OPEN_FAILURE_TITLE}. ${detail}`);
+        setStatus(`${OPEN_FAILURE_TITLE}. ${detail}`); setStatusTone('error');
         // Açık bir oturum sırasında yapılan ekleme başarısız olursa oturum ayakta
         // kalır; kullanıcı panelden yeniden deneyebilir. Kabuğun verdiği belge
         // açılamadıysa oturum hiç kurulmamıştır.
@@ -244,7 +245,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             paths = await open({ multiple: kind === 'merge' || kind === 'images', filters: [{ name: kind === 'images' ? 'Görseller' : 'PDF', extensions: kind === 'images' ? ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'heic'] : ['pdf'] }] });
         } catch (e) {
             logFailure('duzenek picker failure', e);
-            setStatus('Dosya seçici açılamadı. Lütfen yeniden deneyin.');
+            setStatus('Dosya seçici açılamadı. Lütfen yeniden deneyin.'); setStatusTone('error');
             announce('Dosya seçici açılamadı.');
             return;
         }
@@ -261,7 +262,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             picked = await open({ multiple: false, filters: [{ name: 'PDF', extensions: ['pdf'] }] });
         } catch (e) {
             logFailure('duzenek picker failure', e);
-            setStatus('Dosya seçici açılamadı. Lütfen yeniden deneyin.');
+            setStatus('Dosya seçici açılamadı. Lütfen yeniden deneyin.'); setStatusTone('error');
             announce('Dosya seçici açılamadı.');
             return;
         }
@@ -305,16 +306,16 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                 if (typeof outputDir !== 'string')
                     return;
                 setBusy(true);
-                setStatus('Görseller hazırlanıyor…');
+                setStatus('Görseller hazırlanıyor…'); setStatusTone('busy');
                 const result = await invoke<string>('duzenek_pdf_to_images', { path: sources[0].path, outputDir, format: imageFormat, dpi: 150, approved });
-                setStatus('Görsel paketi kaydedildi: ' + result);
+                setStatus('Görsel paketi kaydedildi: ' + result); setStatusTone('success');
                 return;
             }
             const outputPath = await copyDestination(`GolgeDosya-${kind}`, folderOnly);
             if (!outputPath)
                 return;
             setBusy(true);
-            setStatus('PDF hazırlanıyor…');
+            setStatus('PDF hazırlanıyor…'); setStatusTone('busy');
             const outcome = await invoke<{ status: 'published' | 'compressed' | 'no_benefit' | 'failed'; reason?: string; source_bytes?: number; body_bytes?: number; output_bytes?: number; candidate_bytes?: number; images_found?: number; images_recompressed?: number }>('duzenek_run_pdf_tool', { paths: sources.map(s => s.path), operation, outputPath, approved });
             if (outcome.status === 'failed') throw new Error(outcome.reason);
             const metrics = `Sıkıştırılmış belge: ${((outcome.body_bytes || 0) / 1024).toFixed(1)} KB · Marka dahil: ${((outcome.output_bytes || outcome.candidate_bytes || 0) / 1024).toFixed(1)} KB`;
@@ -327,6 +328,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     ? `${outcome.images_found} görsel bulundu; renk uzayı veya maskesi nedeniyle güvenle yeniden kodlanamadı. Anlamlı bir küçülme sağlanamadı. Çıktı kaydedilmedi.`
                     : 'Bu belge zaten yeterince optimize. Anlamlı bir küçülme sağlanamadı. Çıktı kaydedilmedi.';
                 setStatus(`${((outcome.source_bytes || 0) / 1024).toFixed(1)} KB\n${why}\n${metrics}\nEn az %3 küçülme gerekir.`);
+                setStatusTone('info');
                 return;
             }
             // A receipt is derived from the published file, not just a resolved command promise.
@@ -335,6 +337,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                 throw new Error('Kaydedilen PDF yeniden doğrulanamadı.');
             const size = receipt.sources[0].size_bytes, before = sources.reduce((n, s) => n + s.size_bytes, 0);
             setStatus(`PDF kaydedildi ve yeniden açılarak doğrulandı: ${outputPath}\n${receipt.sources[0].page_count} sayfa · ${(size / 1024).toFixed(1)} KB` + (kind === 'compress' ? `\n${(before / 1024).toFixed(1)} KB → ${(size / 1024).toFixed(1)} KB · %${((1 - size / before) * 100).toFixed(1)} küçültüldü.\n${metrics}` : ''));
+            setStatusTone('success');
         }
         catch (e) {
             // Kaydetme yolu da açma yolu gibi: motorun cümlesi log'da kalır,
@@ -343,6 +346,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             // korunur; sınıf adları ve dosya yolları çıkmaz.
             logFailure('duzenek save failure', e);
             setStatus((kind === 'compress' ? 'Sıkıştırma tamamlanamadı. ' : 'İşlem tamamlanamadı. ') + describeSaveFailure(e));
+            setStatusTone('error');
         }
         finally {
             setBusy(false);
@@ -376,6 +380,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             setSelected([]);
         const message = notes.length ? `${tools[key][0]} aracına geçildi — ${notes.join('; ')}.` : '';
         setStatus(message);
+        setStatusTone('info');
         if (message)
             announce(message);
         setApproved(false);
@@ -474,7 +479,11 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     <div className="toolbar-spacer"/>
                     <label className="zoom">Yakınlaştır<select value={zoom} onChange={e => setZoom(e.target.value.startsWith('fit-') ? e.target.value as PreviewMode : Number(e.target.value))}><option value="fit-page">Sayfaya sığdır</option><option value="fit-width">Genişliğe sığdır</option>{[75, 100, 125, 150, 200].map(z => <option key={z} value={z}>{z}%</option>)}</select></label>
                 </div>
-                {status && <Status tone={status.includes('tamamlanamadı') || status.includes('açılamadı') ? 'error' : 'success'}>{status}</Status>}
+                {/* Ton METİNDEN TAHMİN EDİLMEZ. Eskiden mesajda 'tamamlanamadı'/'açılamadı'
+                    geçmiyorsa 'success' sayılıyordu: "PDF hazırlanıyor…" daha işlem
+                    sürerken yeşil onay, "çıktı kaydedilmedi" diyen NoBenefit de
+                    başarı gibi görünüyordu. Ton artık durumla birlikte taşınır. */}
+                {status && <Status tone={statusTone}>{status}</Status>}
                 <div className="pdf-canvas">
                     <p className="page-line">{active?.source.file_name} · Kaynak sayfa {active?.page} / {active?.source.page_count}{kind === 'delete' && selected.includes(active?.key) ? ' — Çıktıdan çıkarılacak' : ''}{kind === 'rotate' ? ` · Dönüş: ${rotations[active?.key] || 0}°` : ''}{selected.includes(active?.key) ? ' · İşaretli' : ''}</p>
                     <div className="pdf-page-viewport" tabIndex={0} role="region" aria-label="Kaydırılabilir PDF sayfası">{active && <Preview key={active.key} item={active} large mode={zoom} rotation={rotations[active.key] || 0}/>}</div>
