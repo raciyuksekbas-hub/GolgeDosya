@@ -109,7 +109,7 @@ fn migrate_tavzih(dir: &Path, s: &mut Settings) -> SourceStatus {
 
 // ------------------------------------------------------------------ İkinciGöz
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct IkinciGozSettings {
     #[serde(default)]
@@ -140,6 +140,9 @@ const IKINCIGOZ_VERBATIM: [&str; 2] = ["dictionary.json", "profiles.json"];
 fn migrate_ikincigoz(dir: &Path, target_dir: &Path, s: &mut Settings) -> SourceStatus {
     let file = dir.join("settings.json");
     let mut fields = Vec::new();
+    // Ayar dosyası hiç çözülemediyse nedeni burada tutulur; dosya devri (sözlük,
+    // profiller) yine de çalışır.
+    let mut unreadable_settings: Option<String> = None;
 
     if file.is_file() {
         let text = match std::fs::read_to_string(&file) {
@@ -150,13 +153,46 @@ fn migrate_ikincigoz(dir: &Path, target_dir: &Path, s: &mut Settings) -> SourceS
                 }
             }
         };
+        // Ayarlar çözülemezse BURADAN ÇIKILMAZ. Eskiden tek bir yanlış tipli
+        // alan (`"textScale": "büyük"`) bütün fonksiyonu erken döndürüyordu ve
+        // aşağıdaki SÖZLÜK/PROFİL kopyalaması hiç çalışmıyordu: kullanıcının
+        // öğrettiği kelimeler ve profilleri, ilgisiz bir ayar hatası yüzünden
+        // kalıcı olarak kayboluyordu. Ayar devri ile dosya devri bağımsızdır.
+        //
+        // Ayrıca tek bozuk alan bütün ayar devrini düşürmesin: önce katı,
+        // olmazsa alan-bazlı kurtarma (settings.rs'teki `lenient` ile aynı
+        // yaklaşım).
         let old: IkinciGozSettings = match serde_json::from_str(&text) {
             Ok(v) => v,
-            Err(e) => {
-                return SourceStatus::Unreadable {
-                    detail: e.to_string(),
+            Err(e) => match serde_json::from_str::<serde_json::Value>(&text) {
+                Ok(serde_json::Value::Object(map)) => {
+                    // Alan-bazlı kurtarma: yalnız TİPİ TUTAN alanlar alınır,
+                    // bozuk olan atlanır. Kapanış yerine makro, çünkü her alanın
+                    // hedef tipi farklı.
+                    macro_rules! take {
+                        ($key:literal) => {
+                            map.get($key)
+                                .cloned()
+                                .and_then(|v| serde_json::from_value(v).ok())
+                        };
+                    }
+                    IkinciGozSettings {
+                        disabled_rules: take!("disabledRules"),
+                        include_review: take!("includeReview"),
+                        source_read_only: take!("sourceReadOnly"),
+                        theme: take!("theme"),
+                        text_scale: take!("textScale"),
+                        high_contrast: take!("highContrast"),
+                        reduce_motion: take!("reduceMotion"),
+                        respect_reduced_motion: take!("respectReducedMotion"),
+                        linear_results: take!("linearResults"),
+                    }
                 }
-            }
+                _ => {
+                    unreadable_settings = Some(e.to_string());
+                    IkinciGozSettings::default()
+                }
+            },
         };
         let defaults = Settings::default();
         // Yalnız kullanıcının varsayılandan saptığı değerler taşınır; böylece
@@ -251,6 +287,14 @@ fn migrate_ikincigoz(dir: &Path, target_dir: &Path, s: &mut Settings) -> SourceS
 
     if !file.is_file() && fields.is_empty() {
         return SourceStatus::NotFound;
+    }
+    // Ayar dosyası hiç çözülemediyse bunu bildir — ama sözlük/profil kopyalandıysa
+    // o kazanç kaybolmaz, rapora yazılır.
+    if let Some(detail) = unreadable_settings {
+        if fields.is_empty() {
+            return SourceStatus::Unreadable { detail };
+        }
+        return SourceStatus::Migrated { fields };
     }
     if fields.is_empty() {
         SourceStatus::NothingToDo
@@ -629,6 +673,69 @@ mod tests {
         // Ayarlanmamış olan yine de dolar.
         assert_eq!(s.accepted_terms, Some(1));
         std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// P1: Bozuk bir eski `settings.json` SÖZLÜK ve PROFİL devrini iptal
+    /// ediyordu. Erken `return` dosya kopyalamasından ÖNCEydi; kullanıcının
+    /// öğrettiği kelimeler ve profilleri, ilgisiz bir ayar tipi hatası
+    /// yüzünden kalıcı olarak kayboluyordu.
+    #[test]
+    fn a_corrupt_legacy_settings_file_must_not_cancel_dictionary_and_profile_migration() {
+        let d = tmp("ig-bozuk");
+        let t = tmp("ig-bozuk-hedef");
+        // Ayar dosyası tamamen bozuk (JSON değil).
+        std::fs::write(d.join("settings.json"), "{bu json degil").unwrap();
+        // Kullanıcının emeği: öğretilen kelimeler ve profiller.
+        std::fs::write(d.join("dictionary.json"), r#"{"accepted":["tahkim"]}"#).unwrap();
+        std::fs::write(d.join("profiles.json"), r#"{"profiles":[]}"#).unwrap();
+
+        let mut s = Settings::default();
+        let status = migrate_ikincigoz(&d, &t, &mut s);
+
+        assert!(
+            t.join("dictionary.json").is_file(),
+            "P1: bozuk ayar dosyası SÖZLÜĞÜN devrini iptal etti (kalıcı kayıp)"
+        );
+        assert!(
+            t.join("profiles.json").is_file(),
+            "P1: bozuk ayar dosyası PROFİLLERİN devrini iptal etti"
+        );
+        assert_eq!(
+            std::fs::read_to_string(t.join("dictionary.json")).unwrap(),
+            r#"{"accepted":["tahkim"]}"#,
+            "sözlük birebir kopyalanmalı"
+        );
+        // Dosyalar taşındıysa sonuç "aktarıldı" olmalı, "okunamadı" değil.
+        match status {
+            SourceStatus::Migrated { fields } => {
+                assert!(fields.contains(&"dictionary.json".to_string()), "{fields:?}");
+                assert!(fields.contains(&"profiles.json".to_string()), "{fields:?}");
+            }
+            other => panic!("beklenen Migrated, gelen {other:?}"),
+        }
+    }
+
+    /// Tek bir yanlış tipli alan bütün AYAR devrini düşürmemeli: sağlam alanlar
+    /// taşınır, bozuk alan atlanır (settings.rs'teki lenient ile aynı sözleşme).
+    #[test]
+    fn one_wrong_typed_legacy_field_does_not_discard_the_other_settings() {
+        let d = tmp("ig-kismi");
+        let t = tmp("ig-kismi-hedef");
+        // textScale sayı olmalı ama metin verilmiş; diğerleri sağlam.
+        std::fs::write(
+            d.join("settings.json"),
+            r#"{"textScale":"buyuk","highContrast":"on","disabledRules":["ORTHO_01"]}"#,
+        )
+        .unwrap();
+        let mut s = Settings::default();
+        migrate_ikincigoz(&d, &t, &mut s);
+        assert_eq!(s.high_contrast, "on", "sağlam alan taşınmalı");
+        assert_eq!(s.disabled_rules, vec!["ORTHO_01".to_string()]);
+        assert_eq!(
+            s.text_scale,
+            Settings::default().text_scale,
+            "bozuk alan varsayılanda kalmalı"
+        );
     }
 
     #[test]

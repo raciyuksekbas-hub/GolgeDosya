@@ -219,7 +219,7 @@ fn every_sample_survives_having_all_of_its_fixes_applied() {
         let out = writeback::apply(name, &bytes, &chosen)
             .unwrap_or_else(|e| panic!("{name}: {}", e.code()));
         assert_eq!(out.applied, chosen.len());
-        assert!(out.file_name.contains("İkinciGöz"));
+        assert!(out.file_name.contains("Düzeltilmiş"));
 
         // The corrected copy must open, keep its structure, and hold fewer
         // findings than it started with.

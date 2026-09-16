@@ -185,7 +185,7 @@ fn citation_formats(ctx: &Context<'_>) -> Vec<Finding> {
                 ),
                 "Aynı hükme yapılan atıflar belge boyunca aynı biçimde yazıldığında \
                  metin daha okunaklı olur. Hangi biçimin doğru olduğu konusunda \
-                 İkinciGöz bir görüş bildirmez.",
+                 GölgeDosya bir görüş bildirmez.",
             );
             f.context = None;
             out.push(f);

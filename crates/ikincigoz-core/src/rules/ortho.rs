@@ -81,7 +81,7 @@ fn separate_writing(ctx: &Context<'_>) -> Vec<Finding> {
                     token.text
                 ),
                 format!(
-                    "\u{201C}{joined}\u{201D} Türkçede ayrı yazılır. Bu kural, İkinciGöz \
+                    "\u{201C}{joined}\u{201D} Türkçede ayrı yazılır. Bu kural, GölgeDosya \
                      içinde elle tanımlanmış kısa listeye dayanır; genel bir yazım denetimi \
                      yapılmaz."
                 ),
