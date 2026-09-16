@@ -343,13 +343,42 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
   }, [usable]);
 
   const chooseFolder = useCallback(async () => {
-    const picked = await open({ directory: true, multiple: false });
-    if (typeof picked !== "string") return;
+    // `open()` try'ın DIŞINDAYDI: seçici hiç açılamazsa (izin, panel çökmesi)
+    // söz reddi yakalanmıyor, kullanıcı düğmeye basıyor ve hiçbir şey
+    // olmuyordu. VAZGEÇMEK ile BAŞARISIZLIK ayrı şeylerdir: ilki sessizdir,
+    // ikincisi değil.
     try {
+      const picked = await open({ directory: true, multiple: false });
+      if (typeof picked !== "string") return;
       setFolder(await api.setOutputFolder(picked));
     } catch (e) {
       logFailure("tavzih output folder failure", e);
-      setFailure(safeMessage((e as { message?: string })?.message ?? e, "Klasör seçilemedi. Başka bir klasör deneyin."));
+      const message = safeMessage(
+        (e as { message?: string })?.message ?? e,
+        "Klasör seçilemedi. Başka bir klasör deneyin.",
+      );
+      setFailure(message);
+      announce(message);
+    }
+  }, []);
+
+  /**
+   * Çıktı klasörünü varsayılana döndür.
+   *
+   * Akıştaki kopyası satır içi ve KORUMASIZDI
+   * (`async () => setFolder(await api.setOutputFolder(null))`): yazma
+   * düşerse klasör varsayılan dışı kalıyor, düğme hiçbir şey yapmamış
+   * gibi görünüyordu. Tercihler penceresindeki kardeşi zaten korunuyordu.
+   */
+  const resetFolder = useCallback(async () => {
+    try {
+      setFolder(await api.setOutputFolder(null));
+      announce("Çıktı klasörü varsayılana döndürüldü.");
+    } catch (e) {
+      logFailure("tavzih reset output folder", e);
+      const message = safeMessage(e, "Varsayılana dönülemedi. Klasör olduğu gibi kaldı.");
+      setFailure(message);
+      announce(message);
     }
   }, []);
 
@@ -431,7 +460,7 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
               busy={phase === "running"}
               onConvert={() => setPhase("confirm")}
               onChooseFolder={chooseFolder}
-              onResetFolder={async () => setFolder(await api.setOutputFolder(null))}
+              onResetFolder={resetFolder}
             />
           ) : (
             <Status tone="busy">Belge inceleniyor…</Status>

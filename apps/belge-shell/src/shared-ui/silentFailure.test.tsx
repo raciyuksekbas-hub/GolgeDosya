@@ -18,12 +18,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const read = (p: string) => readFileSync(resolve(here, p), "utf8");
 const app = read("../App.tsx");
 const convert = read("../modules/tavzih/ConvertWorkspace.tsx");
+const review = read("../modules/ikincigoz/ReviewWorkspace.tsx");
 
-/** Bir fonksiyon gövdesini adından kapanan süslü paranteze kadar alır. */
-function body(source: string, marker: string): string {
+/** Bir fonksiyon gövdesini adından itibaren `span` karakter boyunca alır. */
+function body(source: string, marker: string, span = 1400): string {
   const at = source.indexOf(marker);
   expect(at, `${marker} kaynakta yok`).toBeGreaterThan(-1);
-  return source.slice(at, at + 1400);
+  return source.slice(at, at + span);
 }
 
 describe("son belgeler yazması", () => {
@@ -116,5 +117,53 @@ describe("⌘O yutulmaz", () => {
   it("tercihler penceresi açıkken hâlâ kapalı", () => {
     // Odak tuzağının içinden arka plandaki eylemi tetiklemek odak modelini bozar.
     expect(app).toMatch(/enabled: !prefsTab/);
+  });
+});
+
+describe("klasör seçiciler", () => {
+  // Yeniden üretim: her ikisinde de seçici çağrısı try'ın DIŞINDAYDI. Pencere
+  // hiç açılamazsa (izin, panel çökmesi) söz reddi yakalanmıyor, kullanıcı
+  // düğmeye basıyor ve hiçbir şey olmuyordu. Vazgeçmek sessizdir;
+  // açılamamak değil.
+  it("Dönüştür'de seçici çağrısı korunur", () => {
+    const choose = body(convert, "const chooseFolder");
+    expect(choose.indexOf("try {")).toBeLessThan(choose.indexOf("await open("));
+  });
+
+  it("Denetle'de kaydetme penceresi korunur", () => {
+    const apply = body(review, "const applyChosen", 3000);
+    expect(apply.indexOf("try {")).toBeLessThan(apply.indexOf("await save("));
+  });
+
+  // Akıştaki "Varsayılana Dön" satır içi ve korumasizdi
+  // (`async () => setFolder(await api.setOutputFolder(null))`): yazma düşerse
+  // klasör varsayılan dışı kalıyor, düğme hiçbir şey yapmamış gibi
+  // görünüyordu. Tercihler penceresindeki kardeşi zaten korunuyordu.
+  it("Varsayılana Dön korunur ve sonucu söyler", () => {
+    expect(convert).toContain("const resetFolder = useCallback");
+    const reset = body(convert, "const resetFolder");
+    expect(reset).toContain("Varsayılana dönülemedi");
+    expect(reset).toContain("Çıktı klasörü varsayılana döndürüldü.");
+    expect(convert).toContain("onResetFolder={resetFolder}");
+  });
+});
+
+describe("Denetle makbuzu eskimez", () => {
+  // Yeniden üretim: bir kez başarıyla uygula (yeşil "kaydedildi" satırı
+  // belirir), sonra hedefi salt okunur yapıp yeniden uygula. Ekranda kırmızı
+  // hata ile BİRLİKTE önceki denemenin yeşil satırı duruyordu; kullanıcı
+  // dosyanın yazıldığını sanabiliyordu.
+  it("yeni deneme önceki makbuzu geçersiz kılar", () => {
+    const apply = body(review, "const applyChosen", 3000);
+    expect(apply).toContain("setWritten(null)");
+    // Temizlik, yazma çağrısından ÖNCE olmalı.
+    expect(apply.indexOf("setWritten(null)")).toBeLessThan(apply.indexOf("api.applyFixes"));
+  });
+
+  it("başarısızlıkta yeşil satır kalmaz", () => {
+    const apply = body(review, "const applyChosen", 3000);
+    const katch = apply.slice(apply.indexOf("} catch"));
+    expect(katch).toContain("setWritten(null)");
+    expect(katch).toContain("setApplyError");
   });
 });
