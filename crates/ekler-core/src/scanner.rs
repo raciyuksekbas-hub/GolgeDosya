@@ -105,7 +105,7 @@ pub fn scan_source_files<P: AsRef<Path>>(paths: &[P]) -> ScanBatchResult {
                     let note = if info.is_signed {
                         Some("Elektronik / Dijital imza tespit edildi".to_string())
                     } else if info.is_repaired {
-                        Some("Bu PDF standart dışı bir yapıya sahip. DüzenEk belgeyi değiştirmeden uyumlu bir çalışma kopyası oluşturdu.".to_string())
+                        Some("Bu PDF standart dışı bir yapıya sahip. GölgeDosya belgeyi değiştirmeden uyumlu bir çalışma kopyası oluşturdu.".to_string())
                     } else {
                         None
                     };

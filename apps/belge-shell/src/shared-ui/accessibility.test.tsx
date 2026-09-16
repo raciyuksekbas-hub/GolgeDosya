@@ -200,3 +200,13 @@ describe("sürüm değiştirme bara yansır", () => {
     expect(appSource).toContain("comparePair.every((p) => shown.includes(p))");
   });
 });
+
+describe("seçili değişiklik satırı", () => {
+  // Ray (`rail-node`) seçili farkı `aria-current` ile söylüyordu; LİSTE
+  // söylemiyordu, orada seçim yalnız `is-active` sınıfının rengiydi. Aynı
+  // bilgi iki yüzeyde farklı davranıyordu.
+  const inspectorSource = read("../modules/degisikis/ChangeInspector.tsx");
+  it("liste satırı da seçili olduğunu söyler", () => {
+    expect(inspectorSource).toContain("aria-current={active || undefined}");
+  });
+});

@@ -332,3 +332,99 @@ fn the_mark_does_not_materially_bloat_the_document() {
         "marka belgeyi anlamsız büyüttü: {before} → {after}"
     );
 }
+
+// ------------------------------------------- 6) kullanıcıya giden metinlerde ad
+
+/// Birleşme öncesi ürün adları. Bunlar kullanıcıya giden hiçbir cümlede
+/// geçemez; ürünün tek adı GölgeDosya'dır.
+const LEGACY_NAMES: [&str; 5] = ["DüzenEk", "Tavzih", "İkinciGöz", "Değişikİş", "MetinBul"];
+
+/// Eski adı taşımaya HAKKI olan yerler.
+///
+/// `legacy.rs` taşınan verinin KAYNAĞINI adlandırır: oradaki "Tavzih",
+/// kullanıcıya gösterilen bir ürün adı değil, diskteki eski dizinin
+/// kimliğidir. Adı değiştirmek taşımayı bozar.
+const ALLOWED: [&str; 1] = ["legacy.rs"];
+
+/// Kaynak ağacındaki `.rs` dosyaları.
+fn rust_sources(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        if path.is_dir() {
+            if name != "target" {
+                rust_sources(&path, out);
+            }
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            out.push(path);
+        }
+    }
+}
+
+/// Bir satır, kullanıcıya gidebilecek bir Türkçe cümle taşıyor mu?
+///
+/// Yorum satırları ve test kurguları elenir: tarihçeyi anlatan bir yorumun
+/// eski adı anması doğrudur ve silinmemelidir. Aranan şey, ürünün AĞZINDAN
+/// çıkan cümledir.
+fn user_facing_text(line: &str) -> bool {
+    let code = line.trim_start();
+    if code.starts_with("//") || code.starts_with("///") || code.starts_with("//!") {
+        return false;
+    }
+    // Türkçe bir cümlenin işareti: boşluklu, harfli, uzun bir dize.
+    line.split('"')
+        .skip(1)
+        .step_by(2)
+        .any(|literal| literal.contains(' ') && literal.chars().count() > 20)
+}
+
+#[test]
+fn no_legacy_product_name_reaches_the_user() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("workspace kökü")
+        .to_path_buf();
+
+    let mut files = Vec::new();
+    rust_sources(&root.join("crates"), &mut files);
+    rust_sources(&root.join("apps"), &mut files);
+    files.retain(|f| f.components().any(|c| c.as_os_str() == "src"));
+    assert!(files.len() > 20, "tarama kaynak bulamadı: {}", files.len());
+
+    let mut offences = Vec::new();
+    for file in &files {
+        if ALLOWED
+            .iter()
+            .any(|a| file.file_name().is_some_and(|n| n == *a))
+        {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(file) else {
+            continue;
+        };
+        for (no, line) in text.lines().enumerate() {
+            if !user_facing_text(line) {
+                continue;
+            }
+            for bad in LEGACY_NAMES {
+                if line.contains(bad) {
+                    offences.push(format!(
+                        "{}:{} — {bad}",
+                        file.strip_prefix(&root).unwrap_or(file).display(),
+                        no + 1
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        offences.is_empty(),
+        "kullanıcıya giden metinde eski ürün adı var:\n  {}",
+        offences.join("\n  ")
+    );
+}

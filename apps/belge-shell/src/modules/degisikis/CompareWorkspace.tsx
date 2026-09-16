@@ -44,6 +44,20 @@ type Loaded = { path: string; doc: LocalDocument };
  * evi var: sürüm değiştirme rayın başında, filtre panelde, paneli gizleme
  * bardaki "Ayrıntılar" düğmesinde.
  */
+/**
+ * Yardımcı bardaki fark sayacı.
+ *
+ * Süzgeç hiçbir şeyi tutmadığında `selectedIndex` -1 olur ve eski ifade
+ * (`Math.max(-1, 0) + 1`) sayacı **"1 / 0 fark"** yazıyordu: hem aritmetik
+ * olarak imkânsız, hem de belgede fark OLDUĞU hâlde olmadığını ima ediyor.
+ * Süzgeç sonucu süzgeç diliyle söylenir; toplam kaybolmaz.
+ */
+export function diffCounterLabel(total: number, visible: number, selectedIndex: number): string {
+  if (total === 0) return "Fark yok";
+  if (visible === 0) return `Bu süzgeçte fark yok · toplam ${total}`;
+  return `${Math.max(selectedIndex, 0) + 1} / ${visible} fark`;
+}
+
 export function CompareWorkspace({ paths, onPairChange }: {
   paths: string[];
   /**
@@ -223,11 +237,7 @@ export function CompareWorkspace({ paths, onPairChange }: {
       ) : null}
       {/* Fark sayacı barda, panelde değil: aynı sayı iki evde durmaz.
           Ray KONUMU, liste İÇERİĞİ gösterir; sayı ikisinin de üstünde. */}
-      <ToolbarStatus>
-        {model.summary.total === 0
-          ? "Fark yok"
-          : `${Math.max(selectedIndex, 0) + 1} / ${visible.length} fark`}
-      </ToolbarStatus>
+      <ToolbarStatus>{diffCounterLabel(model.summary.total, visible.length, selectedIndex)}</ToolbarStatus>
 
       <InspectorPanel title="Farklar" scope="compare-root">
         <ChangeInspector

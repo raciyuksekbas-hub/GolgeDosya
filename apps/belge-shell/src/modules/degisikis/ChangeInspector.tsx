@@ -15,7 +15,13 @@ const KIND_LABEL: Record<ComparisonChange["kind"], string> = {
 
 function ChangeListRow({ change, active, onClick }: { change: ComparisonChange; active: boolean; onClick: () => void }) {
   return (
-    <button className={`change-row ${change.kind} ${active ? "is-active" : ""}`} onClick={onClick}>
+    // Seçili satır yalnız renkle belliydi. Ray (`rail-node`) bunu zaten
+    // `aria-current` ile söylüyordu; liste söylemiyordu. Aynı bilgi, aynı yol.
+    <button
+      className={`change-row ${change.kind} ${active ? "is-active" : ""}`}
+      aria-current={active || undefined}
+      onClick={onClick}
+    >
       <span className="change-row-top">
         <span className="change-no">{change.displayIndex}</span>
         <span className="change-type"><i />{KIND_LABEL[change.kind]}</span>

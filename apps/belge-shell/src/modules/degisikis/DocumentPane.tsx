@@ -76,14 +76,26 @@ export function PaneHeader({ doc, side, onReplace }: {
   );
 }
 
+/**
+ * Eklenen ve çıkarılan sözcükler ANLAMLI etiketlerle çizilir.
+ *
+ * Görünüş değişmez: sınıflar aynı kaldığı için `.fragment.added` /
+ * `.fragment.removed` kuralları olduğu gibi yürür. Değişen, etiketin ekran
+ * okuyucuya ne söylediğidir — `<span>` "bu bir sözcük" der, `<ins>` ve
+ * `<del>` "bu sözcük eklendi / çıkarıldı" der. Görsel ipuçları da renge
+ * bağlı değil: çıkarılan üstü çizili, eklenenin altında çizgi var.
+ */
 function FragmentText({ fragments }: { fragments: DiffFragment[] }) {
   return (
     <>
-      {fragments.map((fragment, index) => (
-        <span key={`${fragment.kind}-${index}`} className={`fragment ${fragment.kind}`}>
-          {fragment.text}{index < fragments.length - 1 ? " " : ""}
-        </span>
-      ))}
+      {fragments.map((fragment, index) => {
+        const Tag = fragment.kind === "added" ? "ins" : fragment.kind === "removed" ? "del" : "span";
+        return (
+          <Tag key={`${fragment.kind}-${index}`} className={`fragment ${fragment.kind}`}>
+            {fragment.text}{index < fragments.length - 1 ? " " : ""}
+          </Tag>
+        );
+      })}
     </>
   );
 }
