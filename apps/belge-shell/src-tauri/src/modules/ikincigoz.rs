@@ -293,18 +293,52 @@ pub async fn ikincigoz_analyze_document(path: String) -> Result<AnalysisResult, 
     .map_err(|_| "İnceleme tamamlanamadı.".to_string())?
 }
 
+/// Kaydetme penceresinde kullanıcının yazdığı adı güvenli bir dosya adına indir.
+///
+/// Yalnız ad bileşeni alınır: yol ayırıcısı taşıyan bir girdi (`../..`) hedef
+/// klasörün dışına yazamaz. Uzantı kullanıcı yazmadıysa türetilmiş addan alınır,
+/// böylece ".docx" kaybolup açılamayan bir dosya oluşmaz.
+fn chosen_file_name(requested: &str, derived: &str) -> Option<String> {
+    let base = requested
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if base.is_empty() || base == "." || base == ".." {
+        return None;
+    }
+    let has_ext = base.rsplit_once('.').is_some_and(|(stem, ext)| {
+        !stem.is_empty() && !ext.is_empty() && !ext.contains(' ')
+    });
+    if has_ext {
+        return Some(base);
+    }
+    match derived.rsplit_once('.') {
+        Some((_, ext)) if !ext.is_empty() => Some(format!("{base}.{ext}")),
+        _ => Some(base),
+    }
+}
+
 /// Seçilen düzeltmeleri **bir kopyaya** uygula.
 ///
 /// Kaynak yol asla yazmak için açılmaz. Yayın no-clobber + atomiktir
 /// (`atomic::write_new_unique`): kaynak dahil var olan hiçbir dosyanın üzerine
 /// yazılmaz, çakışan ad Dönüştür gibi " (2)" ile türetilir.
+///
+/// `file_name` verilirse KULLANICININ kaydetme penceresinde seçtiği addır ve
+/// ona saygı duyulur. Eskiden pencere ad soruyor ama yalnız klasör kullanılıyor,
+/// yazılan ad sessizce atılıyordu — kontrol yalan söylüyordu.
 #[tauri::command]
 pub async fn ikincigoz_apply_fixes(
     path: String,
     fixes: Vec<Fix>,
     output_dir: Option<String>,
+    file_name: Option<String>,
 ) -> Result<WriteResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        // Parametre aşağıdaki yerel `file_name` ile gölgelenmesin.
+        let requested_name = file_name;
         let source = PathBuf::from(&path);
         let bytes = read_document(&source)?;
         let file_name = parser::base_name(&source.to_string_lossy());
@@ -324,7 +358,11 @@ pub async fn ikincigoz_apply_fixes(
         // kopyası aynı adı taşıyabilir. Düz fs::write onu sessizce eziyordu
         // (geri alınamaz kayıp) ve atomik değildi (yarım yazım → bozuk zip).
         // Çakışırsa Dönüştür gibi " (2)" türet; var olan hiçbir kopya kaybolmaz.
-        let written = crate::atomic::write_new_unique(&directory, &result.file_name, &result.bytes)
+        let target_name = requested_name
+            .as_deref()
+            .and_then(|requested| chosen_file_name(requested, &result.file_name))
+            .unwrap_or_else(|| result.file_name.clone());
+        let written = crate::atomic::write_new_unique(&directory, &target_name, &result.bytes)
             .map_err(|_| "Yeni dosya kaydedilemedi.".to_string())?;
 
         Ok(WriteResult {

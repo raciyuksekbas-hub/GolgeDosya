@@ -420,8 +420,9 @@ fn denetle_analyze_then_apply_to_copy_leaves_the_source_untouched() {
     std::fs::create_dir_all(&out_dir).unwrap();
     let written = block(ikincigoz::ikincigoz_apply_fixes(
         src.to_string_lossy().to_string(),
-        fixes,
+        fixes.clone(),
         Some(out_dir.to_string_lossy().to_string()),
+        None,
     ))
     .expect("düzeltme uygula");
 
@@ -495,4 +496,70 @@ fn karsilastir_read_document_command_reads_real_files_and_fails_loudly() {
         missing.to_string_lossy().to_string(),
     ));
     assert!(r.is_err(), "olmayan dosya sessizce başarılı döndü");
+}
+
+/// P1 REGRESYON: Kaydetme penceresi dosya ADI soruyor ama yazılan ad sessizce
+/// atılıyordu — yalnız klasör kullanılıyor, dosya adı motorda türetiliyordu.
+/// Görünen bir kontrol kullanıcının girdisini yutuyordu.
+#[test]
+fn denetle_honours_the_file_name_the_user_typed_in_the_save_dialog() {
+    use belge_shell_lib::modules::ikincigoz;
+
+    let samples =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../crates/ikincigoz-core/tests/samples");
+    let sample = samples.join("ornek-dilekce-hatali.docx");
+    let lab = Lab::new();
+    let src = lab.write("dilekce.docx", &std::fs::read(&sample).expect("örnek"));
+    let src_sha = sha(&src);
+
+    let analysis = block(ikincigoz::ikincigoz_analyze_document(
+        src.to_string_lossy().to_string(),
+    ))
+    .expect("analiz");
+    let fixes: Vec<_> = analysis
+        .findings
+        .iter()
+        .filter_map(|f| f.fix.clone())
+        .collect();
+    assert!(!fixes.is_empty());
+
+    let out_dir = lab.path("cikti");
+    std::fs::create_dir_all(&out_dir).unwrap();
+
+    // Kullanıcı kaydetme penceresinde kendi adını yazdı.
+    let written = block(ikincigoz::ikincigoz_apply_fixes(
+        src.to_string_lossy().to_string(),
+        fixes.clone(),
+        Some(out_dir.to_string_lossy().to_string()),
+        Some("sözleşme-son-hâli.docx".into()),
+    ))
+    .expect("düzeltme uygula");
+    assert_eq!(
+        written.file_name, "sözleşme-son-hâli.docx",
+        "P1: kullanıcının yazdığı dosya adı atıldı"
+    );
+    assert!(out_dir.join("sözleşme-son-hâli.docx").exists());
+
+    // Uzantısız yazılırsa türetilmiş uzantı korunur (açılamayan dosya olmasın).
+    let written = block(ikincigoz::ikincigoz_apply_fixes(
+        src.to_string_lossy().to_string(),
+        fixes.clone(),
+        Some(out_dir.to_string_lossy().to_string()),
+        Some("uzantisiz".into()),
+    ))
+    .expect("düzeltme uygula");
+    assert_eq!(written.file_name, "uzantisiz.docx", "uzantı korunmalı");
+
+    // Yol ayırıcısı taşıyan ad hedef klasörün DIŞINA yazamaz.
+    let written = block(ikincigoz::ikincigoz_apply_fixes(
+        src.to_string_lossy().to_string(),
+        fixes,
+        Some(out_dir.to_string_lossy().to_string()),
+        Some("../../kacis.docx".into()),
+    ))
+    .expect("düzeltme uygula");
+    assert_eq!(written.file_name, "kacis.docx", "yol bileşeni atılmalı");
+    assert!(out_dir.join("kacis.docx").exists(), "hedef klasörde kalmalı");
+
+    assert_eq!(sha(&src), src_sha, "KAYNAK DEĞİŞTİ (P0)");
 }
