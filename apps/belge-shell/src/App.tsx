@@ -119,7 +119,17 @@ export function App() {
     async (paths: string[]) => {
       setDocuments(paths);
       if (active) setContext(carryContext(active.key, paths));
-      setSettings(await api.rememberDocuments(paths));
+      // Belgeyi AÇMAK ile onu hatırlamak ayrı işlerdir. Hatırlama yazması
+      // düşerse (disk dolu, izin, bozuk ayar dosyası) belge yine de açık
+      // kalmalı: kullanıcının asıl istediği buydu. Eskiden bu satır
+      // korumasızdı; düşünce `openDocuments` sözü reddediliyor, hata hiçbir
+      // yere yazılmıyor ve son belgeler listesi sessizce eskimiş kalıyordu.
+      try {
+        setSettings(await api.rememberDocuments(paths));
+      } catch (e) {
+        logFailure("recent documents write", e);
+        announce("Belge açıldı ancak son belgeler listesine eklenemedi.");
+      }
     },
     [active],
   );
@@ -131,20 +141,21 @@ export function App() {
   }, []);
 
   const forgetDocuments = useCallback(async () => {
-    setSettings(await api.forgetDocuments());
+    setSettingsError("");
+    try {
+      setSettings(await api.forgetDocuments());
+      announce("Son belgeler listesi temizlendi.");
+    } catch (e) {
+      // Eskiden burada koruma yoktu: kullanıcı "Tümünü Temizle" diyor, liste
+      // olduğu gibi duruyor ve hiçbir şey söylenmiyordu. Silinmediyse
+      // söylenir — "sildim" demeyen bir liste, sildiğini sanan bir
+      // kullanıcıdan iyidir.
+      logFailure("forget documents", e);
+      const message = safeMessage(e, "Liste temizlenemedi. Belgeler hatırlanmaya devam ediyor.");
+      setSettingsError(message);
+      announce(message);
+    }
   }, []);
-
-  // macOS'un öğrettiği iki kısayol. Sheet açıkken kapalı: odak tuzağının
-  // içinden arka plandaki eylemi tetiklemek odak modelini bozar.
-  useShortcuts(
-    useMemo(
-      () => [
-        { key: "o", run: () => setOpenRequest((n) => n + 1), enabled: !prefsTab },
-        { key: ",", run: () => setPrefsTab("genel") },
-      ],
-      [prefsTab],
-    ),
-  );
 
   /** Bu kip, açık belgelerle şu an çalışabiliyor mu? */
   const usable = useMemo(() => {
@@ -152,6 +163,25 @@ export function App() {
     const outcome = context ?? carryContext(active.key, documents);
     return outcome.kind === "keep";
   }, [active, documents, context]);
+
+  // macOS'un öğrettiği iki kısayol. Sheet açıkken kapalı: odak tuzağının
+  // içinden arka plandaki eylemi tetiklemek odak modelini bozar.
+  //
+  // ⌘O'yu KİMSE dinlemiyorken bağlamayız. `openRequest` yalnız belge
+  // yüzeyinde tüketilir; bir çalışma alanı açıkken o yüzey DOM'da değildir.
+  // Kısayol yine de eşleşiyor, `preventDefault()` çalışıyor ve sayaç
+  // kimsenin okumadığı bir yere artıyordu: tuş yutuluyor, karşılığında
+  // hiçbir şey olmuyordu. Belge açıkken başka belgeye geçmenin yolu bardaki
+  // "Kapat" düğmesidir ve klavyeyle erişilebilir.
+  useShortcuts(
+    useMemo(
+      () => [
+        { key: "o", run: () => setOpenRequest((n) => n + 1), enabled: !prefsTab && !usable },
+        { key: ",", run: () => setPrefsTab("genel") },
+      ],
+      [prefsTab, usable],
+    ),
+  );
 
   /**
    * Yardımcı barın sol ucu: açık belgenin adı; belge yokken kipin adı.

@@ -9,7 +9,11 @@ import { useFocusTrap } from "../../shared-ui/useFocusTrap";
  * alınmıştır ve taşıma sırasında değiştirilmemiştir.
  */
 
-export function FirstUseAcceptance({ onAccept }: { onAccept: () => void }) {
+export function FirstUseAcceptance({ onAccept, error }: {
+  onAccept: () => void;
+  /** Onay yazılamadıysa nedeni. Ekran kilitliyken susmak en kötüsüdür. */
+  error?: string;
+}) {
   const ref = useRef<HTMLButtonElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
   // `aria-modal` ekran okuyucunun sanal imlecini kısıtlar ama FİZİKSEL odağı
@@ -47,6 +51,11 @@ export function FirstUseAcceptance({ onAccept }: { onAccept: () => void }) {
           </p>
           <p>Devam ederek bu hususları okuduğunuzu ve kabul ettiğinizi beyan edersiniz.</p>
         </div>
+        {error ? (
+          <p className="status" data-tone="error" role="alert">
+            <span className="status-text">{error}</span>
+          </p>
+        ) : null}
         <div className="sheet-actions">
           <button type="button" className="btn btn-primary" ref={ref} onClick={onAccept}>
             Kabul Ediyorum

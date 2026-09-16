@@ -127,8 +127,12 @@ describe("durum sözleşmesi", () => {
   });
 
   it("durumlar birbirini dışlar", () => {
+    // Pencere, dalın İÇİNDEKİ kodun uzunluğuna değil dalların SIRASINA
+    // bakar. `onReveal`'in sessiz hata yolu kapatılınca (yüzen söz ->
+    // try/catch) gövde uzadı ve 400 karakterlik pencere sözleşme hiç
+    // değişmediği hâlde kırıldı.
     expect(source).toMatch(
-      /\{done \? \(\s*<ConvertDone[\s\S]{0,400}?\) : selected\.length > 0 \? \(\s*<ConvertFlow/,
+      /\{done \? \(\s*<ConvertDone[\s\S]{0,1200}?\) : selected\.length > 0 \? \(\s*<ConvertFlow/,
     );
   });
 

@@ -283,6 +283,7 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
  */
 export function ConvertWorkspace({ paths }: { paths: string[] }) {
   const [accepted, setAccepted] = useState<boolean | null>(null);
+  const [acceptError, setAcceptError] = useState("");
   const [selected, setSelected] = useState<InspectOutcome[]>([]);
   const [folder, setFolder] = useState<OutputFolder | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -355,9 +356,25 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
   if (accepted === false) {
     return (
       <FirstUseAcceptance
+        error={acceptError}
         onAccept={async () => {
-          await api.acceptTerms();
-          setAccepted(true);
+          // Onay yazması düşerse `setAccepted(true)` hiç çalışmıyordu:
+          // kullanıcı "Kabul Ediyorum" düğmesine basıyor, ekran olduğu gibi
+          // duruyor ve hiçbir açıklama gelmiyordu. Ürün, sebebi
+          // söylenmeden kullanılamaz hâle geliyordu.
+          setAcceptError("");
+          try {
+            await api.acceptTerms();
+            setAccepted(true);
+          } catch (e) {
+            logFailure("tavzih accept terms", e);
+            const message = safeMessage(
+              e,
+              "Onayınız kaydedilemedi. Yeniden deneyin; sorun sürerse diskte yer olduğundan emin olun.",
+            );
+            setAcceptError(message);
+            announce(message);
+          }
         }}
       />
     );
@@ -389,7 +406,21 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
               from={usable[0]?.info?.source_format ?? null}
               to={target}
               folder={folder}
-              onReveal={() => api.revealOutputFolder()}
+              onReveal={async () => {
+                // Yüzen bir sözdü: klasör silinmiş ya da taşınmışsa Finder
+                // açılmıyor, kullanıcıya hiçbir şey söylenmiyordu.
+                try {
+                  await api.revealOutputFolder();
+                } catch (e) {
+                  logFailure("tavzih reveal output folder", e);
+                  const message = safeMessage(
+                    e,
+                    "Çıktı klasörü açılamadı. Klasör taşınmış veya silinmiş olabilir.",
+                  );
+                  setFailure(message);
+                  announce(message);
+                }
+              }}
               onAgain={() => setPhase("idle")}
             />
           ) : selected.length > 0 ? (
