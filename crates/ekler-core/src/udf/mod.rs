@@ -144,11 +144,11 @@ pub fn convert_udf_to_markdown(
         .map(|w| format!("{}: {}", w.title, w.detail.unwrap_or_default()))
         .collect();
     safe_io::write_new_bytes(
-        &staging.path().join("duzenek-logo.svg"),
+        &staging.path().join("golgedosya-logo.svg"),
         &[],
         include_bytes!("../../assets/brand-logo.svg"),
     )?;
-    markdown.push_str("\n<p style=\"text-align:right\"><img src=\"duzenek-logo.svg\" alt=\"DüzenEk\" width=\"96\" /></p>\n");
+    markdown.push_str("\n<p style=\"text-align:right\"><img src=\"golgedosya-logo.svg\" alt=\"GölgeDosya\" width=\"96\" /></p>\n");
     safe_io::write_new_bytes(&staging.path().join("belge.md"), &[], markdown.as_bytes())?;
     safe_io::write_new_bytes(
         &staging.path().join("conversion-notes.json"),

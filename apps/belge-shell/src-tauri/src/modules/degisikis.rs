@@ -19,9 +19,14 @@ pub mod legacy_doc;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
-/// Rapor dosyalarının zorunlu ad öneki. Değişikİş'teki değerle aynı: eski
-/// uygulamanın ürettiği raporlar da aynı adla açılabilmeli.
-const REPORT_FILE_PREFIX: &str = "DegisikIs-Rapor-";
+/// Rapor dosyalarının kabul edilen ad önekleri.
+///
+/// İlk değer canonical GölgeDosya önekidir ve yeni raporlar onunla üretilir.
+/// Eski Değişikİş öneki KABUL EDİLMEYE DEVAM EDER: kullanıcının daha önce
+/// ürettiği raporlar hâlâ açılabilmeli. (Önek denetimi güvenlik içindir —
+/// arayüzden gelen ad dizin dışına çıkmasın; markayı değiştirmek o denetimi
+/// gevşetmemeli.)
+const REPORT_FILE_PREFIXES: [&str; 2] = ["GolgeDosya-Karsilastirma-", "DegisikIs-Rapor-"];
 
 /// Eski ikili `.doc` dosyasını `.docx`'e çevir.
 ///
@@ -92,7 +97,7 @@ fn sanitize_report_file_name(raw: &str) -> Result<&str, &'static str> {
     if name.is_empty() || name.len() > 128 {
         return Err("REPORT_NAME");
     }
-    if !name.starts_with(REPORT_FILE_PREFIX) {
+    if !REPORT_FILE_PREFIXES.iter().any(|p| name.starts_with(p)) {
         return Err("REPORT_NAME");
     }
     if name.contains('/') || name.contains('\\') || name.contains("..") {
@@ -223,6 +228,11 @@ mod tests {
 
     #[test]
     fn a_report_name_must_carry_the_expected_prefix_and_extension() {
+        // Canonical GölgeDosya öneki — arayüzün BUGÜN ürettiği ad.
+        assert!(sanitize_report_file_name("GolgeDosya-Karsilastirma-2026.html").is_ok());
+        assert!(sanitize_report_file_name("GolgeDosya-Karsilastirma-2026.docx").is_ok());
+        // Eski önek geriye dönük kabul edilir: kullanıcının önceden ürettiği
+        // raporlar açılabilmeye devam etmeli.
         assert!(sanitize_report_file_name("DegisikIs-Rapor-2026.html").is_ok());
         assert!(sanitize_report_file_name("DegisikIs-Rapor-2026.docx").is_ok());
         assert!(
