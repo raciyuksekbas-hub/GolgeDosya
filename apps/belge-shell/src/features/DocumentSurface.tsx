@@ -245,8 +245,19 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
               <h2 className="section-head" id="son-baslik">
                 {mode.recentTitle}
               </h2>
-              <Button className="btn-sm" variant="quiet" onClick={onForget}>
-                Listeyi Temizle
+              {/* Kapsam dürüstlüğü: başlık kipe göre süzülmüştür ("Son PDF'ler")
+                  ama bu eylem BÜTÜN kiplerin son belgelerini siler. Etiket
+                  "Listeyi Temizle" iken kullanıcı yalnız gördüğü listenin
+                  temizleneceğini sanıyordu. Erişilebilir ad görünen metni
+                  içerir (WCAG 2.5.3). */}
+              <Button
+                className="btn-sm"
+                variant="quiet"
+                onClick={onForget}
+                title="Tümünü Temizle — bütün kiplerdeki son belgeler listesini temizler"
+                aria-label="Tümünü Temizle — bütün kiplerdeki son belgeler listesini temizler"
+              >
+                Tümünü Temizle
               </Button>
             </div>
             <ul className="file-list">
