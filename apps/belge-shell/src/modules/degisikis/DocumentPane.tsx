@@ -116,7 +116,20 @@ export function DocumentPane({ side, doc: _doc, rows, changes, selectedRows, pan
   const groupByRow = new Map<number, ComparisonChange>();
   changes.forEach((change) => change.rowIndices.forEach((rowIndex) => groupByRow.set(rowIndex, change)));
   return (
-    <div className="document-scroll" ref={paneRef} onScroll={onScroll}>
+    // Panel kaydırılabilir ama İÇİNDE odaklanabilir hiçbir öğe yok: satırlar
+    // düz `div`. Klavye kullanıcısı odağı buraya koyamadığı için ok tuşları,
+    // PageDown ve Home/End çalışmıyor, yani belgenin ilk ekrandan sonrasını
+    // HİÇ okuyamıyordu. `tabIndex={0}` bölgeyi sekme sırasına sokar;
+    // `role="region"` ve adı, ekran okuyucunun hangi sürümde olduğunu
+    // söylemesini sağlar.
+    <div
+      className="document-scroll"
+      ref={paneRef}
+      onScroll={onScroll}
+      tabIndex={0}
+      role="region"
+      aria-label={SIDE_LABEL[side]}
+    >
       <article className="paper">
         {rows.map((row, index) => {
           const block = side === "base" ? row.base : row.revised;

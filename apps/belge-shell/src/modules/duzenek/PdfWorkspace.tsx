@@ -86,6 +86,11 @@ type Page = {
 };
 // Bound native render requests; thumbnails render only when near the viewport.
 let queue: Promise<unknown> = Promise.resolve();
+/** Yol yerine dosya adı: kullanıcı belgesini adıyla tanır, yoluyla değil. */
+export function baseNameOf(path: string): string {
+    return path.split(/[\\/]/).pop() || path;
+}
+
 function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
     item: Page; large?: boolean; rotation?: number; mode?: PreviewMode;
 }) {
@@ -215,15 +220,27 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         setFailure('');
         setStatus('Belgeler inceleniyor…'); setStatusTone('busy');
         const result = await invoke<ScanBatchResult>('duzenek_scan_source_files', { paths });
-        if (result.errors.length)
-            throw new Error(result.errors.map(e => e.reason).join('\n'));
+        // TEK bozuk dosya, sağlam olanları da çöpe atmamalı. Eskiden
+        // `errors.length` doluysa hata fırlatılıyor ve `result.sources` hiç
+        // kullanılmıyordu: 20 taranmış ek seçip birini bozuk bulan kullanıcı
+        // 19 sağlam belgeyi de kaybediyor, üstelik HANGİSİNİN bozuk olduğu
+        // söylenmiyordu (yalnız `reason` gösteriliyordu, `path` değil).
+        if (result.errors.length && !result.sources.length)
+            throw new Error(result.errors.map(e => `${baseNameOf(e.path)}: ${e.reason}`).join('\n'));
         setSources(result.sources);
         build(result.sources);
         setApproved(false);
         // Belge ekranda: "açıldı" diyen yeşil bir kutu yeni bir bilgi taşımaz.
         // Ekran okuyucu için sonuç yine bildirilir.
-        setStatus(''); setStatusTone('info');
-        announce(result.sources.length > 1 ? 'Belgeler açıldı.' : 'Belge açıldı.');
+        if (result.errors.length) {
+            const names = result.errors.map(e => baseNameOf(e.path)).join(', ');
+            const note = `${result.sources.length} belge açıldı. ${result.errors.length} dosya açılamadı: ${names}`;
+            setStatus(note); setStatusTone('error');
+            announce(note);
+        } else {
+            setStatus(''); setStatusTone('info');
+            announce(result.sources.length > 1 ? 'Belgeler açıldı.' : 'Belge açıldı.');
+        }
         setDocState('ready');
     }
     catch (e) {

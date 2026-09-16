@@ -210,3 +210,69 @@ describe("seçili değişiklik satırı", () => {
     expect(inspectorSource).toContain("aria-current={active || undefined}");
   });
 });
+
+describe("büyük metin arayüzü kırpmaz", () => {
+  // Yeniden üretim: Tercihler → Görünüm → "Metin boyutu: En büyük" (%200).
+  // Yazı büyüyor ama kenar çubuğu 220 px, tercih rayı 160 px olarak SABİT
+  // kalıyordu. İkisi de `white-space: nowrap` kullanır, yani sığmayan ad
+  // sarmaz KESİLİR: erişilebilirlik ayarının kendisi arayüzü bozuyordu.
+  // Yükseklikler (`--row-h`, `--control-h`, `--toolbar-h`) zaten ölçeği
+  // izliyordu; genişlikler unutulmuştu.
+  it("kenar çubuğu genişliği metin ölçeğini izler", () => {
+    expect(decls(tokens, ":root")["--sidebar-w"]).toContain("var(--text-scale)");
+  });
+
+  it("tercih rayı genişliği metin ölçeğini izler", () => {
+    expect(decls(tokens, ":root")["--prefs-rail-w"]).toContain("var(--text-scale)");
+    expect(decls(shell, ".sheet.prefs")["grid-template-columns"]).toContain("var(--prefs-rail-w)");
+  });
+
+  it("genişlikler görüş alanıyla sınırlı: çubuk çalışma alanını yutmaz", () => {
+    expect(decls(tokens, ":root")["--sidebar-w"]).toContain("vw");
+  });
+
+  it("varsayılan ölçekte ölçü değişmez", () => {
+    // `--text-scale: 1` iken min(220px, 34vw) -> 220px: %100'de yerleşim aynı.
+    expect(decls(tokens, ":root")["--text-scale"]).toBe("1");
+    expect(decls(tokens, ":root")["--sidebar-w"]).toContain("220px");
+  });
+});
+
+describe("Karşılaştır panelleri klavyeyle okunur", () => {
+  // Yeniden üretim: Karşılaştır'da fare kullanmadan belgeyi okumaya çalış.
+  // Paneller kaydırılabilir (`overflow: auto`) ama İÇLERİNDE odaklanabilir
+  // hiçbir öğe yok — satırlar düz `div`. Odak panele hiç giremediği için ok
+  // tuşları, PageDown ve Home/End çalışmıyor: fare kullanamayan bir hukukçu
+  // belgenin ilk ekrandan sonrasını HİÇ okuyamıyordu.
+  const paneSource = read("../modules/degisikis/DocumentPane.tsx");
+  it("kaydırma bölgesi sekme sırasında", () => {
+    expect(paneSource).toContain("tabIndex={0}");
+  });
+
+  it("bölgenin ekran okuyucuda adı var", () => {
+    expect(paneSource).toContain('role="region"');
+    expect(paneSource).toContain("aria-label={SIDE_LABEL[side]}");
+  });
+
+  it("odak görünür: genel odak halkası kaldırılmamış", () => {
+    expect(decls(tokens, ":focus-visible")["outline"]).toContain("var(--focus)");
+  });
+});
+
+describe("kısmi tarama sağlam belgeleri atmaz", () => {
+  // Yeniden üretim: 3 PDF seç, biri bozuk olsun. Eskiden `errors.length`
+  // doluysa hata fırlatılıyor ve `result.sources` HİÇ kullanılmıyordu: 2
+  // sağlam belge de çöpe gidiyordu. Üstelik hangisinin bozuk olduğu
+  // söylenmiyordu — yalnız `reason` gösteriliyordu, `path` değil.
+  it("yalnız hepsi düştüyse vazgeçer", () => {
+    expect(pdfSource).toContain("if (result.errors.length && !result.sources.length)");
+  });
+
+  it("kısmi düşüşte sağlamlar açılır ve durum söylenir", () => {
+    expect(pdfSource).toContain("belge açıldı. ${result.errors.length} dosya açılamadı");
+  });
+
+  it("düşen dosya ADIYLA söylenir", () => {
+    expect(pdfSource).toContain("result.errors.map(e => baseNameOf(e.path))");
+  });
+});

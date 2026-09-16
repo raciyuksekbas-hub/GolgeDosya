@@ -116,7 +116,15 @@
   --ease: cubic-bezier(0.32, 0.08, 0.24, 1);
 
   /* Kabuk ölçüleri. */
-  --sidebar-w: 220px;
+  /* Metin ölçeğiyle BİRLİKTE büyür. `--row-h`, `--control-h` ve
+     `--toolbar-h` zaten böyleydi; genişlikler unutulmuştu: "Metin boyutu: En
+     büyük" seçen kullanıcı kip adlarının kırpıldığı bir kenar çubuğu
+     görüyordu — erişilebilirlik ayarının kendisi arayüzü bozuyordu.
+     `.sidebar-item` ve `.prefs-tabs` `white-space: nowrap` kullanır, yani
+     sığmayan ad sarmaz, KESİLİR. Görüş alanına göre sınırlanır ki büyük
+     ölçekte çubuk çalışma alanını yutmasın. */
+  --sidebar-w: min(calc(220px * var(--text-scale)), 34vw);
+  --prefs-rail-w: min(calc(160px * var(--text-scale)), 38vw);
   --inspector-w: 300px;
   --inspector-inset: 12px;
   --toolbar-h: calc(46px * var(--text-scale));

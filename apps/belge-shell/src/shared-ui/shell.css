@@ -888,8 +888,8 @@ textarea {
 /* Sekme değiştirince pencere zıplamasın: yükseklik sabit, içerik kayar. */
 .sheet.prefs {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
-  width: min(660px, calc(100vw - var(--space-7)));
+  grid-template-columns: var(--prefs-rail-w) minmax(0, 1fr);
+  width: min(calc(660px * var(--text-scale)), calc(100vw - var(--space-7)));
   height: min(460px, calc(100vh - var(--space-8)));
   overflow: hidden;
 }
