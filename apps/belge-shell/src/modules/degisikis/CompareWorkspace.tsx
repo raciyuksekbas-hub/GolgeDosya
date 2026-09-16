@@ -98,6 +98,21 @@ export function CompareWorkspace({ paths }: { paths: string[] }) {
     [comparison],
   );
 
+  /**
+   * Çıkarma uyarıları — okunAMAYAN içerik.
+   *
+   * `extractDocument` mammoth'un "desteklenmeyen öğe" uyarılarını ve eski
+   * `.doc` yerel dönüşüm notunu topluyordu ama HİÇBİR YERDE gösterilmiyordu.
+   * Bu uyarılar "bu içerik okunamadı" demektir: okunamayan içerik
+   * KARŞILAŞTIRILMAMIŞ demektir de. Kullanıcı tertemiz bir fark listesi görüp
+   * "burada fark yok" sonucuna varıyordu — oysa o kısım hiç okunmamıştı.
+   * Hukuki belgede bu sessizlik kabul edilemez.
+   */
+  const extractionWarnings = useMemo(() => {
+    if (!docs) return [];
+    return Array.from(new Set(docs.flatMap((d) => d.doc.warnings)));
+  }, [docs]);
+
   // İlk fark açılışta seçilir. Panel boş bir yer tutucuyla ("bir fark seçin")
   // açılmaz ve kullanıcı ilk farkı görmek için tıklamak zorunda kalmaz;
   // Denetle de ilk bulguyu aynı şekilde açar.
@@ -185,6 +200,15 @@ export function CompareWorkspace({ paths }: { paths: string[] }) {
 
   return (
     <div className="compare-root">
+      {extractionWarnings.length > 0 ? (
+        <p className="compare-warn" role="status">
+          <span className="compare-warn-mark" aria-hidden="true">!</span>
+          <span>
+            Belgenin bir bölümü okunamadı ve karşılaştırmaya girmedi:{" "}
+            {extractionWarnings.join(" · ")}
+          </span>
+        </p>
+      ) : null}
       {/* Fark sayacı barda, panelde değil: aynı sayı iki evde durmaz.
           Ray KONUMU, liste İÇERİĞİ gösterir; sayı ikisinin de üstünde. */}
       <ToolbarStatus>
