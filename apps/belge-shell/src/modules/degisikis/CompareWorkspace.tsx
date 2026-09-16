@@ -131,6 +131,32 @@ export function CompareWorkspace({ paths }: { paths: string[] }) {
     });
   }, []);
 
+  // Seçili fark GÖRÜNÜR ALANA getirilir.
+  //
+  // "Sonraki/Önceki değişiklik" düğmeleri ve ray düğümleri yalnız SEÇİMİ
+  // değiştiriyordu: sayaç ilerliyor, ray hareket ediyor, ama BELGE yerinde
+  // kalıyordu. Ekrandan uzun bir belgede kullanıcı ileri tıklayıp hiçbir şeyin
+  // değişmediğini görüyordu — etiketi "değişikliğe git" diyen bir kontrol
+  // gitmiyordu. Ray belgeyi İZLİYOR (scrollTop okuyor); ters yön eksikti.
+  //
+  // Zaten görünen bir fark için kaydırma yapılmaz: kullanıcı kendi kaydırmasını
+  // yaptıysa onunla kavga edilmez. İki panel birbirine senkron olduğu için
+  // yalnız biri sürülür.
+  useEffect(() => {
+    const change = model?.changes.find((c) => c.id === selected);
+    const pane = basePane.current;
+    if (!change || !pane) return;
+    const row = baseRows.current.get(change.rowIndices[0] ?? 0);
+    if (!row || row.offsetHeight === 0) return;
+    const view = pane.clientHeight;
+    const top = row.offsetTop;
+    const bottom = top + row.offsetHeight;
+    if (top >= pane.scrollTop && bottom <= pane.scrollTop + view) return;
+    const next = Math.max(0, top - view / 2 + row.offsetHeight / 2);
+    pane.scrollTop = next;
+    if (revisedPane.current) revisedPane.current.scrollTop = next;
+  }, [selected, model]);
+
   if (busy) {
     return (
       <div className="surface">
