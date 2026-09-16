@@ -110,7 +110,7 @@ Bir modül sorun çıkarırsa yalnız o rota kapanır; uygulamanın tamamı geri
 ```sh
 cd apps/belge-shell && npm install
 npm run build                      # tsc + vite
-cargo test --workspace             # 22 test
+cargo test --workspace             # 51 takım · 736 test
 cargo clippy --workspace --all-targets -- -D warnings
 bash scripts/check-architecture.sh
 bash scripts/release-gate.sh --fast
