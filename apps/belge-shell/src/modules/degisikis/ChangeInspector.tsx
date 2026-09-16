@@ -112,8 +112,11 @@ export function ChangeInspector({ summary, filter, onFilterChange, filteredChang
       {selectedChange ? <SelectedDetail change={selectedChange} /> : null}
 
       <div className="filters" role="group" aria-label="Değişiklik filtresi">
+        {/* `aria-pressed`: yürürlükteki filtre yalnız renkle belliydi; ekran
+            okuyucu dört özdeş düğme okuyor, hangisinin açık olduğunu
+            söylemiyordu. */}
         {(Object.keys(FILTER_LABELS) as ChangeFilter[]).map((value) => (
-          <button key={value} className={filter === value ? "is-active" : ""} onClick={() => onFilterChange(value)}>
+          <button key={value} className={filter === value ? "is-active" : ""} aria-pressed={filter === value} onClick={() => onFilterChange(value)}>
             {FILTER_LABELS[value]}
           </button>
         ))}

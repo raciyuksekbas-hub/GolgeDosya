@@ -44,7 +44,19 @@ type Loaded = { path: string; doc: LocalDocument };
  * evi var: sürüm değiştirme rayın başında, filtre panelde, paneli gizleme
  * bardaki "Ayrıntılar" düğmesinde.
  */
-export function CompareWorkspace({ paths }: { paths: string[] }) {
+export function CompareWorkspace({ paths, onPairChange }: {
+  paths: string[];
+  /**
+   * Yürürlükteki Temel/Değişik sırasını kabuğa bildirir.
+   *
+   * Sürüm değiştirme bu çalışma alanının KENDİ durumunu çevirir; kabuğun
+   * belge listesi değişmez. Bunu söylemezsek yardımcı bardaki çipler açılış
+   * sırasında kalır ve "önce yazan Temel'dir" okumasıyla çelişir. Sıra
+   * yeniden çıkarma yapılmadan bildirilir; kullanıcı seçili değişikliği
+   * kaybetmez.
+   */
+  onPairChange?: (paths: string[]) => void;
+}) {
   const [docs, setDocs] = useState<[Loaded, Loaded] | null>(null);
   const [busy, setBusy] = useState(true);
   const [failure, setFailure] = useState<string | null>(null);
@@ -251,7 +263,15 @@ export function CompareWorkspace({ paths }: { paths: string[] }) {
           selectedIndex={selectedIndex}
           onSelect={(c) => setSelected(c.id)}
           onMove={move}
-          onSwap={() => setDocs((d) => (d ? [d[1], d[0]] : d))}
+          onSwap={() => {
+            if (!docs) return;
+            // Yan etki durum güncelleyicinin İÇİNDE durmaz: React güncelleyiciyi
+            // iki kez çağırabilir, duyuru da çift okunurdu.
+            const swapped: [Loaded, Loaded] = [docs[1], docs[0]];
+            setDocs(swapped);
+            onPairChange?.(swapped.map((x) => x.path));
+            announce(`Sürümler değiştirildi. Temel sürüm artık ${swapped[0].doc.name}.`);
+          }}
           canSwap
           paneRef={basePane}
           rowRefs={baseRows}

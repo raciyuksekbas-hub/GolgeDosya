@@ -92,6 +92,8 @@ export function App() {
 
   /** Ayar yazımı başarısız olursa kullanıcı bunu BİLMELİ. */
   const [settingsError, setSettingsError] = useState("");
+  /** Karşılaştır'ın bildirdiği yürürlükteki Temel/Değişik sırası. */
+  const [comparePair, setComparePair] = useState<string[] | null>(null);
 
   const saveSettings = useCallback(async (next: Settings) => {
     // İyimser güncelleme: arayüz anında tepki verir. Ama yazım başarısız
@@ -162,7 +164,18 @@ export function App() {
     // Yalnız bu kipin GERÇEKTEN kullandığı belgeler. Seçici çoklu seçime izin
     // veriyor; yedi dosya seçilince bar yedi kırpılmış çipe dönüşüyordu.
     // Fazlalıklar atılmaz — kullanıcı geri döndüğünde yine oradalar.
-    const shown = documents.slice(0, active ? MODES[active.key].needs : 1);
+    let shown = documents.slice(0, active ? MODES[active.key].needs : 1);
+    // Karşılaştır'da sürüm değiştirilmiş olabilir. Çalışma alanı kendi
+    // sırasını bildirir; bar onu izler, yoksa çipler açılış sırasında kalır ve
+    // "önce yazan Temel'dir" okumasıyla çelişir. Bildirilen sıra ancak AYNI
+    // belgelerin bir dizilişiyse kullanılır: yeni bir çift açıldığında eski
+    // bildirim kendiliğinden düşer.
+    if (
+      comparePair &&
+      comparePair.length === shown.length &&
+      comparePair.every((p) => shown.includes(p))
+    )
+      shown = comparePair;
     return shown.map((p, i) => (
       <span key={p} className="doc-chip" title={fileNameOf(p)}>
         {i > 0 ? (
@@ -173,7 +186,7 @@ export function App() {
         <span className="doc-chip-name">{fileNameOf(p)}</span>
       </span>
     ));
-  }, [documents, active]);
+  }, [documents, active, comparePair]);
 
   if (error) {
     return (
@@ -223,7 +236,7 @@ export function App() {
           ) : usable && active.key === "ikincigoz" ? (
             <ReviewWorkspace path={carried[0]} />
           ) : usable && active.key === "degisikis" ? (
-            <CompareWorkspace paths={carried} />
+            <CompareWorkspace paths={carried} onPairChange={setComparePair} />
           ) : usable && active.key === "duzenek" ? (
             // Açılamayan belgeden kurtulma yolu kabuktan geçer: bardaki ad, son
             // kullanılanlar ve çalışma alanı aynı belgeyi göstersin.

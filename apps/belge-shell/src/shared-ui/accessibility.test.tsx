@@ -12,12 +12,30 @@ import postcss from "postcss";
 import { describe, expect, it } from "vitest";
 import { Status } from "./primitives";
 import { PdfWorkspace } from "../modules/duzenek/PdfWorkspace";
+import { ChangeInspector } from "../modules/degisikis/ChangeInspector";
+import { compareDocuments } from "../modules/degisikis/core/compare";
+import { makeBlocks } from "../modules/degisikis/core/normalize";
+import {
+  buildComparisonViewModel,
+  summarize,
+} from "../modules/degisikis/viewModels/comparisonViewModel";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (p: string) => readFileSync(resolve(here, p), "utf8");
 const tokens = postcss.parse(read("tokens.css"));
 const shell = postcss.parse(read("shell.css"));
 const pdfSource = read("../modules/duzenek/PdfWorkspace.tsx");
+const consentSource = read("../modules/tavzih/Consent.tsx");
+const compareSource = read("../modules/degisikis/CompareWorkspace.tsx");
+const appSource = read("../App.tsx");
+
+/** Gerçek bir karşılaştırma — filtre düğmeleri gerçek veriyle çizilsin. */
+const changes = buildComparisonViewModel(
+  compareDocuments(
+    makeBlocks([{ text: "Bedel 100.000 TL'dir." }, { text: "Yalnız temelde." }], "base"),
+    makeBlocks([{ text: "Bedel 118.000 TL'dir." }, { text: "Yalnız değişikte." }], "revised"),
+  ),
+).changes;
 
 /** Bir seçici için yürürlükteki bildirimler. */
 function decls(sheet: postcss.Root, selector: string): Record<string, string> {
@@ -107,5 +125,78 @@ describe("sayfa kutularının erişilebilir adı", () => {
     // adı KAYNAK sayfasını söylüyordu, ikisi birbirini tutmuyordu.
     expect(pdfSource).toContain("${index + 1}. sayfayı yukarı taşı");
     expect(pdfSource).toContain("${index + 1}. sayfayı aşağı taşı");
+  });
+});
+
+describe("durum yalnız renkle anlatılmaz", () => {
+  // Yeniden üretim: Karşılaştır → Fark Özeti. Dört filtre düğmesinden hangisinin
+  // yürürlükte olduğu SADECE `is-active` sınıfının rengiyle belliydi. Ekran
+  // okuyucu dört özdeş "düğme" okuyor; renk körü bir kullanıcı da ayırt
+  // edemiyordu.
+  const inspector = (filter: "all" | "added") =>
+    renderToStaticMarkup(
+      <ChangeInspector
+        summary={summarize(changes)}
+        filter={filter}
+        onFilterChange={() => undefined}
+        filteredChanges={changes}
+        selectedChange={undefined}
+        onSelect={() => undefined}
+      />,
+    );
+
+  it("yürürlükteki filtre erişilebilirlik ağacında da işaretli", () => {
+    expect(inspector("all")).toContain('aria-pressed="true"');
+  });
+
+  it("yalnız BİR filtre işaretli görünür", () => {
+    const pressed = inspector("added").match(/aria-pressed="true"/g) ?? [];
+    expect(pressed).toHaveLength(1);
+  });
+
+  it("işaret sınıfla birlikte yürür, sınıfın yerine geçmez", () => {
+    // Görsel gösterge kaldırılmadı; yanına erişilebilir olanı eklendi.
+    expect(inspector("all")).toContain("is-active");
+  });
+});
+
+describe("kip pencereleri odağı içeride tutar", () => {
+  // Yeniden üretim: ilk açılışta Kullanım Koşulları penceresi açıkken Tab.
+  // `aria-modal` ekran okuyucunun sanal imlecini kısıtlar ama FİZİKSEL odağı
+  // kısıtlamaz: odak arkadaki, o an kullanılamaz uygulamanın düğmelerine
+  // kaçıyordu. Klavye kullanıcısı cevaplayamadığı bir kapının ardında
+  // dolaşıyordu.
+  it("kullanım koşulları penceresi tuzak kurar", () => {
+    expect(consentSource).toMatch(/useFocusTrap\(sheet, true\)/);
+    expect(consentSource).toContain('<div className="sheet" ref={sheet} role="dialog"');
+  });
+
+  it("dönüştürme uyarısı tuzak kurar ve Escape'i vazgeçmeye bağlar", () => {
+    expect(consentSource).toMatch(/useFocusTrap\(sheet, true, onCancel\)/);
+  });
+
+  it("koşullar penceresinde Escape hâlâ kapatmaz", () => {
+    // Cevaplanması gereken kapı Escape ile atlanamaz; tuzak bunu gevşetmedi.
+    expect(consentSource).toMatch(/if \(e\.key === "Escape"\) e\.preventDefault\(\);/);
+  });
+});
+
+describe("sürüm değiştirme bara yansır", () => {
+  // Yeniden üretim: Karşılaştır'da sürümleri değiştir. Paneller doğru
+  // etiketleniyordu ("TEMEL SÜRÜM" + dosya adı) ama yardımcı bardaki çipler
+  // açılış sırasında kalıyordu; "önce yazan Temel'dir" okumasıyla çelişiyordu.
+  it("çalışma alanı yeni sırayı kabuğa bildirir", () => {
+    expect(compareSource).toContain("onPairChange?.(swapped.map((x) => x.path))");
+  });
+
+  it("değişiklik ekran okuyucuya söylenir", () => {
+    expect(compareSource).toContain("Sürümler değiştirildi. Temel sürüm artık");
+  });
+
+  it("bar bildirilen sırayı izler", () => {
+    expect(appSource).toContain("shown = comparePair");
+    // Bildirim ancak AYNI belgelerin bir dizilişiyse geçerli: yeni bir çift
+    // açıldığında eski bildirim kendiliğinden düşmeli.
+    expect(appSource).toContain("comparePair.every((p) => shown.includes(p))");
   });
 });

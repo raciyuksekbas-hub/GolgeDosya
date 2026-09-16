@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useFocusTrap } from "../../shared-ui/useFocusTrap";
 
 /**
  * İlk kullanım onayı ve iş başına uyarı.
@@ -10,6 +11,12 @@ import { useEffect, useRef } from "react";
 
 export function FirstUseAcceptance({ onAccept }: { onAccept: () => void }) {
   const ref = useRef<HTMLButtonElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  // `aria-modal` ekran okuyucunun sanal imlecini kısıtlar ama FİZİKSEL odağı
+  // kısıtlamaz: Tab, arkadaki uygulamanın düğmelerine kaçıyordu. Klavye
+  // kullanıcısı cevaplaması gereken kapının ardındaki, o an kullanılamaz
+  // yüzeyde dolaşıyordu. `onEscape` KASITLI olarak verilmedi.
+  useFocusTrap(sheet, true);
   useEffect(() => {
     ref.current?.focus();
     // Escape, kullanıcının cevaplaması gereken bir kapıyı kapatmamalı.
@@ -22,7 +29,7 @@ export function FirstUseAcceptance({ onAccept }: { onAccept: () => void }) {
 
   return (
     <div className="sheet-backdrop">
-      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="onay-baslik">
+      <div className="sheet" ref={sheet} role="dialog" aria-modal="true" aria-labelledby="onay-baslik">
         <h2 id="onay-baslik">Kullanım Koşulları</h2>
         <div className="selectable" style={{ color: "var(--text-secondary)" }}>
           <p>
@@ -60,21 +67,18 @@ export function ConversionWarning({
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  // Tuzak ÖNCE kurulur; onun ilk öğeye verdiği odağı aşağıdaki efekt birincil
+  // eyleme çeker. Sıra bu yüzden önemli: davranış değişmesin diye odak yine
+  // "Anladım, Dönüştür" düğmesinde başlar.
+  useFocusTrap(sheet, true, onCancel);
   useEffect(() => {
     ref.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onCancel();
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [onCancel]);
+  }, []);
 
   return (
     <div className="sheet-backdrop">
-      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="uyari-baslik">
+      <div className="sheet" ref={sheet} role="dialog" aria-modal="true" aria-labelledby="uyari-baslik">
         <h2 id="uyari-baslik">Dönüştürmeden önce</h2>
         <p style={{ color: "var(--text-secondary)" }}>
           {count > 1
