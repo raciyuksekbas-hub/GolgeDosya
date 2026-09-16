@@ -172,6 +172,14 @@ export function App() {
   }
 
   const outcome = active && documents.length > 0 ? context ?? carryContext(active.key, documents) : null;
+  // Kabuğun TAŞIMA KARARI motora da geçer. `carryContext` "bu kip bir belge
+  // ister, ilkini taşı" diyip bar da onu gösterirken, çalışma alanlarına ham
+  // `documents` dizisi veriliyordu: Karşılaştır'dan iki belgeyle Dönüştür'e
+  // geçen kullanıcıya bar bir belge gösteriyor, motor ikisini birden
+  // dönüştürüp haber verilmemiş bir ZIP üretiyordu. Karar tek yerde verilir,
+  // her yerde aynı uygulanır. (İkinci belge ATILMAZ; `documents` korunur,
+  // kullanıcı geri döndüğünde yine oradadır.)
+  const carried = outcome && outcome.kind === "keep" ? outcome.paths : documents;
 
   return (
     <>
@@ -192,15 +200,15 @@ export function App() {
       >
         {active && settings ? (
           usable && active.key === "tavzih" ? (
-            <ConvertWorkspace paths={documents} />
+            <ConvertWorkspace paths={carried} />
           ) : usable && active.key === "ikincigoz" ? (
-            <ReviewWorkspace path={documents[0]} />
+            <ReviewWorkspace path={carried[0]} />
           ) : usable && active.key === "degisikis" ? (
-            <CompareWorkspace paths={documents} />
+            <CompareWorkspace paths={carried} />
           ) : usable && active.key === "duzenek" ? (
             // Açılamayan belgeden kurtulma yolu kabuktan geçer: bardaki ad, son
             // kullanılanlar ve çalışma alanı aynı belgeyi göstersin.
-            <PdfWorkspace paths={documents} onOpenDocument={openDocuments} />
+            <PdfWorkspace paths={carried} onOpenDocument={openDocuments} />
           ) : (
             <DocumentSurface
               feature={active}

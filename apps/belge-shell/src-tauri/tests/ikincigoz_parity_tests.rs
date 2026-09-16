@@ -368,6 +368,7 @@ fn applying_fixes_twice_never_clobbers_a_previously_edited_copy() {
         source.to_string_lossy().to_string(),
         fixes.clone(),
         Some(out_s.clone()),
+        None,
     ))
     .expect("ilk uygulama başarılı olmalı");
     assert_eq!(r1.file_name, "ornek-dilekce-hatali - Düzeltilmiş.docx");
@@ -384,6 +385,7 @@ fn applying_fixes_twice_never_clobbers_a_previously_edited_copy() {
         source.to_string_lossy().to_string(),
         fixes.clone(),
         Some(out_s.clone()),
+        None,
     ))
     .expect("ikinci uygulama başarılı olmalı");
 
