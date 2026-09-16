@@ -2336,7 +2336,7 @@ fn c56_output_root_is_platform_correct() {
         .take(3)
         .map(|c| c.as_os_str().to_string_lossy().to_string())
         .collect();
-    assert_eq!(tail, vec!["Dönüştürülen Belgeler", "Tavzih", "Documents"]);
+    assert_eq!(tail, vec!["Dönüştürülen Belgeler", "GölgeDosya", "Documents"]);
     assert!(r.is_absolute() || cfg!(test), "{}", r.display());
 }
 
