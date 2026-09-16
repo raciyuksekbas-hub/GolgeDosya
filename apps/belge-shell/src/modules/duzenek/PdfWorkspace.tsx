@@ -234,8 +234,20 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     finally {
         setBusy(false);
     } };
+    // Seçici VAZGEÇMEDE null döner (sessizlik doğrudur) ama BAŞARISIZLIKTA
+    // reddeder. `.catch(() => null)` ikisini aynı şeye indiriyordu: gerçek bir
+    // hata da "vazgeçildi" gibi görünüyor, düğmeye basan kullanıcı hiçbir şey
+    // olmadığını görüp nedenini öğrenemiyordu. İkisi artık ayrı.
     const choose = async () => {
-        const paths = await open({ multiple: kind === 'merge' || kind === 'images', filters: [{ name: kind === 'images' ? 'Görseller' : 'PDF', extensions: kind === 'images' ? ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'heic'] : ['pdf'] }] }).catch(() => null);
+        let paths: string | string[] | null;
+        try {
+            paths = await open({ multiple: kind === 'merge' || kind === 'images', filters: [{ name: kind === 'images' ? 'Görseller' : 'PDF', extensions: kind === 'images' ? ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'heic'] : ['pdf'] }] });
+        } catch (e) {
+            logFailure('duzenek picker failure', e);
+            setStatus('Dosya seçici açılamadı. Lütfen yeniden deneyin.');
+            announce('Dosya seçici açılamadı.');
+            return;
+        }
         if (!paths)
             return;
         await load(Array.isArray(paths) ? paths : [paths]);
@@ -244,7 +256,15 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     // bardaki belge adı, son kullanılanlar ve çalışma alanı aynı belgeyi
     // göstersin; kabuk yoksa belge burada açılır.
     const openAnother = async () => {
-        const picked = await open({ multiple: false, filters: [{ name: 'PDF', extensions: ['pdf'] }] }).catch(() => null);
+        let picked: string | string[] | null;
+        try {
+            picked = await open({ multiple: false, filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+        } catch (e) {
+            logFailure('duzenek picker failure', e);
+            setStatus('Dosya seçici açılamadı. Lütfen yeniden deneyin.');
+            announce('Dosya seçici açılamadı.');
+            return;
+        }
         if (typeof picked !== 'string')
             return;
         if (onOpenDocument)

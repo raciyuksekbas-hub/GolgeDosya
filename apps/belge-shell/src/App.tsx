@@ -5,6 +5,7 @@ import { featureForRoute, firstAvailableRoute, resolveRoute } from "./shell/rout
 import type { FeatureState, PrefTab, Settings } from "./shell/types";
 import * as api from "./shell/api";
 import { applyPreferences } from "./shared-ui/theme";
+import { logFailure, safeMessage } from "./shared-ui/failure";
 import { DocumentSurface } from "./features/DocumentSurface";
 import { ConvertWorkspace } from "./modules/tavzih/ConvertWorkspace";
 import { ReviewWorkspace } from "./modules/ikincigoz/ReviewWorkspace";
@@ -89,10 +90,28 @@ export function App() {
     [features, documents],
   );
 
+  /** Ayar yazımı başarısız olursa kullanıcı bunu BİLMELİ. */
+  const [settingsError, setSettingsError] = useState("");
+
   const saveSettings = useCallback(async (next: Settings) => {
+    // İyimser güncelleme: arayüz anında tepki verir. Ama yazım başarısız
+    // olursa reddetme HİÇBİR YERDE yakalanmıyordu: kullanıcı değişikliği
+    // ekranda görüyor, disk'e hiç yazılmamış oluyor ve tercih bir sonraki
+    // açılışta sessizce kayboluyordu — sahte başarı. Artık geri alınıyor ve
+    // söyleniyor.
+    const previous = settings;
     setSettings(next);
-    setSettings(await api.saveSettings(next));
-  }, []);
+    setSettingsError("");
+    try {
+      setSettings(await api.saveSettings(next));
+    } catch (e) {
+      logFailure("settings save", e);
+      if (previous) setSettings(previous);
+      const message = safeMessage(e, "Tercih kaydedilemedi. Değişiklik geri alındı.");
+      setSettingsError(message);
+      announce(message);
+    }
+  }, [settings]);
 
   const openDocuments = useCallback(
     async (paths: string[]) => {
@@ -228,6 +247,7 @@ export function App() {
           tab={prefsTab}
           onTab={setPrefsTab}
           onChange={saveSettings}
+          error={settingsError}
           onForget={forgetDocuments}
           onClose={() => setPrefsTab(null)}
         />

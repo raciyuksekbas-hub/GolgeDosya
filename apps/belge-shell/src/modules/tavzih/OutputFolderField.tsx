@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "./api";
 import type { OutputFolder } from "./types";
-import { Button } from "../../shared-ui/primitives";
+import { Button, Status } from "../../shared-ui/primitives";
+import { logFailure, safeMessage } from "../../shared-ui/failure";
 
 /**
  * Çıktı klasörü satırı — saf sunum.
@@ -13,10 +14,13 @@ import { Button } from "../../shared-ui/primitives";
  */
 export function OutputFolderRow({
   folder,
+  error,
   onChoose,
   onReset,
 }: {
   folder: OutputFolder;
+  /** Klasör değiştirilemediyse nedeni. Sessiz kalmak yerine söylenir. */
+  error?: string;
   onChoose: () => void;
   onReset: () => void;
 }) {
@@ -33,6 +37,11 @@ export function OutputFolderRow({
         </div>
         <Button onClick={onChoose}>Değiştir</Button>
       </div>
+      {error ? (
+        <p className="prefs-hint">
+          <Status tone="error">{error}</Status>
+        </p>
+      ) : null}
       {!folder.is_default ? (
         <p className="prefs-hint">
           <Button className="btn-sm" variant="quiet" onClick={onReset}>
@@ -68,16 +77,40 @@ export function OutputFolderField() {
     };
   }, []);
 
+  // Klasör DEĞİŞTİRİLEMEDİĞİNDE sessiz kalınmıyordu-kalınıyordu: hata
+  // `.catch(() => folder)` ile yutuluyor, satır eski değeri göstermeye devam
+  // ediyor ve kullanıcı neden hiçbir şey olmadığını anlamıyordu. Motor sebebi
+  // biliyor (yazılamayan klasör, izin yok); o sebep artık ekrana çıkar.
+  const [error, setError] = useState("");
+
+  const apply = useCallback(
+    async (next: string | null) => {
+      setError("");
+      try {
+        setFolder(await api.setOutputFolder(next));
+      } catch (e) {
+        logFailure("tavzih output folder", e);
+        setError(
+          safeMessage(e, "Bu klasör kullanılamadı. Yazma izni olan başka bir klasör seçin."),
+        );
+      }
+    },
+    [],
+  );
+
   const choose = useCallback(async () => {
     const picked = await open({ directory: true, multiple: false }).catch(() => null);
+    // Kullanıcı vazgeçtiyse bu bir hata değildir; sessizlik doğrudur.
     if (typeof picked !== "string") return;
-    setFolder(await api.setOutputFolder(picked).catch(() => folder));
-  }, [folder]);
+    await apply(picked);
+  }, [apply]);
 
   const reset = useCallback(async () => {
-    setFolder(await api.setOutputFolder(null).catch(() => folder));
-  }, [folder]);
+    await apply(null);
+  }, [apply]);
 
   if (!folder) return null;
-  return <OutputFolderRow folder={folder} onChoose={choose} onReset={reset} />;
+  return (
+    <OutputFolderRow folder={folder} error={error} onChoose={choose} onReset={reset} />
+  );
 }

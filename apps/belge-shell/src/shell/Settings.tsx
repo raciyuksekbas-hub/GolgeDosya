@@ -3,7 +3,7 @@ import type { PrefTab, Settings } from "./types";
 import { useFocusTrap } from "../shared-ui/useFocusTrap";
 import { AppMark } from "./icons";
 import { announce } from "../shared-ui/Announcer";
-import { Button, Field } from "../shared-ui/primitives";
+import { Button, Field, Status } from "../shared-ui/primitives";
 import { OutputFolderField } from "../modules/tavzih/OutputFolderField";
 
 interface Props {
@@ -13,6 +13,8 @@ interface Props {
   tab: PrefTab;
   onTab: (tab: PrefTab) => void;
   onChange: (next: Settings) => void;
+  /** Tercih kaydedilemediyse nedeni. Sessiz kalmak yerine söylenir. */
+  error?: string;
   /** Son belgeler listesini unut — kabuğun kendi eylemi. */
   onForget: () => void;
   onClose: () => void;
@@ -127,6 +129,7 @@ export function PreferencesSheet({
   tab,
   onTab,
   onChange,
+  error,
   onForget,
   onClose,
 }: Props) {
@@ -146,6 +149,11 @@ export function PreferencesSheet({
       }}
     >
       <div className="sheet prefs" ref={ref} role="dialog" aria-modal="true" aria-labelledby="ayar-baslik">
+        {error ? (
+          <p className="prefs-hint">
+            <Status tone="error">{error}</Status>
+          </p>
+        ) : null}
         <nav className="prefs-tabs" aria-label="Tercih bölümleri">
           {TABS.map((t) => (
             <button
