@@ -493,9 +493,30 @@ fn migrate_belge(old_dir: &Path, target_dir: &Path, s: &mut Settings) -> SourceS
         }
     };
     *s = inherited;
-    SourceStatus::Migrated {
-        fields: vec!["settings.json".to_string()],
+    let mut fields = vec!["settings.json".to_string()];
+
+    // Sözlük ve profiller de devralınır. Önceki birleşik "Belge" kurulumu
+    // İkinciGöz'ün sözlüğünü KENDİ yapılandırma dizinine taşımıştı; buradan
+    // kopyalanmazsa kalıcı olarak geride kalırdı: `migrate_belge` başarılı
+    // olduğu an `pristine` false olur ve İkinciGöz kaynağı artık hiç
+    // okunmaz (bkz. çağıran). Kullanıcının öğrettiği kelimeler ve kurduğu
+    // profiller yükseltmede sessizce kaybolurdu.
+    //
+    // Ayrıştırılmaz, birebir kopyalanır — şemayı yeniden yorumlamak
+    // kullanıcının emeğini bozmanın en kolay yoludur (bkz. IKINCIGOZ_VERBATIM).
+    for name in IKINCIGOZ_VERBATIM {
+        let src = old_dir.join(name);
+        let dst = target_dir.join(name);
+        if src.is_file() && !dst.exists() {
+            if std::fs::create_dir_all(target_dir).is_err() {
+                continue;
+            }
+            if std::fs::copy(&src, &dst).is_ok() {
+                fields.push(name.to_string());
+            }
+        }
     }
+    SourceStatus::Migrated { fields }
 }
 
 // ----------------------------------------------------------------- orchestrator
@@ -679,6 +700,45 @@ mod tests {
     /// ediyordu. Erken `return` dosya kopyalamasından ÖNCEydi; kullanıcının
     /// öğrettiği kelimeler ve profilleri, ilgisiz bir ayar tipi hatası
     /// yüzünden kalıcı olarak kayboluyordu.
+    /// P1: Önceki birleşik "Belge" kurulumundan yükseltmede sözlük ve
+    /// profiller devralınmıyordu. `migrate_belge` yalnız settings.json
+    /// taşıyor, ama başarılı olduğu an `pristine` false oluyor ve İkinciGöz
+    /// kaynağı bir daha hiç okunmuyordu — kullanıcının öğrettiği kelimeler
+    /// yükseltmede geride kalıyordu.
+    #[test]
+    fn upgrading_from_the_previous_unified_install_carries_the_dictionary_and_profiles() {
+        let d = tmp("belge");
+        let t = tmp("belge-hedef");
+        std::fs::write(
+            d.join(crate::settings::SETTINGS_FILE),
+            r#"{"theme":"dark","textScale":150}"#,
+        )
+        .unwrap();
+        std::fs::write(d.join("dictionary.json"), r#"{"accepted":["tahkim"]}"#).unwrap();
+        std::fs::write(d.join("profiles.json"), r#"{"profiles":[]}"#).unwrap();
+
+        let mut s = Settings::default();
+        let status = migrate_belge(&d, &t, &mut s);
+
+        assert_eq!(s.theme, "dark", "ayarlar devralınmalı");
+        assert!(
+            t.join("dictionary.json").is_file(),
+            "P1: sözlük devralınmadı (yükseltmede kayıp)"
+        );
+        assert!(t.join("profiles.json").is_file(), "P1: profiller devralınmadı");
+        assert_eq!(
+            std::fs::read_to_string(t.join("dictionary.json")).unwrap(),
+            r#"{"accepted":["tahkim"]}"#,
+            "sözlük birebir kopyalanmalı"
+        );
+        match status {
+            SourceStatus::Migrated { fields } => {
+                assert!(fields.contains(&"dictionary.json".to_string()), "{fields:?}");
+            }
+            other => panic!("beklenen Migrated, gelen {other:?}"),
+        }
+    }
+
     #[test]
     fn a_corrupt_legacy_settings_file_must_not_cancel_dictionary_and_profile_migration() {
         let d = tmp("ig-bozuk");
