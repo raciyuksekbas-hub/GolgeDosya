@@ -173,8 +173,10 @@ export function ToolGroups({ kind, busy, onPick }: {
  * Artık her durumun tek karşılığı var ve hata durumu kendi kurtarma eylemini
  * taşıyor. Kart, dev panel, çizim ve teknik ayrıntı alanı yok.
  */
-export function PreviewPlaceholder({ state, detail, onOpenAnother }: {
+export function PreviewPlaceholder({ state, detail, onOpenAnother, forImages = false }: {
     state: DocumentState; detail: string; onOpenAnother: () => void;
+    /** "Görseller → PDF" aracında ana alan PDF değil GÖRSEL ister. */
+    forImages?: boolean;
 }) {
     if (state === 'failed') {
         return <EmptyState
@@ -185,6 +187,10 @@ export function PreviewPlaceholder({ state, detail, onOpenAnother }: {
         />;
     }
     if (state === 'loading') return <Status tone="busy">Belgeler inceleniyor…</Status>;
+    // Görseller → PDF aracı GÖRSELLE çalışır; burada "PDF seçtiğinizde…"
+    // demek hem yanlış türü ister hem de yüklenmiş görselleri yok sayar.
+    if (forImages)
+        return <EmptyState title="Görseller → PDF" note="Seçtiğiniz görseller soldaki şeritte listelenir; sırayı orada görebilirsiniz. Önizleme yalnız PDF sayfaları için çizilir." />;
     return <EmptyState title="Belge önizlemesi" note="PDF seçtiğinizde sayfaları burada göreceksiniz." />;
 }
 
@@ -353,6 +359,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         }
     };
     const pageSelection = ['select', 'delete', 'rotate'].includes(kind);
+    const pickVerb = kind === 'delete' ? 'Çıkar' : kind === 'rotate' ? 'Döndür' : 'Dahil et';
     const surfaces = workspaceSurfaces(docState, order.length);
     const cannotSave = busy || !sources.length || (sources.some(s => s.is_signed) && !approved) ||
         (['select', 'delete'].includes(kind) && !selected.length) || outputCount === 0 || (kind === 'rotate' && !Object.values(rotations).some(Boolean));
@@ -456,18 +463,31 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                         : <span className="thumbnail-placeholder">{item.source.file_name}</span>}
                 </button>
                 <span className="thumbnail-no">{index + 1}<span className="sr-only">. çıktı sırası · Kaynak s. {item.page}</span></span>
-                {pageSelection && <label className="thumbnail-pick"><input type="checkbox" checked={selected.includes(item.key)} onChange={() => toggle(item.key)}/>{kind === 'delete' ? 'Çıkar' : kind === 'rotate' ? 'Döndür' : 'Dahil et'}</label>}
+                {/* Erişilebilir ad sayfayı TANIMLAR. Eskiden ad yalnız görünen
+                    sözcüktü ("Dahil et"); 30 sayfalık bir belgede ekran okuyucu
+                    30 kez aynı şeyi söylüyor, kullanıcı hangi kutuyu
+                    işaretlediğini ayırt edemiyordu — yanlış sayfayı çıkarma
+                    riski. Görünen sözcük adın İÇİNDE kalır (WCAG 2.5.3). */}
+                {pageSelection && <label className="thumbnail-pick"><input type="checkbox" aria-label={`${index + 1}. sayfa (kaynak s. ${item.page}) — ${pickVerb}`} checked={selected.includes(item.key)} onChange={() => toggle(item.key)}/>{pickVerb}</label>}
                 {kind === 'reorder' && <div className="thumbnail-move">
-                    <IconButton label={`${item.page}. sayfayı yukarı taşı`} disabled={index === 0 || busy} onClick={() => shiftPage(index, -1)}>
+                    <IconButton label={`${index + 1}. sayfayı yukarı taşı (kaynak s. ${item.page})`} disabled={index === 0 || busy} onClick={() => shiftPage(index, -1)}>
                         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </IconButton>
-                    <IconButton label={`${item.page}. sayfayı aşağı taşı`} disabled={index === order.length - 1 || busy} onClick={() => shiftPage(index, 1)}>
+                    <IconButton label={`${index + 1}. sayfayı aşağı taşı (kaynak s. ${item.page})`} disabled={index === order.length - 1 || busy} onClick={() => shiftPage(index, 1)}>
                         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.5V12m-3.5-3.5L8 12l3.5-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </IconButton>
                 </div>}
             </div>)}</aside>}
 
-            <aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">{surfaces.strip && kind !== 'images' ? <>
+            <aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">
+                {/* Durum satırı HER durumda çizilir. Eskiden yalnız
+                    `surfaces.strip && kind !== 'images'` dalının içindeydi:
+                    "Görseller → PDF" aracında kaydetme sonucu (başarı, yol ya da
+                    hata) HİÇ görünmüyordu ve belge açılamadığında seçici hatası
+                    da kayboluyordu — kullanıcı düğmeye basıp hiçbir şey
+                    olmadığını sanıyordu. */}
+                <Status tone={statusTone}>{status}</Status>
+                {surfaces.strip && kind !== 'images' ? <>
                 <div className="pdf-strip">
                     <div className="tool-segment" role="group" aria-label="Sayfa araçları">
                         {PAGE_TOOLS.map(key => <button key={key} type="button" data-tool={key} className={`segment ${kind === key ? 'is-current' : ''}`} title={tools[key][1]} aria-label={tools[key][0]} aria-pressed={kind === key} disabled={busy} onClick={() => pick(key)}>{SHORT[key]}</button>)}
@@ -479,17 +499,12 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     <div className="toolbar-spacer"/>
                     <label className="zoom">Yakınlaştır<select value={zoom} onChange={e => setZoom(e.target.value.startsWith('fit-') ? e.target.value as PreviewMode : Number(e.target.value))}><option value="fit-page">Sayfaya sığdır</option><option value="fit-width">Genişliğe sığdır</option>{[75, 100, 125, 150, 200].map(z => <option key={z} value={z}>{z}%</option>)}</select></label>
                 </div>
-                {/* Ton METİNDEN TAHMİN EDİLMEZ. Eskiden mesajda 'tamamlanamadı'/'açılamadı'
-                    geçmiyorsa 'success' sayılıyordu: "PDF hazırlanıyor…" daha işlem
-                    sürerken yeşil onay, "çıktı kaydedilmedi" diyen NoBenefit de
-                    başarı gibi görünüyordu. Ton artık durumla birlikte taşınır. */}
-                {status && <Status tone={statusTone}>{status}</Status>}
                 <div className="pdf-canvas">
                     <p className="page-line">{active?.source.file_name} · Kaynak sayfa {active?.page} / {active?.source.page_count}{kind === 'delete' && selected.includes(active?.key) ? ' — Çıktıdan çıkarılacak' : ''}{kind === 'rotate' ? ` · Dönüş: ${rotations[active?.key] || 0}°` : ''}{selected.includes(active?.key) ? ' · İşaretli' : ''}</p>
                     <div className="pdf-page-viewport" tabIndex={0} role="region" aria-label="Kaydırılabilir PDF sayfası">{active && <Preview key={active.key} item={active} large mode={zoom} rotation={rotations[active.key] || 0}/>}</div>
                     <p className="preview-note">Kaynak sayfanın önizlemesi. Yeni PDF’nin her sayfasına içerik dışında sağ alt logo payı eklenir. Açıklama/form görünümleri bu önizlemede eksik olabilir; son kopyayı ayrıca inceleyin.</p>
                 </div>
-            </> : <PreviewPlaceholder state={docState} detail={failure} onOpenAnother={openAnother}/>}</aside>
+            </> : <PreviewPlaceholder state={docState} detail={failure} onOpenAnother={openAnother} forImages={kind === 'images'}/>}</aside>
         </div>
     </section>;
 };

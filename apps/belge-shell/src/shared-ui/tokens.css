@@ -203,6 +203,15 @@
   scroll-behavior: auto !important;
 }
 
+/* `animation-duration: 1ms` yalnız BİR kez oynayan animasyonları söndürür;
+   sonsuz döngüyü HIZLANDIRIR. `.spinner` 720 ms'lik turunu 1 ms'de atmaya
+   başlıyor, yani "hareketi azalt" tercihi göstergeyi titreyen bir stroba
+   çeviriyordu — tercihi açan kullanıcı için durum kapalıyken olduğundan
+   kötüydü. Meşgul göstergesi geri bildirimdir; kaldırılmaz, yavaşlatılır. */
+:root[data-motion="reduced"] .spinner {
+  animation-duration: 2400ms !important;
+}
+
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 

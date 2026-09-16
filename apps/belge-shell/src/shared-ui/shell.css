@@ -555,6 +555,7 @@ button.file-row:hover { background: var(--surface-hover); }
   margin: 0 0 var(--space-4);
   color: var(--text-secondary);
 }
+.status[data-empty="true"] { margin: 0; }
 .status[data-tone="error"] { color: var(--danger); }
 .status[data-tone="success"] { color: var(--text-secondary); }
 .status-mark { flex: none; font-weight: 600; }

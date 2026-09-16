@@ -94,15 +94,22 @@ export function Status({
   children: ReactNode;
   live?: "polite" | "assertive" | "off";
 }) {
+  // Boş da olsa çizilebilir olması KASITLI. Canlı bölge içeriğiyle AYNI anda
+  // DOM'a girerse ekran okuyucular çoğu kez hiç duyurmaz: bölge önceden
+  // durmalı, sonra içeriği değişmelidir. Boşken kutusu sıfıra iner ama
+  // erişilebilirlik ağacında kalır.
+  const empty = children === "" || children === null || children === undefined;
+
   return (
     <p
       className="status"
       data-tone={tone === "busy" ? undefined : tone}
+      data-empty={empty ? "true" : undefined}
       role={tone === "error" ? "alert" : "status"}
       aria-live={tone === "error" ? undefined : live}
     >
-      {tone === "busy" ? <span className="spinner" aria-hidden="true" /> : null}
-      {MARK[tone] ? (
+      {!empty && tone === "busy" ? <span className="spinner" aria-hidden="true" /> : null}
+      {!empty && MARK[tone] ? (
         <span className="status-mark" aria-hidden="true">
           {MARK[tone]}
         </span>
