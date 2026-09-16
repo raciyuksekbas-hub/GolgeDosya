@@ -90,9 +90,24 @@ export function CompareWorkspace({ paths, onPairChange }: {
     (async () => {
       try {
         const [a, b] = paths.slice(0, 2);
+        // Hata HANGİ belgede olduğunu söyler. Eskiden iki çıkarma tek
+        // `Promise.all` içindeydi ve red olduğu gibi yukarı çıkıyordu:
+        // kullanıcı "okunamadı" cümlesini görüyor ama iki dosyadan hangisini
+        // değiştireceğini bilmiyordu.
+        const read = async (path: string, role: string) => {
+          try {
+            return await extractDocument(await fileFromPath(path));
+          } catch (e) {
+            throw new ExtractionError(
+              `${baseName(path)} (${role}) okunamadı. ${
+                e instanceof ExtractionError ? e.message : "Dosyanın bütünlüğünü kontrol edin."
+              }`,
+            );
+          }
+        };
         const [first, second] = await Promise.all([
-          extractDocument(await fileFromPath(a)),
-          extractDocument(await fileFromPath(b)),
+          read(a, "Temel Sürüm"),
+          read(b, "Değişik Sürüm"),
         ]);
         if (cancelled) return;
         setDocs([{ path: a, doc: first }, { path: b, doc: second }]);
