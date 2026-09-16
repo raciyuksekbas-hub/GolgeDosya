@@ -13,7 +13,7 @@ import { dirname, resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import postcss from "postcss";
 import { describe, expect, it } from "vitest";
-import { findingKey, ReviewChrome, ReviewClear, visibleText } from "./ReviewWorkspace";
+import { findingKey, ReviewChrome, ReviewClear, visibleText, paragraphNumber } from "./ReviewWorkspace";
 import type { AnalysisResult, Finding } from "./types";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -48,7 +48,8 @@ const FINDING: Finding = {
   message: "Noktadan önce boşluk var.",
   explanation: "Türkçe yazımda noktalama işaretinden önce boşluk bırakılmaz.",
   block_id: "p3",
-  location: { blockIndex: 3, runIndex: null, charStart: 10, charEnd: 12, containerPath: null },
+  // Motorun GERÇEK yükü snake_case (bkz. types.ts SourceLocation).
+  location: { block_index: 3, run_index: null, char_start: 10, char_end: 12, container_path: null },
   context: null,
   fix: {
     block_id: "p3",
@@ -209,5 +210,32 @@ describe("düzeltmenin yazımı", () => {
     // Gerçek metin değişmez.
     expect(visibleText("Ek-1'de")).toBe("Ek-1'de");
     expect(visibleText("Ek - 1 ' de")).toBe("Ek·-·1·'·de");
+  });
+});
+
+describe("paragraf numarası", () => {
+  // Motorun `block_index`i SIFIR tabanlıdır; ekranda 1 tabanlı görünmeli.
+  // Eskiden `block_id` ("p0") olduğu gibi yazılıyor ve belgenin ilk paragrafı
+  // "0. paragraf" görünüyordu — avukat o numarayı belgesinde bulamaz.
+  it("ilk paragraf 1 diye gösterilir, 0 değil", () => {
+    const f = {
+      block_id: "p0",
+      location: { block_index: 0, run_index: null, char_start: null, char_end: null, container_path: null },
+    };
+    expect(paragraphNumber(f)).toBe(1);
+  });
+
+  it("sonraki paragraflar da bir kayar", () => {
+    const f = {
+      block_id: "p3",
+      location: { block_index: 3, run_index: null, char_start: null, char_end: null, container_path: null },
+    };
+    expect(paragraphNumber(f)).toBe(4);
+  });
+
+  // Alan adı camelCase gelirse de okunur; hiç gelmezse block_id'den türetilir.
+  it("alan adı eksikse block_id'den türetir", () => {
+    const f = { block_id: "p7", location: {} as never };
+    expect(paragraphNumber(f)).toBe(8);
   });
 });

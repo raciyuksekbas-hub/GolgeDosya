@@ -3,12 +3,20 @@
 
 export type Severity = "error" | "warning" | "review";
 
+/**
+ * Motorun GERÇEKTEN gönderdiği biçim: snake_case.
+ *
+ * Bu arayüz eskiden camelCase ilan ediyordu; hiçbir alan çalışma zamanında o
+ * adla yoktu, yani tip yalan söylüyordu ve ona güvenen her okuma `undefined`
+ * alıyordu (bir kez gerçek bir bulgu-anahtarı çakışmasına yol açtı). Rust
+ * tarafında `SourceLocation` üzerinde `rename_all` YOKTUR — sözleşme budur.
+ */
 export interface SourceLocation {
-  blockIndex: number;
-  runIndex: number | null;
-  charStart: number | null;
-  charEnd: number | null;
-  containerPath: string | null;
+  block_index: number;
+  run_index: number | null;
+  char_start: number | null;
+  char_end: number | null;
+  container_path: string | null;
 }
 
 export interface Fix {
