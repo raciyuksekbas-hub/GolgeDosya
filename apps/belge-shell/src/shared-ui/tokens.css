@@ -41,8 +41,8 @@
   --surface-selected: rgb(0 0 0 / 7%);
 
   --text-primary: #1c1c1e;
-  --text-secondary: #6b6b70;
-  --text-muted: #94949a;
+  --text-secondary: #67676c;
+  --text-muted: #65656c;
 
   --border-subtle: rgb(0 0 0 / 8%);
   --border-strong: rgb(0 0 0 / 14%);
@@ -157,7 +157,7 @@
 
   --text-primary: rgb(255 255 255 / 92%);
   --text-secondary: rgb(255 255 255 / 58%);
-  --text-muted: rgb(255 255 255 / 38%);
+  --text-muted: rgb(255 255 255 / 48%);
 
   --border-subtle: rgb(255 255 255 / 8%);
   --border-strong: rgb(255 255 255 / 14%);

@@ -168,7 +168,7 @@
 .document-row.kind-removed::before { background: var(--diff-removed-rest); }
 .document-row.kind-modified::before { background: var(--surface-document); box-shadow: inset 0 0 0 1.5px var(--diff-modified-rest); }
 
-.row-gutter { padding-top: 3px; color: var(--text-muted); opacity: .6; font-family: var(--font-mono); font-size: 9px; text-align: center; user-select: none; }
+.row-gutter { padding-top: 3px; color: var(--text-muted); font-family: var(--font-mono); font-size: 9px; text-align: center; user-select: none; }
 .row-content { min-width: 0; }
 .row-.document-row.block-heading .row-body { color: var(--text-primary); font-size: 13px; font-weight: 700; letter-spacing: .005em; }
 .document-row.block-article .row-body { font-weight: 550; }
