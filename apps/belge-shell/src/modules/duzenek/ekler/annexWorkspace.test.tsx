@@ -144,6 +144,9 @@ describe("çekişmeli incelemede bulunan çıkmazlar kapandı", () => {
     expect(source).toContain("o.is_continuation");
     expect(source).toContain("boyut sınırı nedeniyle bölündü");
     expect(source).toContain("validation_report");
+    // Maddenin durumu `level`dedir; `passed` diye bir alan yoktur.
+    expect(source).toContain('i.level !== "pass"');
+    expect(source).not.toContain("!i.passed");
     expect(source).toContain("Gözden geçirin:");
   });
 });

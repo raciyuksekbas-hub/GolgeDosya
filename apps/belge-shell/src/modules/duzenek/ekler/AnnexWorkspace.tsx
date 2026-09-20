@@ -173,20 +173,32 @@ export function AnnexWorkspace({ project, onProject }: {
         outputs: { file_name: string; is_continuation: boolean }[];
         exhibits_list_plain: string;
         package_dir: string;
-        validation_report: { is_ready_for_uyap: boolean; items: { title: string; passed: boolean }[] };
+        /**
+         * `ekler_core::ValidationReport`. Maddenin durumu `level`dedir
+         * (pass / warning / error) — `passed` diye bir alan YOKTUR. İlk
+         * sürüm `passed` okuyordu; `undefined` olduğu için GEÇEN kontroller
+         * de "gözden geçirin" diye listeleniyor ve başarılı çalıştırma hata
+         * tonuyla gösteriliyordu. Paketlenmiş smoke bunu yakaladı.
+         */
+        validation_report: {
+          is_ready_for_uyap: boolean;
+          items: { title: string; level: "pass" | "warning" | "error" }[];
+        };
       }>("duzenek_prepare_uyap", { project, outputDir: dir });
       // Motor boyut sınırını aşan eki KENDİSİ böler ve "…_DEVAM_…" dosyaları
       // üretir. Bu, mahkemeye giden dosya kümesini ve EKLER listesini
       // değiştirir; sessizce olmamalı.
       const split = result.outputs.filter((o) => o.is_continuation).length;
-      const failures = (result.validation_report?.items ?? []).filter((i) => !i.passed);
+      const failures = (result.validation_report?.items ?? []).filter((i) => i.level !== "pass");
       const lines = [
         `${result.outputs.length} dosya üretildi: ${result.package_dir}`,
         split ? `${split} ek boyut sınırı nedeniyle bölündü (DEVAM dosyaları).` : "",
         failures.length ? `Gözden geçirin: ${failures.map((i) => i.title).join(" · ")}` : "",
         "Kaynak belgeleriniz değiştirilmedi.",
       ].filter(Boolean);
-      say(lines.join("\n"), failures.length ? "error" : "success");
+      // Ton motorun kendi kararına bağlanır; tek tek maddelerin sayısına değil.
+      const ready = result.validation_report?.is_ready_for_uyap !== false;
+      say(lines.join("\n"), ready && !failures.length ? "success" : "error");
     } catch (e) {
       logFailure("ekler prepare", e);
       say(safeMessage(e, "Ekler hazırlanamadı. Çıktı klasörünü ve belgeleri kontrol edin."), "error");
