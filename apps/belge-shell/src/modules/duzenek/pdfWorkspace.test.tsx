@@ -415,9 +415,12 @@ describe("kabuğa bağlanma", () => {
     // çizilmez. Panelde belgenin bütününe ait işler ve katlı nadir işler kalır.
     expect(source).not.toMatch(/title: 'Sayfalar'/);
     expect(source).toMatch(/PAGE_TOOLS: Kind\[\] = \['select', 'reorder', 'delete', 'rotate'\]/);
-    for (const group of ["Belge", "Diğer"]) {
+    // Saha turu: "Diğer" hiçbir şey anlatmıyordu; grup adı ne içerdiğini
+    // söylemeli. Kaynaktaki gerekçe yorumu kullanıcıya hiç ulaşmıyordu.
+    for (const group of ["Belge", "Ek Araçlar"]) {
       expect(source).toMatch(new RegExp(`title: '${group}'`));
     }
+    expect(source).not.toMatch(/title: 'Diğer'/);
     // Kısa segment etiketi görünürde; tam ad erişilebilir adda kalır.
     expect(source).toMatch(/className=\{`segment [^`]*`\} title=\{tools\[key\]\[1\]\} aria-label=\{tools\[key\]\[0\]\}/);
     // Nadir grup katlı gelir; <details> olmadan hiyerarşi yalnız görsel olurdu.

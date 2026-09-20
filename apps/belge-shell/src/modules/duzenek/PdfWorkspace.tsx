@@ -76,8 +76,33 @@ const SHORT: Record<Kind, string> = {
  */
 const TOOL_GROUPS: { title: string; keys: Kind[]; collapsed?: boolean }[] = [
     { title: 'Belge', keys: ['merge', 'compress', 'raster'] },
-    { title: 'Diğer', keys: ['crop', 'watermark', 'number', 'images'], collapsed: true },
+    { title: 'Ek Araçlar', keys: ['crop', 'watermark', 'number', 'images'], collapsed: true },
 ];
+
+/**
+ * Seçili aracın panelde cevaplaması gereken sorular.
+ *
+ * Panel eskiden yalnız "ne yapar"ı söylüyordu ve grubun adı "Diğer"di —
+ * hiçbir şey anlatmayan bir ad. Kullanıcı aracın NEYİ etkilediğini ve ÇIKTININ
+ * ne olacağını ekrandan okuyamıyordu; panel geliştirici notu gibi duruyordu.
+ *
+ * Bu tablo dokümantasyon değildir: her araç için iki kısa satır.
+ *   affects — bu araç neyin üzerinde çalışır?
+ *   output  — sonunda ne oluşur?
+ */
+const TOOL_FACTS: Record<Kind, { affects: string; output: string }> = {
+    merge: { affects: 'Eklediğiniz bütün belgeler, listedeki sırayla.', output: 'Tek yeni PDF.' },
+    select: { affects: 'Şeritte işaretlediğiniz sayfalar.', output: 'Yalnız o sayfalardan yeni PDF.' },
+    reorder: { affects: 'Belgenin tamamı; sıra şeritten değişir.', output: 'Aynı sayfalar, yeni sırayla yeni PDF.' },
+    delete: { affects: 'Şeritte işaretlediğiniz sayfalar.', output: 'O sayfalar olmadan yeni PDF.' },
+    rotate: { affects: 'Yalnız önizlediğiniz sayfa.', output: 'Döndürülmüş sayfayla yeni PDF.' },
+    compress: { affects: 'Belgenin tamamı.', output: 'Daha küçük yeni PDF; en az %3 küçülmezse kaydedilmez.' },
+    images: { affects: 'Kendi seçicisinden seçtiğiniz görseller.', output: 'Görsellerden oluşan yeni PDF.' },
+    crop: { affects: 'Belgenin bütün sayfaları.', output: 'Kenarları daraltılmış yeni PDF; içerik silinmez.' },
+    watermark: { affects: 'Belgenin bütün sayfaları.', output: 'Metin işareti eklenmiş yeni PDF.' },
+    number: { affects: 'Belgenin bütün sayfaları.', output: 'Numaralandırılmış yeni PDF.' },
+    raster: { affects: 'Belgenin bütün sayfaları.', output: 'Seçtiğiniz klasöre sayfa başına bir görsel dosyası.' },
+};
 
 type Page = {
     source: SourceFile;
@@ -446,9 +471,23 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                 <InspectorSection title="Seçili araç">
                     <p className="tool-name">{tools[kind][0]}</p>
                     <p className="tool-hint">{tools[kind][1]}</p>
+                    {/* Araç ne yaptığını söylüyordu ama NEYİ etkilediğini ve
+                        ÇIKTININ ne olacağını söylemiyordu; kullanıcı bunu ancak
+                        deneyerek öğreniyordu. İki kısa satır, dokümantasyon
+                        değil. */}
+                    <dl className="tool-facts">
+                        <dt>Etkilenen</dt>
+                        <dd>{TOOL_FACTS[kind].affects}</dd>
+                        <dt>Çıktı</dt>
+                        <dd>{TOOL_FACTS[kind].output}</dd>
+                    </dl>
                     {settingField}
+                    {/* "Belge Ekle" bağlamsızdı: hangi işe belge eklendiği
+                        araca göre değişir. */}
                     {(kind === 'merge' || kind === 'images') &&
-                        <Button onClick={choose} disabled={busy}>Belge Ekle</Button>}
+                        <Button onClick={choose} disabled={busy}>
+                            {kind === 'merge' ? 'Birleştirilecek Belge Ekle' : 'Görsel Ekle'}
+                        </Button>}
                     {sources.length > 0 && <ol className="source-list">{sources.map((s, i) => <li key={s.path}>
                         <span>{s.file_name} · {s.page_count} sayfa</span>
                         {sources.length > 1 && <IconButton label={`${i + 1}. belgeyi yukarı taşı`} disabled={busy || i === 0} onClick={() => moveSource(i)}>

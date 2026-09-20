@@ -67,3 +67,34 @@ describe("§6/§7 — tek kontrol, tek yön", () => {
     expect(source).not.toContain("İşaretlediğiniz sayfaları 90° adımlarla döndürür.");
   });
 });
+
+describe("§22–24 — sağ panel bilgi mimarisi", () => {
+  it("anlamsız 'Diğer' grubu kalktı", () => {
+    expect(source).not.toContain("title: 'Diğer'");
+    expect(source).toContain("title: 'Ek Araçlar'");
+  });
+
+  it("her araç neyi etkilediğini ve çıktısını söyler", () => {
+    // Panel "ne yapar"ı söylüyordu; "neyi etkiler" ve "çıktı ne olur"
+    // ekrandan okunamıyordu. Kullanıcı bunu ancak deneyerek öğreniyordu.
+    expect(source).toContain("TOOL_FACTS");
+    expect(source).toContain("<dt>Etkilenen</dt>");
+    expect(source).toContain("<dt>Çıktı</dt>");
+  });
+
+  it("her aracın gerçeği tanımlı — biri eksik kalamaz", () => {
+    const table = source.slice(source.indexOf("const TOOL_FACTS"), source.indexOf("type Page ="));
+    const keys = ["merge", "select", "reorder", "delete", "rotate", "compress",
+                  "images", "crop", "watermark", "number", "raster"];
+    for (const key of keys) expect(table).toContain(`${key}: { affects:`);
+  });
+
+  it("Döndür'ün kapsamı panelde de doğru yazıyor", () => {
+    expect(source).toContain("affects: 'Yalnız önizlediğiniz sayfa.'");
+  });
+
+  it("'Belge Ekle' bağlamını söyler", () => {
+    expect(source).toContain("Birleştirilecek Belge Ekle");
+    expect(source).toContain("Görsel Ekle");
+  });
+});

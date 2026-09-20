@@ -326,3 +326,9 @@
 @media (max-width: 1099px) {
   .pdf-root .pdf-workspace-layout[data-pages="true"] { grid-template-columns: 104px minmax(0, 1fr); }
 }
+
+/* Secili arac blogu, arac LISTESINDEN ayrilir: ayri bir kutu degil, kendi
+   nefes alani. Gercekler etiket/deger olarak okunur. */
+.pdf-root .tool-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px var(--space-3); margin: var(--space-3) 0 0; }
+.pdf-root .tool-facts dt { color: var(--text-muted); font-size: var(--text-meta); }
+.pdf-root .tool-facts dd { margin: 0; color: var(--text-secondary); font-size: var(--text-meta); }
