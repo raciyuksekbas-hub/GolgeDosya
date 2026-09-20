@@ -8,7 +8,8 @@ import {
 import type { Project } from "./types";
 
 const src = (id: string, name: string, pages = 2) =>
-  ({ id, path: `/x/${name}`, file_name: name, page_count: pages, is_signed: false });
+  ({ id, path: `/x/${name}`, file_name: name, page_count: pages, is_signed: false,
+     signed_policy: "use_original_as_is" as const, is_approved_for_conversion: false });
 
 const base = (): Project => ({
   version: "1.0.0", name: "Dava", created_at: "", updated_at: "",

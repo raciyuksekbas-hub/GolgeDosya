@@ -29,6 +29,16 @@ export interface AnnexSource {
   file_name: string;
   page_count: number;
   is_signed: boolean;
+  /**
+   * İmzalı orijinali OLDUĞU GİBİ kullan, yoksa türetilmiş kopya üret.
+   *
+   * Motor `use_original_as_is` seçili bir imzalı kaynağı bir ekte TEK BAŞINA
+   * olmaya zorlar (`pipeline.rs`). Kullanıcı politikayı değiştiremezse imzalı
+   * belge bir çıkmazdır: başka bir belgeyle aynı eke koyduğunda sert hata
+   * alır ve yapabileceği bir şey yoktur.
+   */
+  signed_policy: "use_original_as_is" | "create_derived_copy";
+  is_approved_for_conversion: boolean;
 }
 
 /**

@@ -74,7 +74,7 @@ describe("§17/§19/§20 — eylemler", () => {
 
   it("nihai iş motora gider ve kaynak korunur", () => {
     expect(html).toContain("Ekleri Hazırla ve Kaydet");
-    expect(source).toContain('invoke<{ outputs: { file_name: string }[]');
+    expect(source).toContain('file_name: string; is_continuation: boolean');
     expect(source).toContain('"duzenek_prepare_uyap"');
     expect(html).toContain("kaynak belgeleriniz korunur");
   });
@@ -113,5 +113,35 @@ describe("motora giden gövde gerçekten geçerli", () => {
     expect(source).not.toContain("target_size_bytes: 0");
     expect(source).toContain("target_size_bytes: DEFAULT_TARGET_SIZE_BYTES");
     expect(source).toContain("const DEFAULT_TARGET_SIZE_BYTES = 9_961_472");
+  });
+});
+
+describe("çekişmeli incelemede bulunan çıkmazlar kapandı", () => {
+  it("P1-3: aynı belge iki kez eklenemez", () => {
+    // Kaynak kimliği İÇERİKTEN türetilir (`src-<sha256>`); yineleme motorun
+    // doğrulamasını kalıcı olarak düşürüyordu ("Mükerrer kaynak kimliği").
+    expect(source).toContain("const known = new Set(p.sources.map((x) => x.id))");
+    expect(source).toContain("zaten listedeydi, tekrar eklenmedi");
+  });
+
+  it("P1-3: yanlış eklenen belge listeden çıkarılabilir", () => {
+    // Eskiden tek çare kipten çıkıp baştan başlamaktı.
+    expect(source).toContain("belgesini listeden çıkar");
+    expect(source).toContain("sources: p.sources.filter((x) => x.id !== source.id)");
+  });
+
+  it("P1-4: imzalı belge çıkmaz değil", () => {
+    expect(source).toContain('signed_policy: derived ? "create_derived_copy" : "use_original_as_is"');
+    expect(source).toContain("TEK BAŞINA bir ek olmalıdır");
+    expect(source).toContain("doğrulanabilirliğini");
+  });
+
+  it("P1-5: bölünme ve doğrulama sonucu söylenir", () => {
+    // Motor boyut sınırını aşan eki kendisi böler; bu, mahkemeye giden dosya
+    // kümesini değiştirir ve sessizce olmamalı.
+    expect(source).toContain("o.is_continuation");
+    expect(source).toContain("boyut sınırı nedeniyle bölündü");
+    expect(source).toContain("validation_report");
+    expect(source).toContain("Gözden geçirin:");
   });
 });

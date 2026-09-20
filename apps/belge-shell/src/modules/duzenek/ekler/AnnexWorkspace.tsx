@@ -100,14 +100,28 @@ export function AnnexWorkspace() {
         { paths },
       );
       if (!result.sources.length) throw new Error(result.errors.map((e) => e.reason).join("\n"));
-      setProject((p) => ({ ...p, sources: [...p.sources, ...result.sources] }));
+      // Kaynak kimliği İÇERİKTEN türetilir (`src-<sha256>`), dolayısıyla aynı
+      // belgeyi iki kez eklemek AYNI kimlikten iki kayıt üretir. Motorun
+      // doğrulaması bunu reddeder ("Mükerrer veya boş kaynak kimliği") ve
+      // dışa aktarma kalıcı olarak imkânsızlaşırdı. Yinelenen belge sessizce
+      // ATLANMAZ, söylenir.
+      let duplicates = 0;
+      setProject((p) => {
+        const known = new Set(p.sources.map((x) => x.id));
+        const fresh = result.sources.filter((x) => !known.has(x.id));
+        duplicates = result.sources.length - fresh.length;
+        return { ...p, sources: [...p.sources, ...fresh] };
+      });
       const failed = result.errors.length;
-      say(
+      const added = result.sources.length - duplicates;
+      const notes = [
+        `${added} belge eklendi.`,
+        duplicates ? `${duplicates} belge zaten listedeydi, tekrar eklenmedi.` : "",
         failed
-          ? `${result.sources.length} belge eklendi. ${failed} dosya okunamadı: ${result.errors.map((e) => e.path.split("/").pop()).join(", ")}`
-          : `${result.sources.length} belge eklendi.`,
-        failed ? "error" : "success",
-      );
+          ? `${failed} dosya okunamadı: ${result.errors.map((e) => e.path.split("/").pop()).join(", ")}`
+          : "",
+      ].filter(Boolean);
+      say(notes.join(" "), failed ? "error" : "success");
     } catch (e) {
       logFailure("ekler scan", e);
       say(safeMessage(e, "Belgeler eklenemedi. Dosyaları kontrol edin."), "error");
@@ -143,14 +157,24 @@ export function AnnexWorkspace() {
       if (typeof dir !== "string") return;
       setBusy(true);
       say("Ekler hazırlanıyor…", "busy");
-      const result = await invoke<{ outputs: { file_name: string }[]; exhibits_list_plain: string; package_dir: string }>(
-        "duzenek_prepare_uyap",
-        { project, outputDir: dir },
-      );
-      say(
-        `${result.outputs.length} dosya üretildi: ${result.package_dir}\nKaynak belgeleriniz değiştirilmedi.`,
-        "success",
-      );
+      const result = await invoke<{
+        outputs: { file_name: string; is_continuation: boolean }[];
+        exhibits_list_plain: string;
+        package_dir: string;
+        validation_report: { is_ready_for_uyap: boolean; items: { title: string; passed: boolean }[] };
+      }>("duzenek_prepare_uyap", { project, outputDir: dir });
+      // Motor boyut sınırını aşan eki KENDİSİ böler ve "…_DEVAM_…" dosyaları
+      // üretir. Bu, mahkemeye giden dosya kümesini ve EKLER listesini
+      // değiştirir; sessizce olmamalı.
+      const split = result.outputs.filter((o) => o.is_continuation).length;
+      const failures = (result.validation_report?.items ?? []).filter((i) => !i.passed);
+      const lines = [
+        `${result.outputs.length} dosya üretildi: ${result.package_dir}`,
+        split ? `${split} ek boyut sınırı nedeniyle bölündü (DEVAM dosyaları).` : "",
+        failures.length ? `Gözden geçirin: ${failures.map((i) => i.title).join(" · ")}` : "",
+        "Kaynak belgeleriniz değiştirilmedi.",
+      ].filter(Boolean);
+      say(lines.join("\n"), failures.length ? "error" : "success");
     } catch (e) {
       logFailure("ekler prepare", e);
       say(safeMessage(e, "Ekler hazırlanamadı. Çıktı klasörünü ve belgeleri kontrol edin."), "error");
@@ -231,10 +255,68 @@ export function AnnexWorkspace() {
                   <span className="ekler-doc-state" data-assigned={assignmentLabel(project, source.id) !== "Atanmadı"}>
                     {assignmentLabel(project, source.id)}
                   </span>
+                  {/* Listeden çıkarma yolu OLMALI: yanlış belge eklendiğinde
+                      kullanıcının tek çaresi kipten çıkıp baştan başlamaktı. */}
+                  <button
+                    type="button"
+                    className="text-button"
+                    aria-label={`${source.file_name} belgesini listeden çıkar`}
+                    onClick={() => {
+                      setProject((p) => ({
+                        ...unassignSource(p, source.id),
+                        sources: p.sources.filter((x) => x.id !== source.id),
+                      }));
+                      announce(`${source.file_name} listeden çıkarıldı.`);
+                    }}
+                  >
+                    Çıkar
+                  </button>
                 </li>
               ))}
             </ul>
           )}
+
+          {/* İmzalı orijinal, motorda bir ekte TEK BAŞINA durmak zorundadır.
+              Kullanıcı politikayı değiştiremezse imzalı belge çıkmazdır:
+              başka bir belgeyle aynı eke koyunca sert hata alır ve elinden
+              bir şey gelmez. Onay metni Düzenle'deki kardeşiyle aynıdır. */}
+          {project.sources.some((s) => s.is_signed) ? (
+            <div className="ekler-signed">
+              {project.sources.filter((s) => s.is_signed).map((s) => (
+                <label key={s.id} className="approval">
+                  <input
+                    type="checkbox"
+                    checked={s.signed_policy === "create_derived_copy"}
+                    onChange={(event) => {
+                      const derived = event.target.checked;
+                      setProject((p) => ({
+                        ...p,
+                        sources: p.sources.map((x) =>
+                          x.id === s.id
+                            ? {
+                                ...x,
+                                signed_policy: derived ? "create_derived_copy" : "use_original_as_is",
+                                is_approved_for_conversion: derived,
+                              }
+                            : x,
+                        ),
+                      }));
+                      announce(
+                        derived
+                          ? `${s.file_name} için türetilmiş kopya onaylandı.`
+                          : `${s.file_name} orijinali olduğu gibi kullanılacak; tek başına bir ek olmalı.`,
+                      );
+                    }}
+                  />
+                  {s.file_name}: imza işareti bulundu. Orijinali olduğu gibi
+                  kullanılırsa TEK BAŞINA bir ek olmalıdır. Başka belgelerle
+                  birlikte kullanmak için türetilmiş kopyaya izin verin —
+                  türetilmiş PDF kaynak elektronik imzanın doğrulanabilirliğini
+                  taşımaz.
+                </label>
+              ))}
+            </div>
+          ) : null}
 
           <div className="row">
             <Button disabled={busy} onClick={() => void addDocuments()}>Belge Ekle</Button>

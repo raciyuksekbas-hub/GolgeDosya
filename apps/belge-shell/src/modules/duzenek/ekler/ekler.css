@@ -28,3 +28,6 @@
 .ekler-preview { max-width: var(--measure-list); margin: var(--space-3) 0 0; padding: var(--space-3); color: var(--text-secondary); background: var(--surface-hover); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--text-meta); white-space: pre-wrap; }
 
 @media (max-width: 1000px) { .ekler-columns { grid-template-columns: minmax(0, 1fr); } }
+
+/* Imzali kaynak onayi: uyari kutusu degil, satir ici sorumluluk metni. */
+.ekler-signed { display: flex; flex-direction: column; gap: var(--space-2); max-width: var(--measure-list); }
