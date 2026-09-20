@@ -31,7 +31,17 @@ export interface LocalDocument {
   extension: "pdf" | "doc" | "docx" | "udf";
   size: number;
   blocks: DocumentBlock[];
+  /** Metnin GERÇEKTEN okunamadığı yerler. Kullanıcıya uyarı olarak çıkar. */
   warnings: string[];
+  /**
+   * Metin okundu ama biçimi sadeleştirildi.
+   *
+   * Bunlar kayıp DEĞİLDİR ve uyarı diliyle söylenmezler. Eskiden mammoth'un
+   * bütün `warning` mesajları tek kanaldan "okunamadı ve karşılaştırmaya
+   * girmedi" diye gösteriliyordu; oysa "Unrecognised paragraph style: Gövde"
+   * mesajı yalnız "bu stili tanımadım, paragraf olarak aldım" demektir.
+   */
+  notes: string[];
 }
 
 export type FragmentKind = "equal" | "added" | "removed";

@@ -198,7 +198,22 @@ export function prepareDocxFinalView(buffer: ArrayBuffer): ArrayBuffer {
   return changed ? exactArrayBuffer(zipSync(archive)) : buffer;
 }
 
-async function extractDocx(buffer: ArrayBuffer): Promise<{ entries: Entry[]; warnings: string[] }> {
+/**
+ * Bir dönüştürücü mesajı METİN KAYBI mı anlatıyor, yoksa yalnız biçim
+ * sadeleştirmesi mi?
+ *
+ * Stil tanımama mesajları kayıp DEĞİLDİR: mammoth tanımadığı stildeki
+ * paragrafı düz `<p>` olarak yine üretir (kaynak: document-to-html.js,
+ * `unrecognisedStyleWarning` dalında `defaultParagraphStyle` döner).
+ * Sahada kullanıcı, tamamı okunmuş bir sözleşmede "Belgenin bir bölümü
+ * okunamadı" uyarısı gördü ve ardına ham stil adları döküldü.
+ */
+const FORMAT_ONLY_MESSAGE =
+  /^(?:Unrecognised (?:paragraph|run|table) style:|(?:Paragraph|Run|Table) style with ID .* was referenced but not defined)/i;
+
+async function extractDocx(
+  buffer: ArrayBuffer,
+): Promise<{ entries: Entry[]; warnings: string[]; notes: string[] }> {
   const finalViewBuffer = prepareDocxFinalView(buffer);
   const result = await mammoth.convertToHtml(
     { arrayBuffer: finalViewBuffer },
@@ -206,7 +221,12 @@ async function extractDocx(buffer: ArrayBuffer): Promise<{ entries: Entry[]; war
   );
   const entries = htmlEntries(result.value);
   if (!entries.length) throw new ExtractionError("Bu DOCX dosyasında karşılaştırılabilir metin bulunamadı.");
-  return { entries, warnings: result.messages.filter((message) => message.type === "warning").map((message) => message.message) };
+  const messages = result.messages.filter((message) => message.type === "warning");
+  return {
+    entries,
+    warnings: messages.filter((m) => !FORMAT_ONLY_MESSAGE.test(m.message)).map((m) => m.message),
+    notes: messages.filter((m) => FORMAT_ONLY_MESSAGE.test(m.message)).map((m) => m.message),
+  };
 }
 
 export type LegacyDocConverter = (buffer: ArrayBuffer) => Promise<ArrayBuffer>;
@@ -246,12 +266,16 @@ export async function convertLegacyDocLocally(buffer: ArrayBuffer): Promise<Arra
 export async function extractLegacyDoc(
   buffer: ArrayBuffer,
   converter: LegacyDocConverter = convertLegacyDocLocally,
-): Promise<{ entries: Entry[]; warnings: string[] }> {
+): Promise<{ entries: Entry[]; warnings: string[]; notes: string[] }> {
   const converted = await converter(buffer);
   const result = await extractDocx(converted);
   return {
     entries: withoutLegacyPaginationArtifacts(result.entries),
-    warnings: ["Eski Word biçimi yerel olarak dönüştürülerek okundu.", ...result.warnings],
+    warnings: result.warnings,
+    // Eski biçimin dönüştürüldüğü BİLGİDİR, uyarı değil. Eskiden uyarı
+    // kanalındaydı: kusursuz okunan her `.doc` "bir bölümü okunamadı"
+    // bannerını tetikliyordu.
+    notes: ["Eski Word biçimi yerel olarak dönüştürülerek okundu.", ...result.notes],
   };
 }
 
@@ -373,7 +397,7 @@ export function pdfEntries(pages: PdfLine[][]): Entry[] {
   return entries;
 }
 
-async function extractPdf(buffer: ArrayBuffer): Promise<{ entries: Entry[]; warnings: string[] }> {
+async function extractPdf(buffer: ArrayBuffer): Promise<{ entries: Entry[]; warnings: string[]; notes: string[] }> {
   const task = pdfjs.getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false });
   const pdf = await task.promise;
   const pages: PdfLine[][] = [];
@@ -386,10 +410,10 @@ async function extractPdf(buffer: ArrayBuffer): Promise<{ entries: Entry[]; warn
   if (!entries.length || entries.reduce((sum, entry) => sum + entry.text.length, 0) < 8) {
     throw new ExtractionError("Bu PDF'de karşılaştırılabilir metin bulunamadı. Görüntü tabanlı/taranmış PDF'ler henüz desteklenmemektedir.");
   }
-  return { entries, warnings: [] };
+  return { entries, warnings: [], notes: [] };
 }
 
-async function extractUdf(buffer: ArrayBuffer): Promise<{ entries: Entry[]; warnings: string[] }> {
+async function extractUdf(buffer: ArrayBuffer): Promise<{ entries: Entry[]; warnings: string[]; notes: string[] }> {
   const bytes = new Uint8Array(buffer);
   let candidates: string[] = [];
   try {
@@ -403,7 +427,7 @@ async function extractUdf(buffer: ArrayBuffer): Promise<{ entries: Entry[]; warn
   }
   for (const candidate of candidates) {
     const entries = /<html/i.test(candidate) ? htmlEntries(candidate) : udfXmlEntries(candidate);
-    if (entries.length) return { entries, warnings: [] };
+    if (entries.length) return { entries, warnings: [], notes: [] };
   }
   throw new ExtractionError("Bu UDF dosyasında karşılaştırılabilir metin bulunamadı.");
 }
@@ -411,7 +435,7 @@ async function extractUdf(buffer: ArrayBuffer): Promise<{ entries: Entry[]; warn
 export async function extractDocument(file: File): Promise<LocalDocument> {
   const buffer = await file.arrayBuffer();
   const extension = detectDocumentExtension(file.name, file.type, buffer);
-  let result: { entries: Entry[]; warnings: string[] };
+  let result: { entries: Entry[]; warnings: string[]; notes: string[] };
   try {
     if (extension === "doc") result = await extractLegacyDoc(buffer);
     else if (extension === "docx") result = await extractDocx(buffer);
@@ -427,5 +451,6 @@ export async function extractDocument(file: File): Promise<LocalDocument> {
     size: file.size,
     blocks: makeBlocks(result.entries, extension),
     warnings: result.warnings,
+    notes: result.notes,
   };
 }

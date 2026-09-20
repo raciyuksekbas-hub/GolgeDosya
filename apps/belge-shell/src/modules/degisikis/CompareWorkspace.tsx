@@ -9,6 +9,7 @@ import { ChangeRail } from "./ChangeRail";
 import { ChangeInspector } from "./ChangeInspector";
 import { useRowHeightSync } from "./useRowHeightSync";
 import { announce } from "../../shared-ui/Announcer";
+import { logFailure } from "../../shared-ui/failure";
 import { Status } from "../../shared-ui/primitives";
 import { InspectorPanel, ToolbarStatus } from "../../shell/chrome";
 import "./compare.css";
@@ -154,6 +155,27 @@ export function CompareWorkspace({ paths, onPairChange }: {
     return Array.from(new Set(docs.flatMap((d) => d.doc.warnings)));
   }, [docs]);
 
+  /**
+   * Yalnız BİÇİM sadeleştirildi — metin karşılaştırmaya girdi.
+   *
+   * Bu ayrım sahada ortaya çıktı: tamamı okunmuş iki sözleşmede kullanıcı
+   * "Belgenin bir bölümü okunamadı ve karşılaştırmaya girmedi" uyarısını
+   * gördü, ardına da ham stil adları (`Gövde`, `Normal (Web)`,
+   * `List Paragraph`…) döküldü. Hiçbiri kayıp değildi; hepsi "bu Word
+   * stilini tanımadım, paragraf olarak aldım" demekti.
+   */
+  const simplifications = useMemo(() => {
+    if (!docs) return [];
+    return Array.from(new Set(docs.flatMap((d) => d.doc.notes)));
+  }, [docs]);
+
+  // Ham ayrıştırıcı metni ekrandan kalktı ama KAYBOLMADI: teşhis geliştirme
+  // günlüğünde durur, yoksa bir sonraki saha hatası kör incelenir.
+  useEffect(() => {
+    if (extractionWarnings.length || simplifications.length)
+      logFailure("degisikis extraction messages", { extractionWarnings, simplifications });
+  }, [extractionWarnings, simplifications]);
+
   // İlk fark açılışta seçilir. Panel boş bir yer tutucuyla ("bir fark seçin")
   // açılmaz ve kullanıcı ilk farkı görmek için tıklamak zorunda kalmaz;
   // Denetle de ilk bulguyu aynı şekilde açar.
@@ -241,12 +263,24 @@ export function CompareWorkspace({ paths, onPairChange }: {
 
   return (
     <div className="compare-root">
+      {/* Ham ayrıştırıcı mesajı KULLANICIYA ÇIKMAZ (stil adları, kimlikler).
+          Kullanıcının bilmesi gereken tek şey: metin karşılaştırmaya girdi mi,
+          girmediyse ne yapmalı. Teknik ayrıntı geliştirme günlüğünde kalır. */}
       {extractionWarnings.length > 0 ? (
         <p className="compare-warn" role="status">
           <span className="compare-warn-mark" aria-hidden="true">!</span>
           <span>
-            Belgenin bir bölümü okunamadı ve karşılaştırmaya girmedi:{" "}
-            {extractionWarnings.join(" · ")}
+            Belgenin bir bölümü okunamadı ve karşılaştırmaya girmedi. Eksik
+            kalan yerler için belgeyi kaynak uygulamada yeniden kaydedip
+            deneyin.
+          </span>
+        </p>
+      ) : simplifications.length > 0 ? (
+        <p className="compare-warn" data-tone="note" role="status">
+          <span className="compare-warn-mark" aria-hidden="true">i</span>
+          <span>
+            Belgedeki bazı özel biçimlendirmeler sadeleştirildi; metin
+            karşılaştırmaya dahil edildi.
           </span>
         </p>
       ) : null}

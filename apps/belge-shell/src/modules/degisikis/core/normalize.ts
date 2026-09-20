@@ -59,13 +59,25 @@ export function makeBlocks(
   }>,
   prefix = "block",
 ): DocumentBlock[] {
+  // Tek başına duran 1–4 haneli sayı PDF'te sayfa numarasıdır; DOCX/UDF'te
+  // İÇERİKTİR. Bu ayrım yapılmadan filtre her biçime uygulanıyordu ve
+  // sözleşmenin tablo hücrelerindeki tutar ("1500"), yıl ("2026") ve madde
+  // numarası ("12") karşılaştırma veri kümesinden SESSİZCE düşüyordu:
+  // bedel 1500'den 1800'e çekilse Karşılaştır hiçbir fark göstermiyordu.
+  // Yanlış negatif, yanlış pozitiften tehlikelidir (§46); bastırma yalnız
+  // sayfa numarasının gerçekten yapı artığı olduğu yerde kalır.
+  const suppressStandaloneNumbers = prefix === "pdf";
   let currentArticle: string | undefined;
   let currentClause: string | undefined;
   let currentAppendix: string | undefined;
   let currentAppendixSection: string | undefined;
   return entries
     .map((entry) => ({ ...entry, text: normalizeTechnicalNoise(entry.text) }))
-    .filter((entry) => entry.text.length > 0 && !/^\d{1,4}$/.test(entry.text))
+    .filter(
+      (entry) =>
+        entry.text.length > 0
+        && !(suppressStandaloneNumbers && /^\d{1,4}$/.test(entry.text)),
+    )
     .map((entry, order) => {
       const appendix = appendixHeading(entry.text);
       const section = currentAppendix && !appendix ? appendixSection(entry.text) : undefined;

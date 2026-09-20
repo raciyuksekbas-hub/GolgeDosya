@@ -371,3 +371,7 @@
   line-height: 1.4;
 }
 .compare-root .compare-warn-mark { flex: none; font-weight: 600; }
+
+/* Bilgi notu uyari degildir: ayni satir, sakin renk. */
+.compare-warn[data-tone="note"] { color: var(--text-secondary); }
+.compare-warn[data-tone="note"] .compare-warn-mark { color: var(--text-secondary); }
