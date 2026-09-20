@@ -41,6 +41,8 @@ const RESPONSES: Record<string, unknown> = {
   app_info: { name: "GölgeDosya", version: "0.2.0", nameIsProvisional: false, configDir: "" },
   enabled_features: [
     { key: "duzenek", label: "Düzenle", route: "duzenek", compiled: true, enabled: true },
+    // Rust ozellik matrisiyle ayni sirada ve ayni sayida kalmali.
+    { key: "ekler", label: "Ekler", route: "ekler", compiled: true, enabled: true },
     { key: "tavzih", label: "Dönüştür", route: "tavzih", compiled: true, enabled: true },
     { key: "degisikis", label: "Karşılaştır", route: "degisikis", compiled: true, enabled: true },
     { key: "ikincigoz", label: "Denetle", route: "ikincigoz", compiled: true, enabled: true },
