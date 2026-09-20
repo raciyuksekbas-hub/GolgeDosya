@@ -64,8 +64,20 @@ const emptyProject = (): Project => ({
 let seq = 0;
 const nextId = () => `ek-${(seq += 1)}`;
 
-export function AnnexWorkspace() {
-  const [project, setProject] = useState<Project>(emptyProject);
+/**
+ * Ek oturumu KİP DEĞİŞİNCE KAYBOLMAMALI.
+ *
+ * Durum bileşenin içindeyken başka bir kipe geçmek bileşeni söküyor ve
+ * kullanıcının kurduğu bütün ek yapısı sessizce siliniyordu: yirmi ekli bir
+ * dosya hazırlayan avukat yanlışlıkla "Düzenle"ye tıkladığında hiçbir uyarı
+ * almadan her şeyi kaybediyordu. Paketlenmiş uygulamada yapılan smoke bunu
+ * ortaya çıkardı. Durum artık kabukta yaşıyor.
+ */
+export function AnnexWorkspace({ project, onProject }: {
+  project: Project;
+  onProject: (next: Project | ((current: Project) => Project)) => void;
+}) {
+  const setProject = onProject;
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [tone, setTone] = useState<"info" | "busy" | "success" | "error">("info");
@@ -443,4 +455,4 @@ export function AnnexWorkspace() {
   );
 }
 
-export { nameFromFile };
+export { emptyProject, nameFromFile };

@@ -11,7 +11,8 @@ import { ConvertWorkspace } from "./modules/tavzih/ConvertWorkspace";
 import { ReviewWorkspace } from "./modules/ikincigoz/ReviewWorkspace";
 import { CompareWorkspace } from "./modules/degisikis/CompareWorkspace";
 import { PdfWorkspace } from "./modules/duzenek/PdfWorkspace";
-import { AnnexWorkspace } from "./modules/duzenek/ekler/AnnexWorkspace";
+import { AnnexWorkspace, emptyProject } from "./modules/duzenek/ekler/AnnexWorkspace";
+import type { Project as AnnexProject } from "./modules/duzenek/ekler/types";
 import { MODES, carryContext, fileNameOf, type ContextOutcome } from "./shell/modes";
 import { Button, Status } from "./shared-ui/primitives";
 import { announce } from "./shared-ui/Announcer";
@@ -95,6 +96,13 @@ export function App() {
   const [settingsError, setSettingsError] = useState("");
   /** Karşılaştır'ın bildirdiği yürürlükteki Temel/Değişik sırası. */
   const [comparePair, setComparePair] = useState<string[] | null>(null);
+  /**
+   * Dilekçe ekleri oturumu.
+   *
+   * Kabukta durur ki kip değiştirmek kullanıcının kurduğu ek yapısını
+   * silmesin; çalışma alanı sökülüp yeniden kurulduğunda oturum yerinde kalır.
+   */
+  const [annexProject, setAnnexProject] = useState<AnnexProject>(emptyProject);
 
   const saveSettings = useCallback(async (next: Settings) => {
     // İyimser güncelleme: arayüz anında tepki verir. Ama yazım başarısız
@@ -265,7 +273,7 @@ export function App() {
           // Ekler kendi belge seçicisiyle çalışır: kabuğun tek-belge akışına
           // girmez, bu yüzden `usable` kapısının ÖNÜNDE durur.
           active.key === "ekler" ? (
-            <AnnexWorkspace />
+            <AnnexWorkspace project={annexProject} onProject={setAnnexProject} />
           ) : usable && active.key === "tavzih" ? (
             <ConvertWorkspace paths={carried} />
           ) : usable && active.key === "ikincigoz" ? (

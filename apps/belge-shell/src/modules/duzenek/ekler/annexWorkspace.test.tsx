@@ -4,11 +4,13 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { AnnexWorkspace } from "./AnnexWorkspace";
+import { AnnexWorkspace, emptyProject } from "./AnnexWorkspace";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(here, "AnnexWorkspace.tsx"), "utf8");
-const html = renderToStaticMarkup(<AnnexWorkspace />);
+const html = renderToStaticMarkup(
+  <AnnexWorkspace project={emptyProject()} onProject={() => undefined} />,
+);
 const modes = readFileSync(resolve(here, "../../../shell/modes.ts"), "utf8");
 const matrix = readFileSync(
   resolve(here, "../../../../src-tauri/src/features.rs"),
@@ -143,5 +145,24 @@ describe("çekişmeli incelemede bulunan çıkmazlar kapandı", () => {
     expect(source).toContain("boyut sınırı nedeniyle bölündü");
     expect(source).toContain("validation_report");
     expect(source).toContain("Gözden geçirin:");
+  });
+});
+
+describe("oturum kip değişince kaybolmaz", () => {
+  // PAKETLENMİŞ SMOKE BULGUSU: durum bileşenin içindeyken başka bir kipe
+  // geçmek bileşeni söküyor ve kullanıcının kurduğu bütün ek yapısı
+  // SESSİZCE siliniyordu. Yirmi ekli bir dosya hazırlayan avukat
+  // yanlışlıkla "Düzenle"ye tıkladığında hiçbir uyarı almadan her şeyi
+  // kaybediyordu.
+  const app = readFileSync(resolve(here, "../../../App.tsx"), "utf8");
+
+  it("çalışma alanı durumu dışarıdan alır", () => {
+    expect(source).toContain("export function AnnexWorkspace({ project, onProject }");
+    expect(source).not.toContain("const [project, setProject] = useState<Project>(emptyProject)");
+  });
+
+  it("oturum kabukta yaşar", () => {
+    expect(app).toContain("const [annexProject, setAnnexProject] = useState<AnnexProject>(emptyProject)");
+    expect(app).toContain("<AnnexWorkspace project={annexProject} onProject={setAnnexProject} />");
   });
 });
