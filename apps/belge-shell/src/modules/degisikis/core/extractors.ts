@@ -6,6 +6,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { makeBlocks, normalizeTechnicalNoise } from "./normalize";
 import type { BlockKind, LocalDocument } from "./types";
 import { udfXmlEntries } from "./udf";
+import { injectVisibleNumbering } from "./numbering";
 import { logFailure } from "../../../shared-ui/failure";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -189,10 +190,20 @@ function removePageFurnitureTextboxes(xml: string): string {
 export function prepareDocxFinalView(buffer: ArrayBuffer): ArrayBuffer {
   const archive = unzipSync(new Uint8Array(buffer));
   let changed = false;
+  // Word'ün OTOMATİK madde numarası paragrafın metninde yoktur; çizim anında
+  // `numbering.xml` + `w:numPr` bağından üretilir. Metne yazılmazsa
+  // "3.2. Sorumluluk" -> "4. Sorumluluk" değişikliği karşılaştırmada HİÇ
+  // görünmez. Görünür sonuç burada metne çevrilir; karşılaştırılan şey
+  // Word'ün iç kimliği (`numId`) değil kullanıcının GÖRDÜĞÜDÜR.
+  const numberingXml = archive["word/numbering.xml"]
+    ? strFromU8(archive["word/numbering.xml"])
+    : undefined;
   for (const [name, bytes] of Object.entries(archive)) {
     if (!/^word\/.*\.xml$/iu.test(name)) continue;
     const xml = strFromU8(bytes);
-    const finalViewXml = removePaginationFields(name === "word/document.xml" ? removePageFurnitureTextboxes(xml) : xml)
+    const withNumbering =
+      name === "word/document.xml" ? injectVisibleNumbering(xml, numberingXml) : xml;
+    const finalViewXml = removePaginationFields(name === "word/document.xml" ? removePageFurnitureTextboxes(withNumbering) : withNumbering)
       .replace(/<(\/?)w:moveTo\b/gu, "<$1w:ins")
       .replace(/<(\/?)w:moveFrom\b/gu, "<$1w:del");
     if (finalViewXml === xml) continue;
