@@ -38,7 +38,7 @@ const tools = {
     select: ['Seçili sayfalar → yeni PDF', 'İşaretlediğiniz sayfalardan yeni bir PDF kopyası oluşturur.'],
     reorder: ['Sayfa sırasını değiştir', 'Sayfaları görsel olarak yeniden sıralayıp yeni bir kopya oluşturur.'],
     delete: ['Sayfa sil', 'İşaretlediğiniz sayfaları çıkararak yeni bir PDF oluşturur.'],
-    rotate: ['Döndür', 'İşaretlediğiniz sayfaları 90° adımlarla döndürür.'],
+    rotate: ['Döndür', 'Önizlediğiniz sayfayı her tıklamada 90° saat yönünde döndürür.'],
     compress: ['Sıkıştır', 'Kalite kontrolünü geçen ve en az %3 küçülen PDF kopyasını kaydeder.'],
     images: ['Görseller → PDF', 'Bir veya daha fazla görselden PDF oluşturur.'],
     crop: ['Kırp', 'Sayfanın görünür alanını daraltarak yeni kopya üretir; içerik silinmez.'],
@@ -375,8 +375,11 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             setBusy(false);
         }
     };
-    const pageSelection = ['select', 'delete', 'rotate'].includes(kind);
-    const pickVerb = kind === 'delete' ? 'Çıkar' : kind === 'rotate' ? 'Döndür' : 'Dahil et';
+    // Döndürme SEÇİME bağlı değildir; bu yüzden döndürme kipinde sayfa
+    // kutusu da çizilmez. Eskiden kullanıcı önce kutuyu işaretlemek, sonra
+    // yön seçmek zorundaydı ve birden fazla kutu işaretliyse hepsi dönüyordu.
+    const pageSelection = ['select', 'delete'].includes(kind);
+    const pickVerb = kind === 'delete' ? 'Çıkar' : 'Dahil et';
     const surfaces = workspaceSurfaces(docState, order.length);
     const cannotSave = busy || !sources.length || (sources.some(s => s.is_signed) && !approved) ||
         (['select', 'delete'].includes(kind) && !selected.length) || outputCount === 0 || (kind === 'rotate' && !Object.values(rotations).some(Boolean));
@@ -509,9 +512,11 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     <div className="tool-segment" role="group" aria-label="Sayfa araçları">
                         {PAGE_TOOLS.map(key => <button key={key} type="button" data-tool={key} className={`segment ${kind === key ? 'is-current' : ''}`} title={tools[key][1]} aria-label={tools[key][0]} aria-pressed={kind === key} disabled={busy} onClick={() => pick(key)}>{SHORT[key]}</button>)}
                     </div>
+                    {/* TEK kontrol, TEK yön: her tıklama +90°. İki tıklama 180°,
+                        üç tıklama 270°, dört tıklama başa döner. Kapsam
+                        ÖNİZLENEN sayfadır — şeritteki çoklu seçim değil. */}
                     {kind === 'rotate' && <div className="row">
-                        <Button className="btn-sm" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, -90))}>↶ Sola 90°</Button>
-                        <Button className="btn-sm" disabled={busy || !selected.length} onClick={() => setRotations(previous => rotatePages(previous, selected, 90))}>↷ Sağa 90°</Button>
+                        <Button className="btn-sm" disabled={busy || !active} onClick={() => active && setRotations(previous => rotatePages(previous, [active.key], 90))} title="Önizlenen sayfayı 90° döndür" aria-label={active ? `${order.findIndex(p => p.key === active.key) + 1}. sayfayı 90° döndür` : 'Döndür'}>↷ Döndür</Button>
                     </div>}
                     <div className="toolbar-spacer"/>
                     <label className="zoom">Yakınlaştır<select value={zoom} onChange={e => setZoom(e.target.value.startsWith('fit-') ? e.target.value as PreviewMode : Number(e.target.value))}><option value="fit-page">Sayfaya sığdır</option><option value="fit-width">Genişliğe sığdır</option>{[75, 100, 125, 150, 200].map(z => <option key={z} value={z}>{z}%</option>)}</select></label>

@@ -97,13 +97,17 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     label: "Karşılaştır",
     emptyTitle: "İki sürüm arasındaki farklar",
     extensions: ["pdf", "docx", "doc", "udf"],
-    hint: "İki belge seçin; eklenen, silinen ve değişen bölümler yan yana gösterilir.",
+    // Ürün dili her yerde aynı: "Temel sürüm" / "Değişik sürüm". Eskiden boş
+    // durumda "Belge A / Belge B" deniyordu; paneller, rapor ve ray zaten
+    // sürüm dilini kullanıyordu — kullanıcı aynı iki belgeye iki ayrı ad
+    // altında bakıyordu.
+    hint: "Temel sürüm ile değişik sürümü seçin; eklenen, silinen ve değişen bölümler yan yana gösterilir.",
     openLabel: "İlk Belgeyi Seç",
     recentTitle: "Son belgeler",
     pickerLabel: "Karşılaştırılacak belgeler",
     needs: 2,
-    slots: ["Belge A", "Belge B"],
-    slotInvites: ["İlk belgeyi seç", "İkinci belgeyi seç"],
+    slots: ["Temel sürüm", "Değişik sürüm"],
+    slotInvites: ["Temel sürümü seç", "Değişik sürümü seç"],
   },
   ikincigoz: {
     label: "Denetle",

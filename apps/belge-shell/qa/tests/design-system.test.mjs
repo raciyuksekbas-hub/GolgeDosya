@@ -381,7 +381,17 @@ test("iki belge isteyen kip modelini boş durumda da gösterir", () => {
   assert.match(surface, /mode\.slots!\[0\]/u, "ilk yuva çizilmeli");
   assert.match(surface, /mode\.slots!\[1\]/u, "ikinci yuva çizilmeli");
   const modes = readFileSync("src/shell/modes.ts", "utf8");
-  assert.match(modes, /slots: \["Belge A", "Belge B"\]/u);
+  // Urun dili her yuzeyde ayni: paneller, rapor ve ray zaten "Temel surum" /
+  // "Degisik surum" diyordu; bos durum "Belge A / Belge B" diyordu. Kullanici
+  // ayni iki belgeye iki ayri ad altinda bakiyordu.
+  assert.match(modes, /slots: \["Temel sürüm", "Değişik sürüm"\]/u);
+  assert.match(modes, /slotInvites: \["Temel sürümü seç", "Değişik sürümü seç"\]/u);
+  // Yalniz KOD satirlari: tarihceyi anlatan yorumun eski adi anmasi dogrudur.
+  const code = modes
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*"))
+    .join("\n");
+  assert.ok(!/"Belge A"|"Belge B"/u.test(code), "eski 'Belge A/B' dili kalmamali");
   // Yuva kart değildir: gölge ve çerçeve almaz.
   const slot = shell.match(/^\.slot \{[^}]*\}/mu);
   assert.ok(slot, ".slot tanımlı olmalı");

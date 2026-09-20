@@ -396,8 +396,9 @@ describe("kabuğa bağlanma", () => {
       'aria-label="Kaydırılabilir PDF sayfası"',
       "Sayfaya sığdır",
       "Genişliğe sığdır",
-      "↶ Sola 90°",
-      "↷ Sağa 90°",
+      // Saha turu: iki yön düğmesi kalktı, yerine TEK "Döndür" geldi
+      // (her tıklama +90°, kapsam önizlenen sayfa). Bkz. rotate.test.ts.
+      "↷ Döndür",
       "Yeni PDF Kaydet",
       "Klasör Seçerek Kaydet",
       "Tümünü İşaretle",
