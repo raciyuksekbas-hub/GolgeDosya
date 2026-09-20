@@ -201,3 +201,40 @@ fn a_real_user_password_is_still_refused() {
         "parola korumasına 'bozuk dosya' denmemeli: {message}"
     );
 }
+
+/// `/U` değerini KISALTILMIŞ bir belge üretir (bozuk ya da kötü niyetli).
+fn short_user_entry_pdf() -> Vec<u8> {
+    let mut bytes = build(1, true);
+    // `/U (...)` dizesini 32 bayttan 4 bayta indir.
+    let at = bytes
+        .windows(3)
+        .position(|w| w == b"/U ")
+        .or_else(|| bytes.windows(2).position(|w| w == b"/U"))
+        .expect("/U bulunmalı");
+    let open = at + bytes[at..].iter().position(|b| *b == b'(').expect("(");
+    let mut close = open + 1;
+    while close < bytes.len() && !(bytes[close] == b')' && bytes[close - 1] != b'\\') {
+        close += 1;
+    }
+    bytes.splice(open..=close, b"(ab)".iter().copied());
+    bytes
+}
+
+#[test]
+fn a_truncated_user_entry_is_refused_not_a_crash() {
+    // ÇEKİŞMELİ İNCELEME (P0): lopdf'in parola denetimi `/U` değerini
+    // uzunluk denetimi olmadan `expected[..16]` ile dilimler. Kısaltılmış
+    // bir `/U` süreci PANİKLETİR; Tauri komut iş parçacığı çözülür ve
+    // `invoke` sözü HİÇ tamamlanmaz — kullanıcı için uygulama donar.
+    //
+    // Bu yolu ŞİFRE ÇÖZME DÜZELTMESİ AÇTI: eskiden `/Encrypt` taşıyan her
+    // belge çözmeye hiç girmeden reddediliyordu.
+    let bytes = short_user_entry_pdf();
+    let result = std::panic::catch_unwind(|| pdf_core::pdf::load_pdf_tolerant(&bytes, "bozuk.pdf"));
+    let outcome = result.expect("PANİK: bozuk şifreleme sözlüğü süreci düşürdü");
+    let err = outcome.expect_err("bozuk şifreleme sözlüğü kabul edilmemeli");
+    assert!(
+        !err.to_string().is_empty(),
+        "reddin bir sebebi olmalı: {err}"
+    );
+}

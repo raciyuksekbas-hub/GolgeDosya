@@ -100,6 +100,37 @@ fn canonicalize(doc: &mut LopdfDoc) -> Result<usize> {
     Ok(detached)
 }
 
+
+/// Standart güvenlik handler'ının alanları spec'e uygun mu?
+///
+/// Amaç güvenlik denetimi değil, ÇÖZÜCÜYE SAĞLAM GİRDİ vermek: eksik ya da
+/// kısa alanlar aşağıdaki katmanda dilim taşmasına yol açıyor.
+fn standard_handler_is_well_formed(doc: &LopdfDoc) -> std::result::Result<(), String> {
+    const MALFORMED: &str =
+        "Bu PDF'in şifreleme bilgisi eksik ya da hasarlı. Kaynak uygulamada şifresiz bir kopya oluşturun.";
+    let dict = doc
+        .get_encrypted()
+        .map_err(|_| MALFORMED.to_string())?;
+    // Yalnız standart handler çözülebilir; diğerleri aşağıda zaten reddedilir.
+    if dict.get(b"Filter").and_then(|f| f.as_name()).ok() != Some(b"Standard") {
+        return Ok(());
+    }
+    for key in [b"O".as_slice(), b"U".as_slice()] {
+        let value = dict
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map_err(|_| MALFORMED.to_string())?;
+        // PDF 32000-1, Tablo 21: R2–R4 için 32 baytlık dize.
+        if value.len() < 32 {
+            return Err(MALFORMED.to_string());
+        }
+    }
+    if dict.get(b"P").and_then(|v| v.as_i64()).is_err() {
+        return Err(MALFORMED.to_string());
+    }
+    Ok(())
+}
+
 /// Yalnız **sahip parolası** taşıyan belgeleri açar.
 ///
 /// Banka, Findeks, icra ve mahkeme çıktılarının çoğu şifreli üretilir: sahip
@@ -119,6 +150,20 @@ fn canonicalize(doc: &mut LopdfDoc) -> Result<usize> {
 fn unlock_if_owner_protected(doc: &mut LopdfDoc) -> Result<()> {
     if !doc.trailer.has(b"Encrypt") {
         return Ok(());
+    }
+    // Şifreleme sözlüğü lopdf'e verilmeden ÖNCE doğrulanır.
+    //
+    // lopdf'in parola denetimi `/U` değerini uzunluk denetimi olmadan
+    // `expected[..16]` ile dilimler (encryption.rs:160). Kısaltılmış bir `/U`
+    // süreci PANİKLETİR: Tauri komut iş parçacığı çözülür, `invoke` sözü hiç
+    // tamamlanmaz ve kullanıcı için uygulama donar. Bozuk ya da kötü niyetli
+    // tek bir dosya bunu tetiklemeye yeter.
+    //
+    // Standart güvenlik handler'ında (R2–R4) `/O` ve `/U` TAM 32 bayttır;
+    // olmayan belge zaten spec dışıdır ve çözülemez. Panik yerine dürüst bir
+    // ret verilir.
+    if let Err(reason) = standard_handler_is_well_formed(doc) {
+        return Err(EklerError::InvalidPdf(reason));
     }
     match doc.decrypt("") {
         // Başarılı çözümde lopdf `/Encrypt`'i trailer'dan kaldırır; belge
