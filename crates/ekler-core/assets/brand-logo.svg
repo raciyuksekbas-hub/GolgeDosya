@@ -1,6 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="290" height="72" viewBox="0 0 290 72" role="img" aria-label="GölgeDosya">
-  <rect x="26" y="20" width="34" height="42" fill="#176D73"/>
-  <rect x="12" y="10" width="34" height="42" fill="#202C30"/>
-  <text x="76" y="45" fill="#202C30" font-size="35" font-weight="700"
+  <!--
+    Canonical "Kat" işareti — tek kaynak: apps/belge-shell/brand/mark.svg
+    (64×64 viewBox, y aşağı). Burada 64×64 alan (0,4) konumuna yerleştirilir.
+    Eski çizim iki düz dikdörtgen ve yasaklı petrol yeşiliydi (#176D73).
+  -->
+  <defs>
+    <clipPath id="gd-page"><rect x="12" y="12" width="40" height="48" rx="7"/></clipPath>
+  </defs>
+  <g clip-path="url(#gd-page)">
+    <rect x="12" y="12" width="40" height="48" fill="#8A6A3E"/>
+    <path d="M12 12 H52 V36 L28 60 H12 Z" fill="#1C1C1E"/>
+  </g>
+  <text x="76" y="49" fill="#1C1C1E" font-size="35" font-weight="700"
         font-family="Helvetica Neue, Helvetica, Arial, sans-serif">GölgeDosya</text>
 </svg>

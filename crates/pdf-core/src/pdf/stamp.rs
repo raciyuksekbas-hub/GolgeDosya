@@ -647,6 +647,20 @@ const BRAND_LOGO: &[u8] = include_bytes!("../../assets/brand-logo.ops");
 /// ikinci bir işaret eklenir ve kullanıcı "DüzenEk + GölgeDosya" çift filigranı
 /// görürdü.
 const LEGACY_BRAND_LOGO: &[u8] = include_bytes!("../../assets/brand-logo-legacy.ops");
+/// Birleşme SONRASI üretilmiş ama canonical OLMAYAN marka çizimi.
+///
+/// `5a399ea` eski DüzenEk kelime işaretini kaldırırken yerine YENİ bir şekil
+/// uydurdu ("üst üste iki yaprak") ve eski DüzenEk paletini (#176D73 petrol
+/// yeşili) korudu. Oysa ürünün kabul edilmiş işareti
+/// `apps/belge-shell/brand/mark.svg` içindeki "Kat"tır: yuvarlatılmış tek
+/// sayfa, sağ alt köşesi kalkık, altında pirinç katman. BRAND.md petrol
+/// yeşilini açıkça yasaklar. Bu çizimle damgalanmış belgeler sahada üretildi;
+/// tanınmazsa üzerlerine ikinci bir işaret eklenir.
+const SUPERSEDED_BRAND_LOGO: &[u8] =
+    include_bytes!("../../assets/brand-logo-superseded-2026-09-16.ops");
+
+/// Artık üretilmeyen ama TANINMASI gereken bütün marka çizimleri.
+const OUTDATED_BRAND_LOGOS: [&[u8]; 2] = [LEGACY_BRAND_LOGO, SUPERSEDED_BRAND_LOGO];
 const BRAND_FORM_CONTENT: &[u8] = b"q /BrandAlpha gs /Mark Do Q";
 const BRAND_BBOX: [f32; 4] = [0., 0., 290., 72.];
 
@@ -668,7 +682,7 @@ fn brand_vector_dict(font: lopdf::ObjectId) -> Dictionary {
     }
 }
 
-/// Eski DüzenEk marka çizimini YERİNDE canonical GölgeDosya çizimine yükselt.
+/// Eskimiş marka çizimlerini YERİNDE canonical GölgeDosya çizimine yükselt.
 ///
 /// Marka formu baytlarıyla tanınır; asset değiştiği için eski bir belgedeki
 /// işaret aksi hâlde "marka yok" sayılır ve üstüne ikinci bir GölgeDosya işareti
@@ -683,7 +697,11 @@ fn upgrade_legacy_brand_marks(doc: &mut LopdfDoc) -> Result<()> {
             if stream.dict.get(b"Subtype").and_then(|t| t.as_name()).ok() != Some(b"Form") {
                 return None;
             }
-            (stream_data(stream)? == LEGACY_BRAND_LOGO).then_some(*id)
+            let data = stream_data(stream)?;
+            OUTDATED_BRAND_LOGOS
+                .iter()
+                .any(|outdated| data == *outdated)
+                .then_some(*id)
         })
         .collect();
     if legacy.is_empty() {

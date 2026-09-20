@@ -1,15 +1,27 @@
 q
-0.0902 0.42745 0.45098 rg
-26 10 34 42 re
+% Canonical 'Kat' silueti: yuvarlatilmis sayfa (rx 7) kirpma yolu.
+19 12 m
+45 12 l
+48.8661 12 52 15.1339 52 19 c
+52 53 l
+52 56.8661 48.8661 60 45 60 c
+19 60 l
+15.1339 60 12 56.8661 12 53 c
+12 19 l
+12 15.1339 15.1339 12 19 12 c
+h
+W n
+% Pirinc alt katman (#8A6A3E).
+0.54118 0.41569 0.24314 rg
+12 12 40 48 re
 f
-Q
-q
-0.12549 0.17255 0.18824 rg
-12 20 34 42 re
+% Sumi sayfa (#1C1C1E); sag alt kosesi tek diyagonalle kalkik.
+0.10980 0.10980 0.11765 rg
+12 60 m 52 60 l 52 36 l 28 12 l 12 12 l h
 f
 Q
 BT
-0.12549 0.17255 0.18824 rg
+0.10980 0.10980 0.11765 rg
 /BrandFont 35 Tf
 76 27 Td
 (G\366lgeDosya) Tj
