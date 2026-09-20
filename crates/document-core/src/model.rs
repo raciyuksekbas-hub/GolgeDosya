@@ -272,6 +272,13 @@ pub struct ParaProps {
     pub list: Option<ListRef>,
     /// Style name from the source, kept for diagnostics and DOCX style emission.
     pub style_name: Option<String>,
+    /// Word'ün "aynı stildeki paragraflar arasına boşluk ekleme" kuralı
+    /// (`<w:contextualSpacing/>`).
+    ///
+    /// Word bu işareti taşıyan bir paragrafın, KENDİSİYLE AYNI STİLDEKİ komşusu
+    /// ile arasındaki before/after boşluğunu çizmez. İşaret yok sayılırsa o
+    /// boşluk her paragrafta gerçekten yazılır ve belge dikey olarak açılır.
+    pub contextual_spacing: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

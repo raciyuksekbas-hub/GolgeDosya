@@ -598,6 +598,8 @@ fn parse_para_props(e: &BytesStart, ctx: &mut Ctx) -> ParaProps {
         line_spacing_extra: attr_f32(e, "LineSpacing").unwrap_or(0.0),
         tab_stops: Vec::new(),
         list: None,
+        // UDF'te bu kural yoktur: bosluk zaten yazilmis haldedir.
+        contextual_spacing: false,
         style_name: attr(e, "description"),
     };
 

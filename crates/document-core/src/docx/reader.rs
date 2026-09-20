@@ -53,6 +53,7 @@ struct PartialPara {
     tabs: Option<Vec<TabStop>>,
     num_id: Option<u32>,
     num_level: Option<u32>,
+    contextual: Option<bool>,
 }
 
 #[derive(Clone, Default, Debug)]
@@ -144,6 +145,9 @@ impl PartialPara {
         if o.num_level.is_some() {
             self.num_level = o.num_level;
         }
+        if o.contextual.is_some() {
+            self.contextual = o.contextual;
+        }
     }
 }
 
@@ -181,6 +185,44 @@ impl Styles {
     }
 }
 
+
+/// Word'ün `<w:contextualSpacing/>` kuralını MATERYALLEŞTİR.
+///
+/// Kural: bu işareti taşıyan bir paragraf, KENDİSİYLE AYNI STİLDEKİ bir
+/// komşusuyla yan yanaysa aradaki boşluk çizilmez. Word bunu render sırasında
+/// yapar; UDF'te böyle bir kural yoktur, dolayısıyla karar burada verilip
+/// sonuç yazılmalıdır.
+///
+/// İşaret yok sayıldığında boşluk her paragrafta gerçekten yazılıyordu:
+/// gerçek bir 52 sayfalık sözleşmede bu işareti taşıyan 165 paragraf vardı,
+/// metin dikey olarak açılıyor ve sayfa akışı değişiyordu.
+///
+/// Yalnız ARDIŞIK paragraflara bakılır; araya tablo veya sayfa sonu girerse
+/// komşuluk biter — Word de öyle davranır.
+fn apply_contextual_spacing(blocks: &mut [Block]) {
+    /// İki paragraf Word'ün gözünde "aynı stil" mi?
+    fn same_style(a: &Paragraph, b: &Paragraph) -> bool {
+        a.props.style_name == b.props.style_name
+    }
+    for i in 0..blocks.len() {
+        let (left, right) = blocks.split_at_mut(i + 1);
+        let (Some(Block::Paragraph(current)), Some(Block::Paragraph(next))) =
+            (left.last_mut(), right.first_mut())
+        else {
+            continue;
+        };
+        if !same_style(current, next) {
+            continue;
+        }
+        if current.props.contextual_spacing {
+            current.props.space_after_pt = 0.0;
+        }
+        if next.props.contextual_spacing {
+            next.props.space_before_pt = 0.0;
+        }
+    }
+}
+
 pub fn read_docx(bytes: &[u8], warn: &mut WarningSink) -> Result<Document> {
     let mut pkg = load_package(bytes)?;
     let styles = parse_styles(pkg.styles.as_deref())?;
@@ -196,7 +238,8 @@ pub fn read_docx(bytes: &[u8], warn: &mut WarningSink) -> Result<Document> {
         used_num: HashMap::new(),
         active_part: None,
     };
-    let (blocks, sect) = b.walk_body(&doc_xml)?;
+    let (mut blocks, sect) = b.walk_body(&doc_xml)?;
+    apply_contextual_spacing(&mut blocks);
 
     let mut section = Section {
         page: sect.page,
@@ -520,6 +563,12 @@ fn apply_ppr_child(e: &BytesStart, p: &mut PartialPara) {
                     _ => ((twips_to_pt(v) / 12.0) - 1.0).max(0.0),
                 });
             }
+        }
+        // Word: "aynı stildeki paragraflar arasına boşluk ekleme". Yok
+        // sayıldığında o boşluk her paragrafta gerçekten yazılır. Gerçek bir
+        // 52 sayfalık sözleşmede bu işareti taşıyan 165 paragraf vardı.
+        b"contextualSpacing" => {
+            p.contextual = Some(a(e, "val").map(|v| v != "0" && v != "false").unwrap_or(true));
         }
         b"numPr" => {}
         b"numId" => {
@@ -1170,6 +1219,7 @@ impl<'a> BodyBuilder<'a> {
             tab_stops: p.tabs.unwrap_or_default(),
             list,
             style_name: style.clone(),
+            contextual_spacing: p.contextual.unwrap_or(false),
         }
     }
 }
