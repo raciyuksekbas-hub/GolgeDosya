@@ -739,6 +739,8 @@ impl<'a> BodyBuilder<'a> {
         let mut para_style: Option<String> = None;
         let mut direct_para = PartialPara::default();
         let mut in_ppr = false;
+        // Bir revizyon KAYDININ içinde miyiz? (>0 ise her şey yok sayılır.)
+        let mut revision_depth: usize = 0;
         let mut in_rpr = false;
         let mut in_para_rpr = false;
         let mut in_tabs = false;
@@ -779,6 +781,32 @@ impl<'a> BodyBuilder<'a> {
                     }
                     let ln = e.local_name();
                     let name = ln.as_ref();
+                    // Değişiklik-izleme KAYDI, belgenin GÜNCEL hâli değildir.
+                    //
+                    // `w:pPrChange` / `w:rPrChange` / `w:tcPrChange` /
+                    // `w:trPrChange` / `w:sectPrChange` içinde, revizyondan
+                    // ÖNCEKİ (yani reddedilmiş) özellikler tam bir `w:pPr`
+                    // olarak durur. Okuyucu bunları ayırt etmiyordu ve
+                    // `w:pPr` içinde sayıldıkları için GÜNCEL değerlerin
+                    // ÜSTÜNE yazıyorlardı: paragraf eski aralığıyla, eski
+                    // stiliyle ve eski numaralandırmasıyla dönüşüyordu.
+                    // Gerçek sözleşmenin değişik sürümünde 2 `pPrChange`,
+                    // 24 `rPrChange` ve 50 `tcPrChange` bloğu var.
+                    //
+                    // Stil adı ayrıca `apply_contextual_spacing` kuralının
+                    // anahtarıdır; yanlış stil, boşluk kararını da bozar.
+                    if matches!(
+                        name,
+                        b"pPrChange" | b"rPrChange" | b"tcPrChange" | b"trPrChange" | b"sectPrChange"
+                    ) {
+                        if !is_empty {
+                            revision_depth += 1;
+                        }
+                        continue;
+                    }
+                    if revision_depth > 0 {
+                        continue;
+                    }
                     match name {
                         b"p" if !in_sect_pr => {
                             if is_empty {
@@ -1025,6 +1053,17 @@ impl<'a> BodyBuilder<'a> {
 
                 Ok(Event::End(ref e)) => {
                     guard.leave();
+                    let ln = e.local_name();
+                    if matches!(
+                        ln.as_ref(),
+                        b"pPrChange" | b"rPrChange" | b"tcPrChange" | b"trPrChange" | b"sectPrChange"
+                    ) {
+                        revision_depth = revision_depth.saturating_sub(1);
+                        continue;
+                    }
+                    if revision_depth > 0 {
+                        continue;
+                    }
                     match e.local_name().as_ref() {
                         b"pPr" => in_ppr = false,
                         b"rPr" => {

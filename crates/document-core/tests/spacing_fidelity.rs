@@ -130,3 +130,50 @@ fn twips_conversion_is_unchanged() {
     let ps = paragraphs(&docx(&para("Normal", 240, false, "x")));
     assert_eq!(ps[0].props.space_after_pt, 12.0);
 }
+
+/// Revizyon KAYDI taşıyan paragraf: güncel aralık 12 pt, reddedilmiş olan 0 pt.
+fn para_with_revision() -> String {
+    concat!(
+        r#"<w:p><w:pPr><w:pStyle w:val="Normal"/><w:spacing w:after="240"/>"#,
+        // Revizyondan ÖNCEKİ hâl — belgenin güncel görünümü DEĞİL.
+        r#"<w:pPrChange w:id="1" w:author="x" w:date="2026-01-01T00:00:00Z">"#,
+        r#"<w:pPr><w:pStyle w:val="ListParagraph"/><w:spacing w:after="0"/></w:pPr>"#,
+        r#"</w:pPrChange>"#,
+        r#"</w:pPr><w:r><w:t>metin</w:t></w:r></w:p>"#,
+    )
+    .to_string()
+}
+
+#[test]
+fn a_revision_record_does_not_overwrite_the_current_formatting() {
+    // ÇEKİŞMELİ İNCELEME: `w:pPrChange` içindeki eski `w:pPr` tam bir
+    // paragraf özelliği bloğudur ve okuyucu onu `w:pPr` içinde sayıyordu.
+    // "Son yazan kazanır" olduğu için REDDEDİLMİŞ değerler güncelin üstüne
+    // yazılıyordu: paragraf eski aralığıyla ve eski stiliyle dönüşüyordu.
+    let ps = paragraphs(&docx(&para_with_revision()));
+    assert_eq!(ps.len(), 1);
+    assert_eq!(ps[0].props.space_after_pt, 12.0, "güncel aralık korunmalı");
+    assert_eq!(
+        ps[0].props.style_name.as_deref(),
+        Some("Normal"),
+        "güncel stil korunmalı; revizyon kaydındaki stil değil"
+    );
+}
+
+#[test]
+fn revision_records_do_not_leak_into_the_contextual_spacing_decision() {
+    // Stil adı `apply_contextual_spacing` kuralının ANAHTARIDIR: revizyon
+    // kaydından sızan yanlış bir stil, boşluk kararını da bozardı.
+    let body = format!("{}{}", para_with_revision(), para_with_revision());
+    let ps = paragraphs(&docx(&body));
+    // İkisi de "Normal" ve contextualSpacing YOK -> boşluk korunur.
+    assert_eq!(ps[0].props.space_after_pt, 12.0);
+    assert_eq!(ps[1].props.space_after_pt, 12.0);
+}
+
+#[test]
+fn text_inside_a_revision_record_is_not_emitted_as_content() {
+    // Kayıt YOK SAYILIR ama paragrafın kendi metni kalır.
+    let ps = paragraphs(&docx(&para_with_revision()));
+    assert_eq!(ps[0].text(), "metin");
+}
