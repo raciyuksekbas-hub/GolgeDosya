@@ -1,7 +1,7 @@
 /** Rust `features::FeatureState` ile birebir eşleşir. */
 export interface FeatureState {
   /** Kararlı anahtar; eski ürün adı. Log/flag/hata kayıtlarında bu kullanılır. */
-  key: "duzenek" | "tavzih" | "degisikis" | "ikincigoz";
+  key: "duzenek" | "ekler" | "tavzih" | "degisikis" | "ikincigoz";
   /** Kullanıcının gördüğü Türkçe eylem adı. */
   label: string;
   route: string;

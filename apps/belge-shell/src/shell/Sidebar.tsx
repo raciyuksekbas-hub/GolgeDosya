@@ -1,6 +1,7 @@
 import type { FeatureState, PrefTab } from "./types";
 import {
   AppMark,
+  IconAnnex,
   IconCompare,
   IconConvert,
   IconEdit,
@@ -14,6 +15,7 @@ import { MODES } from "./modes";
 
 const ICONS = {
   duzenek: IconEdit,
+  ekler: IconAnnex,
   tavzih: IconConvert,
   degisikis: IconCompare,
   ikincigoz: IconReview,

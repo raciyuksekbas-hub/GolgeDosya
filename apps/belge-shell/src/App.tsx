@@ -11,6 +11,7 @@ import { ConvertWorkspace } from "./modules/tavzih/ConvertWorkspace";
 import { ReviewWorkspace } from "./modules/ikincigoz/ReviewWorkspace";
 import { CompareWorkspace } from "./modules/degisikis/CompareWorkspace";
 import { PdfWorkspace } from "./modules/duzenek/PdfWorkspace";
+import { AnnexWorkspace } from "./modules/duzenek/ekler/AnnexWorkspace";
 import { MODES, carryContext, fileNameOf, type ContextOutcome } from "./shell/modes";
 import { Button, Status } from "./shared-ui/primitives";
 import { announce } from "./shared-ui/Announcer";
@@ -261,7 +262,11 @@ export function App() {
         }
       >
         {active && settings ? (
-          usable && active.key === "tavzih" ? (
+          // Ekler kendi belge seçicisiyle çalışır: kabuğun tek-belge akışına
+          // girmez, bu yüzden `usable` kapısının ÖNÜNDE durur.
+          active.key === "ekler" ? (
+            <AnnexWorkspace />
+          ) : usable && active.key === "tavzih" ? (
             <ConvertWorkspace paths={carried} />
           ) : usable && active.key === "ikincigoz" ? (
             <ReviewWorkspace path={carried[0]} />

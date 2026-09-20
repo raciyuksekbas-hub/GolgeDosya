@@ -26,6 +26,14 @@ export const IconEdit = ({ className }: P) => (
   </svg>
 );
 
+/** Ekler — numaralı sekmeleriyle üst üste duran belgeler. */
+export const IconAnnex = ({ className }: P) => (
+  <svg {...base} className={className}>
+    <path d="M2.4 4.6h4.2l1 1.4h6v7.2a1 1 0 0 1-1 1H3.4a1 1 0 0 1-1-1z" />
+    <path d="M4.6 2.4h4.1l.9 1.3" />
+  </svg>
+);
+
 /** Dönüştür — iki biçim arasında gidiş geliş. */
 export const IconConvert = ({ className }: P) => (
   <svg {...base} className={className}>

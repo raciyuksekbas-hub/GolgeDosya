@@ -490,8 +490,12 @@ test("boşluk ölçeği sistematik: 4 · 8 · 12 · 16 · 20 · 24 · 32", () =>
 test("boş durum başlığı emir değil, işin adıdır", () => {
   const modes = readFileSync("src/shell/modes.ts", "utf8");
   const titles = [...modes.matchAll(/emptyTitle: "([^"]+)"/g)].map((m) => m[1]);
-  assert.equal(titles.length, 4, "dört kipin de başlığı olmalı");
-  assert.equal(new Set(titles).size, 4, "başlıklar birbirinin kopyası olmamalı");
+  // Kip sayisi SABIT YAZILMAZ: Rust ozellik matrisinden okunur. Ikisi ayri
+  // dusunce ("Ekler" motora eklendi ama kabukta yok) bu test kirilir.
+  const matrix = readFileSync("src-tauri/src/features.rs", "utf8");
+  const moduleCount = Number(/const MODULES: \[\(&str, &str, &str\); (\d+)\]/u.exec(matrix)[1]);
+  assert.equal(titles.length, moduleCount, "her kipin bir boş durum başlığı olmalı");
+  assert.equal(new Set(titles).size, moduleCount, "başlıklar birbirinin kopyası olmamalı");
   for (const t of titles) {
     assert.ok(t.length <= 32, `başlık tek satıra sığmalı: "${t}" (${t.length})`);
     // "…çalışın", "…dönüştürün", "…karşılaştırın": emir kipi bir çalışma notu
@@ -505,7 +509,7 @@ test("boş durum başlığı emir değil, işin adıdır", () => {
   const hints = [...modes.matchAll(/hint:\s*(?:"([^"]+)"|\n\s*"([^"]+)" \+\n\s*"([^"]+)")/g)].map(
     (m) => (m[1] ?? "") + (m[2] ?? "") + (m[3] ?? ""),
   );
-  assert.equal(hints.length, 4, "dört açıklama da bulunmalı");
+  assert.equal(hints.length, moduleCount, "her kipin bir açıklaması olmalı");
   for (const h of hints) {
     assert.ok(h.length <= 120, `açıklama iki satırı aşıyor: "${h}" (${h.length})`);
   }

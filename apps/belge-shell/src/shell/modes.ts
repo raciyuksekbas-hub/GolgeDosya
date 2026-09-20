@@ -38,8 +38,13 @@ export interface Mode {
   recentTitle: string;
   /** Dosya seçicide görünecek tür adı. */
   pickerLabel: string;
-  /** Kaç belge gerekir: bir kip iki belge isteyebilir (Karşılaştır). */
-  needs: 1 | 2;
+  /**
+   * Kaç belge gerekir: bir kip iki belge isteyebilir (Karşılaştır).
+   *
+   * `0` = kip kabuğun belge akışına girmez; kendi seçicisiyle çalışır
+   * (Ekler: bir ek paketi birden çok kaynaktan kurulur).
+   */
+  needs: 0 | 1 | 2;
   /**
    * İki belge isteyen kipte yuvaların adı.
    *
@@ -82,6 +87,19 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     recentTitle: "Son PDF'ler",
     pickerLabel: "PDF belgesi",
     needs: 1,
+  },
+  // Dilekçe EKLERİ. Kendi belge seçicisi vardır (bir ek paketi birden çok
+  // kaynaktan kurulur), bu yüzden kabuğun tek-belge akışına girmez: kip
+  // açıldığında doğrudan çalışma alanı gelir.
+  ekler: {
+    label: "Ekler",
+    emptyTitle: "Dilekçe ekleri",
+    extensions: ["pdf", "docx", "doc", "jpg", "jpeg", "png", "tif", "tiff"],
+    hint: "Belgeleri Ek-1, Ek-2 diye gruplayın; ekler listesini ve nihai paketi üretin.",
+    openLabel: "Belge Ekle",
+    recentTitle: "Son belgeler",
+    pickerLabel: "Ek belgesi",
+    needs: 0,
   },
   tavzih: {
     label: "Dönüştür",

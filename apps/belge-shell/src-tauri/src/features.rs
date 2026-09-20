@@ -32,8 +32,12 @@ pub struct FeatureState {
     pub enabled: bool,
 }
 
-const MODULES: [(&str, &str, &str); 4] = [
+const MODULES: [(&str, &str, &str); 5] = [
     ("duzenek", "Düzenle", "/duzenle"),
+    // Dilekçe EKLERİ yönetimi. Aynı motorla (`ekler-core`) gelir ama AYRI bir
+    // yetenektir: PDF araçlarının taşınmış olması, DüzenEk'in taşındığı
+    // anlamına gelmez. Birleşme iddiası bu satır olmadan eksikti.
+    ("ekler", "Ekler", "/ekler"),
     ("tavzih", "Dönüştür", "/donustur"),
     ("degisikis", "Karşılaştır", "/karsilastir"),
     ("ikincigoz", "Denetle", "/denetle"),
@@ -46,6 +50,8 @@ const MODULES: [(&str, &str, &str); 4] = [
 fn compiled(key: &str) -> bool {
     match key {
         "duzenek" => cfg!(feature = "feature_duzenek"),
+        // Ek yönetimi DüzenEk motorunun parçasıdır; ayrı bayrağı yoktur.
+        "ekler" => cfg!(feature = "feature_duzenek"),
         "tavzih" => cfg!(feature = "feature_tavzih"),
         "degisikis" => cfg!(feature = "feature_degisikis"),
         "ikincigoz" => cfg!(feature = "feature_ikincigoz"),
@@ -82,16 +88,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_shell_declares_exactly_the_four_modules_in_navigation_order() {
+    fn the_shell_declares_exactly_the_modules_in_navigation_order() {
+        // Saha turu: "Ekler" eklendi. PDF araçlarının taşınmış olması
+        // DüzenEk'in taşındığı anlamına gelmiyordu; dilekçe ekleri yönetimi
+        // AYRI bir yetenektir ve matriste ayrı görünür.
         let s = states();
-        assert_eq!(s.len(), 4);
+        assert_eq!(s.len(), MODULES.len());
         assert_eq!(
             s.iter().map(|f| f.label).collect::<Vec<_>>(),
-            vec!["Düzenle", "Dönüştür", "Karşılaştır", "Denetle"]
+            vec!["Düzenle", "Ekler", "Dönüştür", "Karşılaştır", "Denetle"]
         );
         assert_eq!(
             s.iter().map(|f| f.key).collect::<Vec<_>>(),
-            vec!["duzenek", "tavzih", "degisikis", "ikincigoz"]
+            vec!["duzenek", "ekler", "tavzih", "degisikis", "ikincigoz"]
         );
     }
 
@@ -111,7 +120,7 @@ mod tests {
         let mut routes: Vec<_> = s.iter().map(|f| f.route).collect();
         routes.sort();
         routes.dedup();
-        assert_eq!(routes.len(), 4);
+        assert_eq!(routes.len(), MODULES.len(), "her kipin kendi rotası olmalı");
         assert!(s.iter().all(|f| f.route.starts_with('/')));
     }
 }
