@@ -24,8 +24,30 @@ import {
   exhibitsListText, moveExhibit, nameFromFile, removeExhibit, renameExhibit,
   unassignSource, unassignedSources,
 } from "./annexState";
-import type { AnnexSource, Project } from "./types";
+import type { AnnexSource, Project, StampConfig } from "./types";
 import "./ekler.css";
+
+/**
+ * Motorun kendi varsayılanları — uydurma DEĞİL.
+ *
+ * `ekler_core::DEFAULT_TARGET_SIZE_BYTES` ve `pdf_core::StampConfig::default()`
+ * ile birebir aynı. İlk sürümde burada `0` ve `null` vardı: `null` serde
+ * tarafından daha komut gövdesine girmeden reddediliyor, `0` ise
+ * `validate_project_structure` tarafından. Yani "Ekleri Hazırla ve Kaydet"
+ * HER çalıştırmada düşüyordu — üstelik kullanıcıya gösterilen sebep
+ * ("Çıktı klasörünü ve belgeleri kontrol edin") yanlış yeri gösteriyordu.
+ * Yüzey testi yalnız kaynak metnini aradığı için bunu kaçırdı; sözleşme
+ * artık `crates/ekler-core/tests/annex_ipc_contract.rs` ile kilitli.
+ */
+const DEFAULT_TARGET_SIZE_BYTES = 9_961_472;
+
+const defaultStamp = (): StampConfig => ({
+  enabled: true,
+  position: "top_right",
+  font_size: 10,
+  margin_pt: 20,
+  show_badge: true,
+});
 
 const emptyProject = (): Project => ({
   version: "1.0.0",
@@ -34,8 +56,8 @@ const emptyProject = (): Project => ({
   updated_at: "",
   sources: [],
   exhibits: [],
-  target_size_bytes: 0,
-  stamp_config: null,
+  target_size_bytes: DEFAULT_TARGET_SIZE_BYTES,
+  stamp_config: defaultStamp(),
 });
 
 /** Kimlikler saf katmanın dışında üretilir. */

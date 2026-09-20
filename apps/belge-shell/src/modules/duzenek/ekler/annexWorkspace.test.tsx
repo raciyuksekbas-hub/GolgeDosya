@@ -95,3 +95,23 @@ describe("sessiz hata yok", () => {
     expect(source).toContain("if (!result.sources.length) throw");
   });
 });
+
+describe("motora giden gövde gerçekten geçerli", () => {
+  // ÇEKİŞMELİ İNCELEME BULGUSU (P1): ilk sürüm `stamp_config: null` ve
+  // `target_size_bytes: 0` gönderiyordu. Birincisi serde tarafından komut
+  // gövdesine girmeden, ikincisi motorun doğrulaması tarafından reddedilir;
+  // yani "Ekleri Hazırla ve Kaydet" HER çalıştırmada düşerdi. Yukarıdaki
+  // yüzey testi yalnız kaynak metnini aradığı için bunu kaçırmıştı.
+  it("stamp_config null DEĞİL, tam bir yapı", () => {
+    expect(source).not.toContain("stamp_config: null");
+    expect(source).toContain("stamp_config: defaultStamp()");
+    for (const field of ["enabled:", "position:", "font_size:", "margin_pt:", "show_badge:"])
+      expect(source).toContain(field);
+  });
+
+  it("hedef boyut motorun varsayılanı, sıfır değil", () => {
+    expect(source).not.toContain("target_size_bytes: 0");
+    expect(source).toContain("target_size_bytes: DEFAULT_TARGET_SIZE_BYTES");
+    expect(source).toContain("const DEFAULT_TARGET_SIZE_BYTES = 9_961_472");
+  });
+});

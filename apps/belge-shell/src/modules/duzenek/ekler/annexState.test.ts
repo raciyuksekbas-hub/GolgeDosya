@@ -14,7 +14,8 @@ const base = (): Project => ({
   version: "1.0.0", name: "Dava", created_at: "", updated_at: "",
   sources: [src("A", "ihtarname.pdf", 3), src("B", "dekont.pdf", 5),
             src("C", "yazisma.pdf", 4), src("D", "fatura.pdf", 2)],
-  exhibits: [], target_size_bytes: 0, stamp_config: null,
+  exhibits: [], target_size_bytes: 9_961_472,
+  stamp_config: { enabled: true, position: "top_right", font_size: 10, margin_pt: 20, show_badge: true },
 });
 
 describe("§14 — atama durumu", () => {

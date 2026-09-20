@@ -31,6 +31,18 @@ export interface AnnexSource {
   is_signed: boolean;
 }
 
+/**
+ * `pdf_core::StampConfig` — motorda düz bir struct alanıdır (Option DEĞİL,
+ * serde default YOK). `null` göndermek komut gövdesine girmeden reddedilir.
+ */
+export interface StampConfig {
+  enabled: boolean;
+  position: "top_right" | "top_left" | "bottom_right" | "bottom_left";
+  font_size: number;
+  margin_pt: number;
+  show_badge: boolean;
+}
+
 export interface Project {
   version: string;
   name: string;
@@ -39,6 +51,6 @@ export interface Project {
   sources: AnnexSource[];
   exhibits: LogicalExhibit[];
   target_size_bytes: number;
-  stamp_config: unknown;
+  stamp_config: StampConfig;
   optimization?: string;
 }
