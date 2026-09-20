@@ -4,7 +4,7 @@ import { compareDocuments } from "./core/compare";
 import { extractDocument, ExtractionError } from "./core/extractors";
 import type { LocalDocument } from "./core/types";
 import { buildComparisonViewModel, filterChanges, type ChangeFilter } from "./viewModels/comparisonViewModel";
-import { DocumentPane } from "./DocumentPane";
+import { DocumentPane, PaneHeader } from "./DocumentPane";
 import { ChangeRail } from "./ChangeRail";
 import { ChangeInspector } from "./ChangeInspector";
 import { useRowHeightSync } from "./useRowHeightSync";
@@ -197,6 +197,51 @@ export function CompareWorkspace({ paths, onPairChange }: {
 
   // Eşzamanlı kaydırma: standalone davranışın aynısı.
   const syncing = useRef(false);
+  /**
+   * Bir tarafı YERİNDE değiştir (§33–34).
+   *
+   * Karşılaştırma açıldıktan sonra iki kaynak kilitleniyordu: başka bir
+   * belge denemek için çalışma alanını kapatıp baştan başlamak gerekiyordu.
+   * Oysa `PaneHeader` ve `.pane-header` stilleri bu akış için zaten vardı —
+   * bileşen hiç çizilmiyordu.
+   *
+   * Yalnız istenen taraf değişir; diğer taraf yeniden çıkarılmaz. Eski diff
+   * durumu (seçili fark, süzgeç konumu) temizlenir ki ekranda eskimiş bir
+   * seçim kalmasın.
+   */
+  const replaceSide = useCallback(
+    async (side: 0 | 1, file: File) => {
+      setBusy(true);
+      setFailure(null);
+      try {
+        const extracted = await extractDocument(file);
+        setDocs((current) => {
+          if (!current) return current;
+          const next: [Loaded, Loaded] = [...current] as [Loaded, Loaded];
+          next[side] = { path: file.name, doc: extracted };
+          onPairChange?.(next.map((d) => d.path));
+          return next;
+        });
+        // Eski seçim yeni belgede anlamsız; sayaç ve süzgeç yeniden kurulur.
+        setSelected(undefined);
+        announce(
+          `${side === 0 ? "Temel" : "Değişik"} sürüm ${file.name} ile değiştirildi. Karşılaştırma yenilendi.`,
+        );
+      } catch (e) {
+        logFailure("degisikis replace side", e);
+        const message =
+          e instanceof ExtractionError
+            ? e.message
+            : "Belge okunamadı. Dosyanın bütünlüğünü kontrol edin.";
+        setFailure(message);
+        announce(message);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onPairChange],
+  );
+
   const scrollFrom = useCallback((from: "base" | "revised") => {
     if (syncing.current) return;
     const src = from === "base" ? basePane.current : revisedPane.current;
@@ -307,6 +352,8 @@ export function CompareWorkspace({ paths, onPairChange }: {
       </p>
 
       <div className="compare-panes">
+        <div className="pane">
+        <PaneHeader doc={docs[0].doc} side="base" onReplace={(f) => void replaceSide(0, f)} />
         <DocumentPane
           side="base"
           doc={docs[0].doc}
@@ -317,6 +364,7 @@ export function CompareWorkspace({ paths, onPairChange }: {
           rowRefs={baseRows}
           onScroll={() => scrollFrom("base")}
         />
+        </div>
         <ChangeRail
           changes={visible}
           selectedIndex={selectedIndex}
@@ -336,6 +384,8 @@ export function CompareWorkspace({ paths, onPairChange }: {
           rowRefs={baseRows}
           syncToken={signature}
         />
+        <div className="pane">
+        <PaneHeader doc={docs[1].doc} side="revised" onReplace={(f) => void replaceSide(1, f)} />
         <DocumentPane
           side="revised"
           doc={docs[1].doc}
@@ -346,6 +396,7 @@ export function CompareWorkspace({ paths, onPairChange }: {
           rowRefs={revisedRows}
           onScroll={() => scrollFrom("revised")}
         />
+        </div>
       </div>
     </div>
   );

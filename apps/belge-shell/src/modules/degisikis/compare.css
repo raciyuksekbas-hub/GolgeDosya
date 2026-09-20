@@ -348,6 +348,10 @@
   min-height: 0;
 }
 
+/* Panel = baslik + kaydirilabilir govde. Baslik belgeyi ADIYLA gosterir ve
+   yerinde degistirmeye izin verir; govde tek kaydirma alanidir. */
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
 .compare-panes {
   flex: 1;
   min-height: 0;
