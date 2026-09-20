@@ -195,6 +195,7 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
           /* İki belgelik model boş durumda da görünür: kullanıcı ilk bakışta
              "buraya iki belge koyacağım" anlar. Yuvalar kart değildir —
              tonal yüzey, çerçeve yok. */
+          <>
           <div className="slots" role="group" aria-label="Karşılaştırılacak belgeler">
             <button
               type="button"
@@ -230,6 +231,12 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
               <span className="slot-meta" />
             </button>
           </div>
+          {/* Sürükle-bırak bu kipte de çalışıyor (iki belge birlikte ya da
+              A'dan sonra B) ama YALNIZ tek yuvalı dalda söyleniyordu: iki
+              yuvalı boş durumda ipucu hiç çizilmiyordu, yetenek keşfedilemez
+              kalıyordu. Canlı pencerede görüldü. */}
+          <span className="welcome-hint">veya belgeleri buraya sürükleyin</span>
+          </>
         ) : (
           <div className="welcome-action">
             <Button variant="primary" onClick={() => void browse(0)} title={`${mode.openLabel}  ⌘O`}>

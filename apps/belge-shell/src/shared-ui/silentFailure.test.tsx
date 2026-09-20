@@ -167,3 +167,26 @@ describe("Denetle makbuzu eskimez", () => {
     expect(katch).toContain("setApplyError");
   });
 });
+
+describe("sürükleme ipucu her boş durumda", () => {
+  // Yeniden üretim: uygulamayı çalıştır, Karşılaştır'a geç. Tek yuvalı
+  // kiplerde ("PDF Aç" + "veya buraya sürükleyin") ipucu var; İKİ yuvalı
+  // Karşılaştır boş durumunda hiç çizilmiyordu — oysa sürükle-bırak orada da
+  // çalışıyor (iki belge birlikte ya da A'dan sonra B). Yetenek
+  // keşfedilemez kalıyordu. Kaynakta dizeyi arayıp "var" demek yetmedi:
+  // dize else dalındaydı. Bunu canlı pencere gösterdi.
+  const surface = read("../features/DocumentSurface.tsx");
+  it("iki yuvalı boş durumda da söylenir", () => {
+    const pairBranch = surface.slice(
+      surface.indexOf('className="slots"'),
+      surface.indexOf('<div className="welcome-action">'),
+    );
+    expect(pairBranch).toContain("sürükleyin");
+  });
+
+  it("tek yuvalı boş durumda hâlâ söylenir", () => {
+    expect(surface.slice(surface.indexOf('<div className="welcome-action">'))).toContain(
+      "veya buraya sürükleyin",
+    );
+  });
+});
