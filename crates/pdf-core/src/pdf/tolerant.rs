@@ -87,6 +87,7 @@ pub fn load_pdf_tolerant(bytes: &[u8], file_name: &str) -> Result<TolerantLoadRe
 /// Okunan belgeyi normalize eder ve katı kurallarla doğrular. Dönen sayı, null
 /// sayılan eksik nesne başvurularıdır.
 fn canonicalize(doc: &mut LopdfDoc) -> Result<usize> {
+    unlock_if_owner_protected(doc)?;
     detach_from_source_layout(doc);
     // Şifreli belge ayrıştırılmış sayılmaz; reddi validate_document kendi
     // sözüyle verir.
@@ -97,6 +98,43 @@ fn canonicalize(doc: &mut LopdfDoc) -> Result<usize> {
     };
     super::validate_document(doc)?;
     Ok(detached)
+}
+
+/// Yalnız **sahip parolası** taşıyan belgeleri açar.
+///
+/// Banka, Findeks, icra ve mahkeme çıktılarının çoğu şifreli üretilir: sahip
+/// parolası konur, kullanıcı parolası BOŞ bırakılır. Bu bir erişim kilidi
+/// değildir — Preview, Acrobat ve her görüntüleyici bu belgeyi sormadan açar,
+/// çünkü boş kullanıcı parolası belgeyi çözmeye yeter. `/P` alanındaki
+/// kısıtlar (kopyalama, düzenleme) bu katmanda tavsiye niteliğindedir.
+///
+/// Eskiden `validate_document` `/Encrypt` gören her belgeyi koşulsuz
+/// reddediyordu: sahada gerçek bir Findeks kredi raporu "Dosya bozulmuş
+/// olabilir" denilerek geri çevrildi — oysa dosya sağlamdı ve 22 sayfası
+/// Preview'de açılıyordu.
+///
+/// GERÇEKTEN parola isteyen belge hâlâ reddedilir; parola tahmini yapılmaz,
+/// sahip parolası kırılmaz. Desteklenmeyen şema (AES, V≥4) da reddedilir —
+/// kör tolerans eklenmez, sebep doğru söylenir.
+fn unlock_if_owner_protected(doc: &mut LopdfDoc) -> Result<()> {
+    if !doc.trailer.has(b"Encrypt") {
+        return Ok(());
+    }
+    match doc.decrypt("") {
+        // Başarılı çözümde lopdf `/Encrypt`'i trailer'dan kaldırır; belge
+        // bundan sonrası için sıradan bir PDF'tir.
+        Ok(()) => Ok(()),
+        Err(lopdf::Error::Decryption(lopdf::encryption::DecryptionError::IncorrectPassword)) => {
+            Err(EklerError::InvalidPdf(
+                "Bu PDF bir parola ile korunuyor. Açmak için parolasız bir kopya oluşturun."
+                    .to_string(),
+            ))
+        }
+        Err(_) => Err(EklerError::InvalidPdf(
+            "Bu PDF'in şifreleme yöntemi desteklenmiyor. Kaynak uygulamada şifresiz bir kopya oluşturun."
+                .to_string(),
+        )),
+    }
 }
 
 fn dangling_note(detached: usize) -> String {

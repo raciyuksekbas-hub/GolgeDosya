@@ -16,3 +16,8 @@ serde_json.workspace = true
 # `ekler-core` ile aynı sürüm: hata tipi bu crate'e taşındı ve `ekler-core`
 # onu yeniden dışa aktarıyor, dolayısıyla ikisi aynı `thiserror`'ı kullanmalı.
 thiserror = "2"
+
+[dev-dependencies]
+# Sentetik ŞİFRELİ PDF fixture üretmek için (standart güvenlik handler'ı).
+# lopdf zaten aynı sürümü kullanıyor; yeni bir üçüncü taraf ağaç girmiyor.
+md-5 = "0.10"

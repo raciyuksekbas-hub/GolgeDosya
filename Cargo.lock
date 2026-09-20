@@ -2699,6 +2699,7 @@ dependencies = [
  "flate2",
  "image",
  "lopdf",
+ "md-5",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
