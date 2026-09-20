@@ -40,7 +40,10 @@ fn all_streams(doc: &LopdfDoc) -> Vec<Vec<u8>> {
 }
 
 fn count_logo(doc: &LopdfDoc, logo: &[u8]) -> usize {
-    all_streams(doc).iter().filter(|s| s.as_slice() == logo).count()
+    all_streams(doc)
+        .iter()
+        .filter(|s| s.as_slice() == logo)
+        .count()
 }
 
 /// Bir sayfanın marka formunu kaç kez çizdiği (birikme denetimi).
@@ -56,7 +59,12 @@ fn open(path: &std::path::Path) -> LopdfDoc {
 }
 
 /// Bir aracı gerçekten çalıştır ve markalı çıktıyı aç.
-fn run(lab: &Lab, src: &std::path::Path, op: ToolOperation, name: &str) -> (std::path::PathBuf, LopdfDoc) {
+fn run(
+    lab: &Lab,
+    src: &std::path::Path,
+    op: ToolOperation,
+    name: &str,
+) -> (std::path::PathBuf, LopdfDoc) {
     let out = lab.path(name);
     match run_tool_with_outcome(std::slice::from_ref(&src.to_path_buf()), &op, &out, false) {
         Ok(ToolOutcome::Published { .. } | ToolOutcome::Compressed { .. }) => {}
@@ -76,7 +84,12 @@ fn derived_output_carries_golgedosya_and_never_the_legacy_duzenek_mark() {
         .find(|f| f.name == "basit/1-sayfa-metin")
         .expect("fixture");
     let src = lab.write("kaynak.pdf", &fx.bytes);
-    let (_, doc) = run(&lab, &src, ToolOperation::Rotate { degrees: 0 }, "cikti.pdf");
+    let (_, doc) = run(
+        &lab,
+        &src,
+        ToolOperation::Rotate { degrees: 0 },
+        "cikti.pdf",
+    );
 
     // Eski ÇİZİM hiçbir biçimde bulunmamalı (asıl regresyon).
     assert_eq!(
@@ -237,9 +250,9 @@ fn legacy_branded_document() -> Vec<u8> {
     // Eski iç vektör formu: legacy çizim, BOŞ Resources (font yoktu).
     let mut vector = Stream::new(
         dictionary! {"Type"=>"XObject","Subtype"=>"Form",
-            "BBox"=>vec![Object::Integer(0),Object::Integer(0),Object::Integer(290),Object::Integer(72)],
-            "Group"=>dictionary! {"S"=>"Transparency","I"=>true,"CS"=>"DeviceRGB"},
-            "Resources"=>Dictionary::new()},
+        "BBox"=>vec![Object::Integer(0),Object::Integer(0),Object::Integer(290),Object::Integer(72)],
+        "Group"=>dictionary! {"S"=>"Transparency","I"=>true,"CS"=>"DeviceRGB"},
+        "Resources"=>Dictionary::new()},
         LEGACY_BRAND_LOGO.to_vec(),
     );
     vector.compress().unwrap();
@@ -247,9 +260,9 @@ fn legacy_branded_document() -> Vec<u8> {
 
     let mut form = Stream::new(
         dictionary! {"Type"=>"XObject","Subtype"=>"Form",
-            "BBox"=>vec![Object::Integer(0),Object::Integer(0),Object::Integer(290),Object::Integer(72)],
-            "Resources"=>dictionary! {"XObject"=>dictionary! {"Mark"=>vector_id},
-                "ExtGState"=>dictionary! {"BrandAlpha"=>dictionary! {"Type"=>"ExtGState","ca"=>0.24f32,"CA"=>0.24f32}}}},
+        "BBox"=>vec![Object::Integer(0),Object::Integer(0),Object::Integer(290),Object::Integer(72)],
+        "Resources"=>dictionary! {"XObject"=>dictionary! {"Mark"=>vector_id},
+            "ExtGState"=>dictionary! {"BrandAlpha"=>dictionary! {"Type"=>"ExtGState","ca"=>0.24f32,"CA"=>0.24f32}}}},
         BRAND_FORM_CONTENT.to_vec(),
     );
     form.compress().unwrap();
@@ -266,11 +279,12 @@ fn legacy_branded_document() -> Vec<u8> {
         "Contents",
         Object::Array(vec![existing, Object::Reference(draw)]),
     );
-    let resources = page_dict.get_mut(b"Resources").unwrap().as_dict_mut().unwrap();
-    resources.set(
-        "XObject",
-        dictionary! {"GolgeDosyaBrand"=>form_id},
-    );
+    let resources = page_dict
+        .get_mut(b"Resources")
+        .unwrap()
+        .as_dict_mut()
+        .unwrap();
+    resources.set("XObject", dictionary! {"GolgeDosyaBrand"=>form_id});
 
     corpus::save(&mut doc)
 }
@@ -292,7 +306,12 @@ fn a_legacy_duzenek_branded_document_is_upgraded_not_double_marked() {
         "fixture eski çizimi taşımalı"
     );
 
-    let (_, doc) = run(&lab, &src, ToolOperation::Rotate { degrees: 0 }, "cikti.pdf");
+    let (_, doc) = run(
+        &lab,
+        &src,
+        ToolOperation::Rotate { degrees: 0 },
+        "cikti.pdf",
+    );
 
     assert_eq!(
         count_logo(&doc, LEGACY_BRAND_LOGO),
@@ -323,7 +342,12 @@ fn the_mark_does_not_materially_bloat_the_document() {
         .expect("fixture");
     let src = lab.write("kaynak.pdf", &fx.bytes);
     let before = std::fs::metadata(&src).unwrap().len();
-    let (out, _) = run(&lab, &src, ToolOperation::Rotate { degrees: 0 }, "cikti.pdf");
+    let (out, _) = run(
+        &lab,
+        &src,
+        ToolOperation::Rotate { degrees: 0 },
+        "cikti.pdf",
+    );
     let after = std::fs::metadata(&out).unwrap().len();
 
     // Marka TEK paylaşılan formdur; 10 sayfalık belgeye eklediği yük küçük olmalı.

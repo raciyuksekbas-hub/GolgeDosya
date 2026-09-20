@@ -308,9 +308,9 @@ fn chosen_file_name(requested: &str, derived: &str) -> Option<String> {
     if base.is_empty() || base == "." || base == ".." {
         return None;
     }
-    let has_ext = base.rsplit_once('.').is_some_and(|(stem, ext)| {
-        !stem.is_empty() && !ext.is_empty() && !ext.contains(' ')
-    });
+    let has_ext = base
+        .rsplit_once('.')
+        .is_some_and(|(stem, ext)| !stem.is_empty() && !ext.is_empty() && !ext.contains(' '));
     if has_ext {
         return Some(base);
     }

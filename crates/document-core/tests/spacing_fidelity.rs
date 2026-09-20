@@ -47,7 +47,11 @@ fn docx(body: &str) -> Vec<u8> {
 
 /// `w:pStyle` ve `w:spacing` taşıyan, istenirse contextualSpacing'li paragraf.
 fn para(style: &str, after: u32, contextual: bool, text: &str) -> String {
-    let ctx = if contextual { "<w:contextualSpacing/>" } else { "" };
+    let ctx = if contextual {
+        "<w:contextualSpacing/>"
+    } else {
+        ""
+    };
     format!(
         r#"<w:p><w:pPr><w:pStyle w:val="{style}"/><w:spacing w:after="{after}"/>{ctx}</w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>"#
     )
@@ -77,9 +81,15 @@ fn contextual_spacing_is_suppressed_between_same_style_paragraphs() {
     );
     let ps = paragraphs(&docx(&body));
     assert_eq!(ps.len(), 3);
-    assert_eq!(ps[0].props.space_after_pt, 0.0, "1-2 arası boşluk çizilmemeli");
+    assert_eq!(
+        ps[0].props.space_after_pt, 0.0,
+        "1-2 arası boşluk çizilmemeli"
+    );
     assert_eq!(ps[1].props.space_before_pt, 0.0);
-    assert_eq!(ps[1].props.space_after_pt, 0.0, "2-3 arası boşluk çizilmemeli");
+    assert_eq!(
+        ps[1].props.space_after_pt, 0.0,
+        "2-3 arası boşluk çizilmemeli"
+    );
     // SON paragrafın after'ı korunur: ardından aynı stilde komşu yok.
     assert_eq!(ps[2].props.space_after_pt, 8.0);
 }
@@ -93,7 +103,10 @@ fn spacing_survives_between_different_styles() {
         para("Normal", 160, true, "gövde"),
     );
     let ps = paragraphs(&docx(&body));
-    assert_eq!(ps[0].props.space_after_pt, 8.0, "farklı stile geçişte boşluk kalmalı");
+    assert_eq!(
+        ps[0].props.space_after_pt, 8.0,
+        "farklı stile geçişte boşluk kalmalı"
+    );
 }
 
 #[test]
@@ -118,7 +131,8 @@ fn the_suppression_reaches_the_udf_output() {
     );
     let mut w = WarningSink::new();
     let d = docx::reader::read_docx(&docx(&body), &mut w).expect("docx");
-    let xml = String::from_utf8(udf::writer::write_content_xml(&d, &mut w).expect("udf")).expect("utf8");
+    let xml =
+        String::from_utf8(udf::writer::write_content_xml(&d, &mut w).expect("udf")).expect("utf8");
     // İlk paragrafta SpaceBelow yazılmamalı; ikincide (son) yazılmalı.
     let count = xml.matches("SpaceBelow=").count();
     assert_eq!(count, 1, "bastırılan boşluk UDF'ye yazılmış: {xml}");

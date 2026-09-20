@@ -96,7 +96,9 @@ pub struct ConversionResult {
 /// case file is easy to mistake for the original, and it writes into folders the user may
 /// not own. Everything goes to one predictable place instead.
 pub fn output_root() -> PathBuf {
-    documents_dir().join("GölgeDosya").join("Dönüştürülen Belgeler")
+    documents_dir()
+        .join("GölgeDosya")
+        .join("Dönüştürülen Belgeler")
 }
 
 /// The user's Documents directory.

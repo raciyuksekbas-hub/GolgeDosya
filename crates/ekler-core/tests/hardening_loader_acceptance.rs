@@ -63,16 +63,20 @@ fn a_trailing_eol_byte_inside_a_flate_content_stream_still_opens() {
     pdf.stream(11, "/Filter/FlateDecode", &data);
     pdf.finish_classic("/Root 1 0 R");
 
-    let pages = open_pages(pdf.bytes.clone()).unwrap_or_else(|e| {
-        panic!("görüntüleyicinin açtığı belge reddedildi (S1-a): {e}")
-    });
+    let pages = open_pages(pdf.bytes.clone())
+        .unwrap_or_else(|e| panic!("görüntüleyicinin açtığı belge reddedildi (S1-a): {e}"));
     assert_eq!(pages, 1, "sayfa bulunmalı");
 
     // Uçtan uca: avukat bu belgeyi gerçekten işleyebilmeli.
     let lab = Lab::new();
     let src = lab.write("sondaki-bayt.pdf", &pdf.bytes);
     let out = lab.path("dondurulmus.pdf");
-    match run_tool_with_outcome(std::slice::from_ref(&src), &ToolOperation::Rotate { degrees: 90 }, &out, false) {
+    match run_tool_with_outcome(
+        std::slice::from_ref(&src),
+        &ToolOperation::Rotate { degrees: 90 },
+        &out,
+        false,
+    ) {
         Ok(ToolOutcome::Published { .. } | ToolOutcome::Compressed { .. }) => {
             let doc = check::reopen_strict(&out).expect("çıktı katı biçimde açılmalı");
             assert_eq!(doc.get_pages().len(), 1);
@@ -92,7 +96,11 @@ fn multiple_trailing_bytes_open_but_a_truncated_stream_is_still_rejected() {
     let mut pdf = skeleton("11 0 R");
     pdf.stream(11, "/Filter/FlateDecode", &data);
     pdf.finish_classic("/Root 1 0 R");
-    assert_eq!(open_pages(pdf.bytes.clone()).unwrap(), 1, "CRLF sonu açılmalı");
+    assert_eq!(
+        open_pages(pdf.bytes.clone()).unwrap(),
+        1,
+        "CRLF sonu açılmalı"
+    );
 
     // Gerçekten bozuk: zlib akışı ortadan kesik → çözme HATASI → hâlâ reddedilir.
     let full = zlib(b"BT /F1 18 Tf 72 72 Td (Mk 1) Tj ET (uzun icerik) Tj ET");
@@ -129,7 +137,9 @@ fn an_indirect_reference_to_a_contents_array_still_opens() {
     let out = lab.path("filigranli.pdf");
     match run_tool_with_outcome(
         std::slice::from_ref(&src),
-        &ToolOperation::Watermark { text: "KOPYA".into() },
+        &ToolOperation::Watermark {
+            text: "KOPYA".into(),
+        },
         &out,
         false,
     ) {
@@ -169,9 +179,14 @@ fn stamping_a_self_referential_contents_does_not_hang() {
     let out = lab.path("o.pdf");
     let (s, o) = (src.clone(), out.clone());
     match guarded(Duration::from_secs(20), move || {
-        run_tool_with_outcome(std::slice::from_ref(&s), &ToolOperation::Rotate { degrees: 90 }, &o, false)
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        run_tool_with_outcome(
+            std::slice::from_ref(&s),
+            &ToolOperation::Rotate { degrees: 90 },
+            &o,
+            false,
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
     }) {
         Guarded::Done(_) => {}
         Guarded::Panicked(p) => panic!("damga döngüde panikledi: {p}"),
@@ -179,7 +194,7 @@ fn stamping_a_self_referential_contents_does_not_hang() {
     }
 }
 
-/// 4. tur: dolaylı→dizi /Contents deseninin BAŞKA bir tüketicisi —
+/// Dördüncü tur: dolaylı→dizi /Contents deseninin BAŞKA bir tüketicisi —
 /// detect_likely_blank_pages (Düzenle boş-sayfa tespiti, kullanıcıya SİLME
 /// adayı olarak sunar). Dolaylı diziyi (`5 0 R`→`[6 0 R]`) dereference etmeden
 /// tek stream sanıp `as_stream()` başarısız olunca içerik 0 bayt sayılıyor →
@@ -190,11 +205,19 @@ fn a_content_page_with_indirect_array_contents_is_not_flagged_blank() {
     // Dolu sayfa: dolaylı→dizi /Contents, ~34 bayt gerçek içerik.
     let mut pdf = skeleton("5 0 R");
     pdf.object(5, b"[6 0 R]");
-    pdf.stream(6, "", b"BT /F1 18 Tf 72 72 Td (Dolu sayfa metni burada) Tj ET");
+    pdf.stream(
+        6,
+        "",
+        b"BT /F1 18 Tf 72 72 Td (Dolu sayfa metni burada) Tj ET",
+    );
     pdf.finish_classic("/Root 1 0 R");
     let doc = match guarded(Duration::from_secs(20), {
         let bytes = pdf.bytes.clone();
-        move || ekler_core::load_pdf_tolerant(&bytes, "x.pdf").map(|r| r.document).map_err(|e| e.to_string())
+        move || {
+            ekler_core::load_pdf_tolerant(&bytes, "x.pdf")
+                .map(|r| r.document)
+                .map_err(|e| e.to_string())
+        }
     }) {
         Guarded::Done(Ok(d)) => d,
         other => panic!("dolu sayfa yüklenemedi: {other:?}"),

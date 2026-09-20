@@ -725,7 +725,10 @@ mod tests {
             t.join("dictionary.json").is_file(),
             "P1: sözlük devralınmadı (yükseltmede kayıp)"
         );
-        assert!(t.join("profiles.json").is_file(), "P1: profiller devralınmadı");
+        assert!(
+            t.join("profiles.json").is_file(),
+            "P1: profiller devralınmadı"
+        );
         assert_eq!(
             std::fs::read_to_string(t.join("dictionary.json")).unwrap(),
             r#"{"accepted":["tahkim"]}"#,
@@ -733,7 +736,10 @@ mod tests {
         );
         match status {
             SourceStatus::Migrated { fields } => {
-                assert!(fields.contains(&"dictionary.json".to_string()), "{fields:?}");
+                assert!(
+                    fields.contains(&"dictionary.json".to_string()),
+                    "{fields:?}"
+                );
             }
             other => panic!("beklenen Migrated, gelen {other:?}"),
         }
@@ -768,7 +774,10 @@ mod tests {
         // Dosyalar taşındıysa sonuç "aktarıldı" olmalı, "okunamadı" değil.
         match status {
             SourceStatus::Migrated { fields } => {
-                assert!(fields.contains(&"dictionary.json".to_string()), "{fields:?}");
+                assert!(
+                    fields.contains(&"dictionary.json".to_string()),
+                    "{fields:?}"
+                );
                 assert!(fields.contains(&"profiles.json".to_string()), "{fields:?}");
             }
             other => panic!("beklenen Migrated, gelen {other:?}"),

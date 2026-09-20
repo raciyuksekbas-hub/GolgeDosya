@@ -64,5 +64,6 @@ fn the_default_project_passes_validation() {
     // Motorun kendi varsayılanı geçerlidir; arayüz de onu kullanmalı.
     let p = Project::default();
     assert_eq!(p.target_size_bytes, DEFAULT_TARGET_SIZE_BYTES);
-    ekler_core::persistence::validate_project_structure(&p).expect("varsayılan proje geçerli olmalı");
+    ekler_core::persistence::validate_project_structure(&p)
+        .expect("varsayılan proje geçerli olmalı");
 }

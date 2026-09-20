@@ -100,7 +100,6 @@ fn canonicalize(doc: &mut LopdfDoc) -> Result<usize> {
     Ok(detached)
 }
 
-
 /// Standart güvenlik handler'ının alanları spec'e uygun mu?
 ///
 /// Amaç güvenlik denetimi değil, ÇÖZÜCÜYE SAĞLAM GİRDİ vermek: eksik ya da
@@ -108,9 +107,7 @@ fn canonicalize(doc: &mut LopdfDoc) -> Result<usize> {
 fn standard_handler_is_well_formed(doc: &LopdfDoc) -> std::result::Result<(), String> {
     const MALFORMED: &str =
         "Bu PDF'in şifreleme bilgisi eksik ya da hasarlı. Kaynak uygulamada şifresiz bir kopya oluşturun.";
-    let dict = doc
-        .get_encrypted()
-        .map_err(|_| MALFORMED.to_string())?;
+    let dict = doc.get_encrypted().map_err(|_| MALFORMED.to_string())?;
     // Yalnız standart handler çözülebilir; diğerleri aşağıda zaten reddedilir.
     if dict.get(b"Filter").and_then(|f| f.as_name()).ok() != Some(b"Standard") {
         return Ok(());

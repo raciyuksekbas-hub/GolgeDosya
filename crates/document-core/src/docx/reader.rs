@@ -185,7 +185,6 @@ impl Styles {
     }
 }
 
-
 /// Word'ün `<w:contextualSpacing/>` kuralını MATERYALLEŞTİR.
 ///
 /// Kural: bu işareti taşıyan bir paragraf, KENDİSİYLE AYNI STİLDEKİ bir
@@ -568,7 +567,11 @@ fn apply_ppr_child(e: &BytesStart, p: &mut PartialPara) {
         // sayıldığında o boşluk her paragrafta gerçekten yazılır. Gerçek bir
         // 52 sayfalık sözleşmede bu işareti taşıyan 165 paragraf vardı.
         b"contextualSpacing" => {
-            p.contextual = Some(a(e, "val").map(|v| v != "0" && v != "false").unwrap_or(true));
+            p.contextual = Some(
+                a(e, "val")
+                    .map(|v| v != "0" && v != "false")
+                    .unwrap_or(true),
+            );
         }
         b"numPr" => {}
         b"numId" => {
@@ -797,7 +800,11 @@ impl<'a> BodyBuilder<'a> {
                     // anahtarıdır; yanlış stil, boşluk kararını da bozar.
                     if matches!(
                         name,
-                        b"pPrChange" | b"rPrChange" | b"tcPrChange" | b"trPrChange" | b"sectPrChange"
+                        b"pPrChange"
+                            | b"rPrChange"
+                            | b"tcPrChange"
+                            | b"trPrChange"
+                            | b"sectPrChange"
                     ) {
                         if !is_empty {
                             revision_depth += 1;
@@ -1056,7 +1063,11 @@ impl<'a> BodyBuilder<'a> {
                     let ln = e.local_name();
                     if matches!(
                         ln.as_ref(),
-                        b"pPrChange" | b"rPrChange" | b"tcPrChange" | b"trPrChange" | b"sectPrChange"
+                        b"pPrChange"
+                            | b"rPrChange"
+                            | b"tcPrChange"
+                            | b"trPrChange"
+                            | b"sectPrChange"
                     ) {
                         revision_depth = revision_depth.saturating_sub(1);
                         continue;

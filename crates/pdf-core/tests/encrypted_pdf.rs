@@ -23,9 +23,7 @@ fn rc4(key: &[u8], data: &[u8]) -> Vec<u8> {
     let mut s: [u8; 256] = std::array::from_fn(|i| i as u8);
     let mut j = 0u8;
     for i in 0..256 {
-        j = j
-            .wrapping_add(s[i])
-            .wrapping_add(key[i % key.len()]);
+        j = j.wrapping_add(s[i]).wrapping_add(key[i % key.len()]);
         s.swap(i, j as usize);
     }
     let (mut i, mut j) = (0u8, 0u8);
@@ -131,7 +129,12 @@ fn build(pages: usize, user_password_empty: bool) -> Vec<u8> {
     });
 
     // Şifreleme sözlüğü DIŞINDAKİ bütün akış ve dizeler şifrelenir.
-    let ids: Vec<_> = doc.objects.keys().copied().filter(|i| *i != encrypt_id).collect();
+    let ids: Vec<_> = doc
+        .objects
+        .keys()
+        .copied()
+        .filter(|i| *i != encrypt_id)
+        .collect();
     for id in ids {
         let k = object_key(&key, id);
         match doc.objects.get_mut(&id) {

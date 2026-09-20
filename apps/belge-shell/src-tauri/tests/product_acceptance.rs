@@ -108,7 +108,13 @@ fn duzenle_every_pdf_tool_runs_from_its_command_and_produces_a_reopenable_output
 
     // (ad, işlem, beklenen sayfa sayısı)
     let cases: Vec<(&str, ToolOperation, usize)> = vec![
-        ("sec", ToolOperation::Select { pages: vec![1, 3, 5] }, 3),
+        (
+            "sec",
+            ToolOperation::Select {
+                pages: vec![1, 3, 5],
+            },
+            3,
+        ),
         (
             "sirala",
             ToolOperation::Reorder {
@@ -295,7 +301,11 @@ fn duzenle_dedicated_page_commands_work_and_leave_sources_intact() {
         out.to_string_lossy().to_string(),
     )
     .expect("birleştir");
-    assert_eq!(reopen(&out).get_pages().len(), 8, "birleştirme 5+3=8 olmalı");
+    assert_eq!(
+        reopen(&out).get_pages().len(),
+        8,
+        "birleştirme 5+3=8 olmalı"
+    );
 
     assert_eq!(sha(&a), a_sha, "KAYNAK A DEĞİŞTİ (P0)");
     assert_eq!(sha(&b), b_sha, "KAYNAK B DEĞİŞTİ (P0)");
@@ -308,7 +318,8 @@ fn duzenle_blank_page_detection_command_is_accurate() {
     // 3 sayfa: 2. sayfa boş.
     let mut doc = LopdfDoc::with_version("1.7");
     let pages_id = doc.new_object_id();
-    let font = doc.add_object(dictionary! {"Type"=>"Font","Subtype"=>"Type1","BaseFont"=>"Helvetica"});
+    let font =
+        doc.add_object(dictionary! {"Type"=>"Font","Subtype"=>"Type1","BaseFont"=>"Helvetica"});
     let mut kids = Vec::new();
     for i in 1..=3 {
         let body = if i == 2 {
@@ -391,7 +402,8 @@ fn duzenle_pdf_to_images_command_writes_real_image_files() {
 fn denetle_analyze_then_apply_to_copy_leaves_the_source_untouched() {
     use belge_shell_lib::modules::ikincigoz;
 
-    let samples = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../crates/ikincigoz-core/tests/samples");
+    let samples = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../crates/ikincigoz-core/tests/samples");
     if !samples.is_dir() {
         panic!("Referans fixture klasörü yok: {}", samples.display());
     }
@@ -447,15 +459,16 @@ fn denetle_analyze_then_apply_to_copy_leaves_the_source_untouched() {
 fn donustur_inspect_command_classifies_real_and_unsupported_inputs() {
     use belge_shell_lib::modules::tavzih;
 
-    let samples = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../crates/ikincigoz-core/tests/samples");
+    let samples = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../crates/ikincigoz-core/tests/samples");
     let lab = Lab::new();
 
     let docx = lab.write(
         "belge.docx",
         &std::fs::read(samples.join("ornek-dilekce-hatali.docx")).expect("örnek"),
     );
-    let info = tavzih::tavzih_inspect_file(docx.to_string_lossy().to_string())
-        .expect("DOCX tanınmalı");
+    let info =
+        tavzih::tavzih_inspect_file(docx.to_string_lossy().to_string()).expect("DOCX tanınmalı");
     assert!(
         format!("{info:?}").to_lowercase().contains("docx"),
         "DOCX biçimi bildirilmedi: {info:?}"
@@ -464,10 +477,7 @@ fn donustur_inspect_command_classifies_real_and_unsupported_inputs() {
     // Uzantısı .docx ama içeriği DOCX olmayan dosya: sessizce kabul edilmemeli.
     let sahte = lab.write("sahte.docx", b"bu bir docx degil");
     let r = tavzih::tavzih_inspect_file(sahte.to_string_lossy().to_string());
-    assert!(
-        r.is_err(),
-        "bozuk DOCX sahte başarıyla kabul edildi: {r:?}"
-    );
+    assert!(r.is_err(), "bozuk DOCX sahte başarıyla kabul edildi: {r:?}");
 }
 
 // ================================================ Karşılaştır — gerçek komut
@@ -478,7 +488,8 @@ fn donustur_inspect_command_classifies_real_and_unsupported_inputs() {
 fn karsilastir_read_document_command_reads_real_files_and_fails_loudly() {
     use belge_shell_lib::modules::degisikis;
 
-    let samples = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../crates/ikincigoz-core/tests/samples");
+    let samples = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../crates/ikincigoz-core/tests/samples");
     let lab = Lab::new();
     let docx = lab.write(
         "belge.docx",
@@ -505,8 +516,8 @@ fn karsilastir_read_document_command_reads_real_files_and_fails_loudly() {
 fn denetle_honours_the_file_name_the_user_typed_in_the_save_dialog() {
     use belge_shell_lib::modules::ikincigoz;
 
-    let samples =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../crates/ikincigoz-core/tests/samples");
+    let samples = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../crates/ikincigoz-core/tests/samples");
     let sample = samples.join("ornek-dilekce-hatali.docx");
     let lab = Lab::new();
     let src = lab.write("dilekce.docx", &std::fs::read(&sample).expect("örnek"));
@@ -559,7 +570,10 @@ fn denetle_honours_the_file_name_the_user_typed_in_the_save_dialog() {
     ))
     .expect("düzeltme uygula");
     assert_eq!(written.file_name, "kacis.docx", "yol bileşeni atılmalı");
-    assert!(out_dir.join("kacis.docx").exists(), "hedef klasörde kalmalı");
+    assert!(
+        out_dir.join("kacis.docx").exists(),
+        "hedef klasörde kalmalı"
+    );
 
     assert_eq!(sha(&src), src_sha, "KAYNAK DEĞİŞTİ (P0)");
 }

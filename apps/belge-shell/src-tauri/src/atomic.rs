@@ -64,11 +64,7 @@ pub fn write_new(destination: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// `unique_output_path_in` davranışıyla aynı, ama yarış-güvenli (ad seçimi ile
 /// yazım tek `write_new` çağrısında birleşiktir). Yazılan gerçek dosya adını
 /// döner. Var olan hiçbir dosya kaybolmaz.
-pub fn write_new_unique(
-    dir: &Path,
-    file_name: &str,
-    bytes: &[u8],
-) -> std::io::Result<String> {
+pub fn write_new_unique(dir: &Path, file_name: &str, bytes: &[u8]) -> std::io::Result<String> {
     let (stem, ext) = split_name(file_name);
     for n in 1..=999u32 {
         let candidate = if n == 1 {
@@ -94,9 +90,7 @@ pub fn write_new_unique(
 /// nokta (gizli dosya) ya da uzantısız ad için uzantı `None`.
 fn split_name(file_name: &str) -> (&str, Option<&str>) {
     match file_name.rfind('.') {
-        Some(i) if i > 0 && i + 1 < file_name.len() => {
-            (&file_name[..i], Some(&file_name[i + 1..]))
-        }
+        Some(i) if i > 0 && i + 1 < file_name.len() => (&file_name[..i], Some(&file_name[i + 1..])),
         _ => (file_name, None),
     }
 }
@@ -201,7 +195,10 @@ mod tests {
     #[test]
     fn split_name_handles_extension_dotfiles_and_bare_names() {
         assert_eq!(split_name("a.docx"), ("a", Some("docx")));
-        assert_eq!(split_name("a - Düzeltilmiş.udf"), ("a - Düzeltilmiş", Some("udf")));
+        assert_eq!(
+            split_name("a - Düzeltilmiş.udf"),
+            ("a - Düzeltilmiş", Some("udf"))
+        );
         assert_eq!(split_name("noext"), ("noext", None));
         assert_eq!(split_name(".gizli"), (".gizli", None));
         assert_eq!(split_name("bitiyor."), ("bitiyor.", None));

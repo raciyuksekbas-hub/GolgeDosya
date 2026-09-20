@@ -347,7 +347,10 @@ pub fn validate_document(doc: &Document) -> Result<usize> {
                     // tek akış mı kararından ÖNCE dereference et; yoksa diziye
                     // çözülen dolaylı bir başvuru (`/Contents 5 0 R`, 5 = `[6 0 R]`)
                     // tek stream sanılıp reddedilir — her görüntüleyici açsa da.
-                    let resolved = doc.dereference(contents).map(|(_, o)| o).unwrap_or(contents);
+                    let resolved = doc
+                        .dereference(contents)
+                        .map(|(_, o)| o)
+                        .unwrap_or(contents);
                     match resolved {
                         Object::Array(a) => {
                             for v in a {

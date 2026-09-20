@@ -2336,7 +2336,10 @@ fn c56_output_root_is_platform_correct() {
         .take(3)
         .map(|c| c.as_os_str().to_string_lossy().to_string())
         .collect();
-    assert_eq!(tail, vec!["Dönüştürülen Belgeler", "GölgeDosya", "Documents"]);
+    assert_eq!(
+        tail,
+        vec!["Dönüştürülen Belgeler", "GölgeDosya", "Documents"]
+    );
     assert!(r.is_absolute() || cfg!(test), "{}", r.display());
 }
 
@@ -2466,8 +2469,14 @@ fn hardening_complex_field_instruction_codes_never_leak_into_body() {
     let text = doc_all_text(&d);
 
     // Görünen değerler korunur.
-    assert!(text.contains("Görülen: Ek-3 numaralı belge"), "görünen değer kayıp: {text:?}");
-    assert!(text.contains("Bakınız madde 5."), "REF görünen değeri kayıp: {text:?}");
+    assert!(
+        text.contains("Görülen: Ek-3 numaralı belge"),
+        "görünen değer kayıp: {text:?}"
+    );
+    assert!(
+        text.contains("Bakınız madde 5."),
+        "REF görünen değeri kayıp: {text:?}"
+    );
 
     // Alan kodunun HİÇBİR parçası gövdeye sızmamalı.
     for needle in [
@@ -2493,7 +2502,7 @@ fn hardening_complex_field_instruction_codes_never_leak_into_body() {
     );
 }
 
-/// 4. tur şüpheciliği (kendi H9 düzeltmeme karşı): `in_instr` bayrağı yalnız
+/// Dördüncü tur şüpheciliği (kendi H9 düzeltmeme karşı): `in_instr` bayrağı
 /// `</w:instrText>` ile sıfırlanıyor. BOZUK bir docx `<w:instrText>` açıp
 /// kapatmadan run'ı bitirirse (check_end_names=false, quick-xml reddetmez),
 /// bayrak takılı kalıp SONRAKİ tüm görünür metni bastırabilir — sessiz veri
