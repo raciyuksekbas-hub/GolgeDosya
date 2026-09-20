@@ -6,6 +6,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { makeBlocks, normalizeTechnicalNoise } from "./normalize";
 import type { BlockKind, LocalDocument } from "./types";
 import { udfXmlEntries } from "./udf";
+import { logFailure } from "../../../shared-ui/failure";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -443,6 +444,11 @@ export async function extractDocument(file: File): Promise<LocalDocument> {
     else result = await extractUdf(buffer);
   } catch (error) {
     if (error instanceof ExtractionError) throw error;
+    // Beklenmeyen sebep BURADA kayboluyordu: kullanıcıya "bozuk olabilir"
+    // deniyor, gerçek hata hiçbir yere yazılmıyordu. Bir sonraki saha
+    // hatası kör incelenmesin diye sebep günlüğe düşer, kullanıcı cümlesi
+    // değişmez.
+    logFailure("degisikis extraction", error);
     throw new ExtractionError(`${file.name} okunamadı. Dosyanın bozuk olmadığını kontrol edin.`);
   }
   return {
