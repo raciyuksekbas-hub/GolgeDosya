@@ -86,11 +86,14 @@ export function htmlEntriesFromRoot(root: Node): Entry[] {
     const tag = htmlTagName(element);
     if (tag === "table") {
       for (const row of Array.from(element.getElementsByTagName("tr"))) {
+        // Boş hücre ATILMAZ: atılınca sütun kimliği kaybolur ve bir işaretin
+        // sütun değiştirmesi (Var/Yok, Evet/Hayır, Taahhüt/Muafiyet gibi
+        // onay tabloları) İKİ TARAFTA DA aynı metni üretir — değişiklik hiç
+        // görünmez. Yalnız tamamen boş satır atılır.
         const cells = elementChildren(row)
           .filter((cell) => ["th", "td"].includes(htmlTagName(cell)))
-          .map((cell) => normalizeTechnicalNoise(cell.textContent ?? ""))
-          .filter(Boolean);
-        if (cells.length) entries.push({ text: cells.join(" | "), kind: "table" });
+          .map((cell) => normalizeTechnicalNoise(cell.textContent ?? ""));
+        if (cells.some(Boolean)) entries.push({ text: cells.join(" | "), kind: "table" });
       }
       return;
     }
@@ -365,9 +368,18 @@ export function pdfEntries(pages: PdfLine[][]): Entry[] {
   const pitch = dominantLinePitch(pages);
   const entries: Entry[] = [];
   for (const page of pages) {
-    const lines = page.filter((line) => {
+    // Tek başına duran sayı SAYFA NUMARASI sayılır — ama yalnız sayfanın
+    // KENARINDA. Filtre eskiden sayfanın her satırına uygulanıyordu: kendi
+    // satırında duran bir tutar ("1500"), yıl ("2026") ya da miktar iki
+    // taraftan da düşüyor ve değişmesi hiçbir fark üretmiyordu. Aynı
+    // sözleşme DOCX olarak karşılaştırılınca farkı gösteriyor, PDF olarak
+    // karşılaştırılınca göstermiyordu — sessiz olan PDF'ti.
+    const marginIndexes = new Set([0, 1, page.length - 2, page.length - 1]);
+    const lines = page.filter((line, index) => {
       const clean = normalizeTechnicalNoise(line.text);
-      return clean && !repeated.has(clean) && !/^[-–—]?\s*\d{1,4}\s*[-–—]?$/.test(clean);
+      if (!clean || repeated.has(clean)) return false;
+      const bareNumber = /^[-–—]?\s*\d{1,4}\s*[-–—]?$/.test(clean);
+      return !(bareNumber && marginIndexes.has(index));
     });
     const rightEdge = lines.reduce((edge, line) => Math.max(edge, line.endX), -Infinity);
     const leftEdge = lines.reduce((edge, line) => Math.min(edge, line.startX), Infinity);

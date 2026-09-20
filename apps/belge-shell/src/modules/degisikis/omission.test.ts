@@ -100,3 +100,32 @@ describe("uyarı dili gerçeği söyler", () => {
     expect(source).toContain('logFailure("degisikis extraction messages"');
   });
 });
+
+describe("çekişmeli inceleme: sessiz yanlış negatifler", () => {
+  const extractors = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), "core/extractors.ts"),
+    "utf8",
+  );
+
+  it("tablo sütun kimliği korunur: boş hücre atılmaz", () => {
+    // Var/Yok, Evet/Hayır, Taahhüt/Muafiyet onay tablolarında işaretin
+    // sütun değiştirmesi iki tarafta da AYNI metni üretiyordu:
+    //   "Gizlilik | X | "  ile  "Gizlilik |  | X"  ayni goruluyordu.
+    expect(extractors).not.toContain('.map((cell) => normalizeTechnicalNoise(cell.textContent ?? ""))\n          .filter(Boolean);');
+    expect(extractors).toContain("if (cells.some(Boolean)) entries.push");
+  });
+
+  it("PDF'te sayı bastırması yalnız sayfa kenarında", () => {
+    // Eskiden sayfanın HER satırına uygulanıyordu; kendi satırındaki bir
+    // tutar iki taraftan da düşüyor ve değişmesi fark üretmiyordu. Aynı
+    // sözleşme DOCX'te farkı gösteriyor, PDF'te göstermiyordu.
+    expect(extractors).toContain("const marginIndexes = new Set([0, 1, page.length - 2, page.length - 1])");
+    expect(extractors).toContain("bareNumber && marginIndexes.has(index)");
+  });
+
+  it("yinelenen üstbilgi/altbilgi bastırması KORUNUR", () => {
+    // Konumsal tekrar denetimi zaten bu işi yapıyor; kaldırılmadı.
+    expect(extractors).toContain("repeated.has(clean)");
+    expect(extractors).toContain("function repeatedMargins");
+  });
+});
