@@ -1,9 +1,9 @@
 {
   "name": "belge-shell",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
-  "description": "G\u00f6lgeDosya birle\u015fik kabu\u011fu",
+  "description": "GölgeDosya birleşik kabuğu",
   "scripts": {
     "dev": "vite",
     "build": "npm run typecheck && vite build",

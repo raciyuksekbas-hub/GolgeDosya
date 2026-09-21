@@ -38,7 +38,7 @@ const SETTINGS = {
 };
 
 const RESPONSES: Record<string, unknown> = {
-  app_info: { name: "GölgeDosya", version: "0.2.0", nameIsProvisional: false, configDir: "" },
+  app_info: { name: "GölgeDosya", version: "0.3.0", nameIsProvisional: false, configDir: "" },
   enabled_features: [
     { key: "duzenek", label: "Düzenle", route: "duzenek", compiled: true, enabled: true },
     // Rust ozellik matrisiyle ayni sirada ve ayni sayida kalmali.

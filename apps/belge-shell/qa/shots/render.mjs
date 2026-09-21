@@ -12,6 +12,8 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { buildSync } from "esbuild";
 
+// Sürüm elle yazılmaz: Hakkında çizimi paketin kendi sürümünü gösterir.
+const { version } = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
 const dir = mkdtempSync(resolve("qa/.shot-"));
 let mod;
 try {
@@ -326,7 +328,7 @@ try {
             shell({ context: el('span', { className: 'toolbar-mode' }, 'Düzenle') },
               el(DocumentSurface, { feature: features[0], recents, outcome: null, onDocuments(){}, onForget(){} })),
             el(PreferencesSheet, {
-              settings, version: '0.2.0', tab, onTab(){}, onChange(){}, onForget(){}, onClose(){},
+              settings, version: '${version}', tab, onTab(){}, onChange(){}, onForget(){}, onClose(){},
             }))).replace('<div class="prefs-group"></div>',
               '<div class="prefs-group">' + folderRow + '</div>');
         export const prefsGenel = prefs('genel');
