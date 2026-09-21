@@ -158,10 +158,66 @@ pub enum ToolOutcome {
         candidate_bytes: u64,
         images_found: usize,
         images_recompressed: usize,
+        /// Kaynak GölgeDosya'nın kendi markasını taşıyor: kullanıcıya "daha
+        /// önce işlenmiş" bağlamı verilebilir. Yalnız kazanç YOKKEN bildirilir;
+        /// markalı bir çıktı yine de çok küçülebilir (sahada biri %38 küçüldü).
+        previously_processed: bool,
     },
     Failed {
         reason: String,
     },
+}
+
+/// Bir sıkıştırma adayı yeni bir dosya yayınlamaya DEĞER mi?
+///
+/// Eskiden tek ölçüt kaynağa göre %3'tü; sahada 9,4 MB'lık bir taramanın
+/// 204 KB'lık (%2,1) gerçek kazancı bu yüzden atılıyordu. Politika eskisinin
+/// ÜST KÜMESİDİR — eskiden kaydedilen hiçbir sonuç şimdi reddedilmez:
+///
+/// - en az %3 (eski kural: küçük belgede büyük oran), ya da
+/// - en az %2 VE en az 100 KB (büyük belgede mütevazı ama gerçek kazanç), ya da
+/// - en az 500 KB (çok büyük belgede mutlak kazanç).
+///
+/// "%2 ve 100 KB" kolu tek başına yetmez: 1 MB'lık bir belgenin %5'i (51 KB)
+/// eskiden kaydediliyordu, o kol tek başına bunu reddederdi.
+pub fn is_meaningful_saving(source_bytes: u64, candidate_bytes: u64) -> bool {
+    const KB: u64 = 1024;
+    let Some(saved) = source_bytes.checked_sub(candidate_bytes) else {
+        return false;
+    };
+    let (source, candidate) = (source_bytes as u128, candidate_bytes as u128);
+    let at_least_percent = |p: u128| candidate * 100 <= source * (100 - p);
+    saved > 0
+        && (at_least_percent(3) || (at_least_percent(2) && saved >= 100 * KB) || saved >= 500 * KB)
+}
+
+/// Kazanç yokken kullanıcıya gösterilecek cümle: GERÇEK bayt sonucu. Motorun
+/// bulamadığı küçülmeden belgenin "zaten optimize" olduğu sonucu çıkarılamaz.
+///
+/// Arayüz aynı cümleyi kurar (`apps/belge-shell/src/modules/duzenek/
+/// noBenefitMessage.ts`). Yuvarlama iki uçta da TAMSAYI aritmetiğiyle yapılır:
+/// `{:.1}` ile JavaScript'in `toFixed`'i tam yarım değerlerde farklı yuvarlar.
+/// İki uç aynı örnek tablosuyla sınanır.
+pub fn no_benefit_message(source_bytes: u64, candidate_bytes: u64) -> String {
+    // value / divisor, yarım yukarı yuvarlanmış.
+    let rounded = |value: u128, divisor: u128| (2 * value + divisor) / (2 * divisor);
+    let tenths = |n: u128| format!("{},{}", n / 10, n % 10);
+    let saved = source_bytes.saturating_sub(candidate_bytes) as u128;
+    let percent = rounded(saved * 1000, source_bytes.max(1) as u128);
+    // Yuvarlanınca %0,0 çıkan kazanç için "0 KB küçültülebildi" gibi bir sayı
+    // uydurulmaz.
+    if saved == 0 || percent == 0 {
+        return "Bu ayarlarla kayda değer bir küçülme sağlanamadı. Çıktı oluşturulmadı.".into();
+    }
+    let size = match saved {
+        n if n < 1024 => format!("{n} bayt"),
+        n if n < 10 * 1024 => format!("{} KB", tenths(rounded(n * 10, 1024))),
+        n => format!("{} KB", rounded(n, 1024)),
+    };
+    format!(
+        "{size} (%{}) küçültülebildi. Bu değer anlamlı küçülme eşiğinin altında kaldığı için çıktı oluşturulmadı.",
+        tenths(percent)
+    )
 }
 
 pub fn run_tool(
@@ -173,9 +229,14 @@ pub fn run_tool(
     match run_tool_with_outcome(paths, operation, output, approved)? {
         ToolOutcome::Published { .. } | ToolOutcome::Compressed { .. } => Ok(()),
         ToolOutcome::Failed { reason } => Err(EklerError::ValidationFailed(reason)),
-        ToolOutcome::NoBenefit { .. } => Err(EklerError::ValidationFailed(
-            "Bu belge zaten yeterince optimize. Daha küçük bir kopya oluşturulamadı.".into(),
-        )),
+        ToolOutcome::NoBenefit {
+            source_bytes,
+            candidate_bytes,
+            ..
+        } => Err(EklerError::ValidationFailed(no_benefit_message(
+            source_bytes,
+            candidate_bytes,
+        ))),
     }
 }
 
@@ -512,15 +573,18 @@ fn run_tool_inner(
     let bytes = validated_pdf_bytes(&mut doc)?;
     if let Some((body_bytes, stats)) = compression {
         // Kalan quality_errors yalnız daha sert bir ön ayarın PİKSEL kalitesi
-        // nedeniyle elendiğini söyler; kazanan aday geçerlidir. Kazanç %3'ün
-        // altındaysa bu dürüstçe "kazanç yok"tur, hata değil.
-        if (bytes.len() as u128) * 100 > (source_bytes as u128) * 97 {
+        // nedeniyle elendiğini söyler; kazanan aday geçerlidir. Kazanç anlamlı
+        // değilse bu dürüstçe "kazanç yok"tur, hata değil.
+        if !is_meaningful_saving(source_bytes, bytes.len() as u64) {
             return Ok(ToolOutcome::NoBenefit {
                 source_bytes,
                 body_bytes,
                 candidate_bytes: bytes.len() as u64,
                 images_found: stats.images_found,
                 images_recompressed: stats.images_recompressed_count,
+                previously_processed: original
+                    .as_ref()
+                    .is_some_and(crate::pdf::stamp::is_golgedosya_output),
             });
         }
         crate::safe_io::write_new_bytes(output, paths, &bytes)?;

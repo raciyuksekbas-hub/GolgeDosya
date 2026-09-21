@@ -786,6 +786,23 @@ fn stream_data(stream: &Stream) -> Option<Vec<u8>> {
     }
 }
 
+/// Belge daha önce GölgeDosya'dan çıkmış mı?
+///
+/// Ada ya da üst veriye değil, yalnız GölgeDosya'nın KENDİ marka çizimine
+/// bayt bayt bakılır: canonical işaret ya da birleşme sonrası üretilmiş eski
+/// çizim. Bağımsız DüzenEk'in işareti sayılmaz; o belgeyi GölgeDosya
+/// işlememiştir. Bu, belgenin SIKIŞTIRILDIĞINI söylemez — GölgeDosya her
+/// çıktısını markalar.
+pub fn is_golgedosya_output(doc: &LopdfDoc) -> bool {
+    !existing_brand_forms(doc).is_empty()
+        || doc.objects.values().any(|obj| {
+            obj.as_stream().is_ok_and(|s| {
+                s.dict.get(b"Subtype").and_then(|t| t.as_name()).ok() == Some(b"Form")
+                    && stream_data(s).as_deref() == Some(SUPERSEDED_BRAND_LOGO)
+            })
+        })
+}
+
 /// Belgedeki GölgeDosya marka formları: içeriği ve logo akışı birebir
 /// eşleşen Form XObject'ler. Ada değil baytlara bakılır.
 fn existing_brand_forms(doc: &LopdfDoc) -> std::collections::HashSet<lopdf::ObjectId> {

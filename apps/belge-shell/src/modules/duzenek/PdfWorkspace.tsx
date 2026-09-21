@@ -23,6 +23,7 @@
  * araçları soluk göstermek yerine hata/boş durum tam genişliği alır.
  */
 import { rotatePages, previewGeometry, workspaceSurfaces, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
+import { noBenefitStatus } from './noBenefitMessage';
 import { copyDestination } from './copyDestination';
 import { describeOpenFailure, describeSaveFailure, logFailure, safeMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
 import React, { useState, useEffect, useRef } from 'react';
@@ -364,18 +365,15 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                 return;
             setBusy(true);
             setStatus('PDF hazırlanıyor…'); setStatusTone('busy');
-            const outcome = await invoke<{ status: 'published' | 'compressed' | 'no_benefit' | 'failed'; reason?: string; source_bytes?: number; body_bytes?: number; output_bytes?: number; candidate_bytes?: number; images_found?: number; images_recompressed?: number }>('duzenek_run_pdf_tool', { paths: sources.map(s => s.path), operation, outputPath, approved });
+            const outcome = await invoke<{ status: 'published' | 'compressed' | 'no_benefit' | 'failed'; reason?: string; source_bytes?: number; body_bytes?: number; output_bytes?: number; candidate_bytes?: number; images_found?: number; images_recompressed?: number; previously_processed?: boolean }>('duzenek_run_pdf_tool', { paths: sources.map(s => s.path), operation, outputPath, approved });
             if (outcome.status === 'failed') throw new Error(outcome.reason);
             const metrics = `Sıkıştırılmış belge: ${((outcome.body_bytes || 0) / 1024).toFixed(1)} KB · Marka dahil: ${((outcome.output_bytes || outcome.candidate_bytes || 0) / 1024).toFixed(1)} KB`;
             if (outcome.status === 'no_benefit') {
-                // Görsel var ama hiçbiri yeniden kodlanmadıysa belge "zaten optimize"
-                // değildir; görseller güvenli sıkıştırma kapsamının dışındadır
-                // (CMYK, maske, paletli). Kullanıcıya doğru sebep söylenir.
-                const outOfScope = (outcome.images_found || 0) > 0 && !(outcome.images_recompressed || 0);
-                const why = outOfScope
-                    ? `${outcome.images_found} görsel bulundu; renk uzayı veya maskesi nedeniyle güvenle yeniden kodlanamadı. Anlamlı bir küçülme sağlanamadı. Çıktı kaydedilmedi.`
-                    : 'Bu belge zaten yeterince optimize. Anlamlı bir küçülme sağlanamadı. Çıktı kaydedilmedi.';
-                setStatus(`${((outcome.source_bytes || 0) / 1024).toFixed(1)} KB\n${why}\n${metrics}\nEn az %3 küçülme gerekir.`);
+                // Gerçek bayt sonucu söylenir; motorun bulamadığı küçülmeden
+                // belgenin "zaten optimize" olduğu sonucu çıkarılmaz. Yeniden
+                // kodlanmayan görselin SEBEBİ de iddia edilmez: kapsam dışı mı,
+                // yoksa yeniden kodlayınca küçülmedi mi, sonuç bunu taşımaz.
+                setStatus(noBenefitStatus(outcome));
                 setStatusTone('info');
                 return;
             }
