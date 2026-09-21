@@ -44,48 +44,57 @@ pub fn decode_image(stream: &lopdf::Stream) -> Result<Option<image::DynamicImage
         Some(b"DeviceGray") => 1,
         _ => return Ok(None),
     };
-    let filters: Vec<&[u8]> = match stream.dict.get(b"Filter") {
-        Ok(Object::Name(n)) => vec![n],
-        Ok(Object::Array(a)) => a
-            .iter()
-            .map(|v| v.as_name())
-            .collect::<std::result::Result<_, _>>()
-            .map_err(|e| fail(e.to_string()))?,
-        Err(_) => vec![],
-        _ => return Ok(None),
-    };
-    if filters == [b"DCTDecode".as_slice()] {
-        return image::load_from_memory(&stream.content)
-            .map(Some)
-            .map_err(|e| fail(e.to_string()));
-    }
-    if !filters.iter().all(|f| *f == b"FlateDecode") {
+    let Some(chain) = filter_chain(&stream.dict) else {
         return Ok(None);
-    }
-    // /DecodeParms: lopdf yalnız SÖZLÜK biçimini okur ve yalnız PNG öngörücülerini
-    // (10–15) geri alır. Dizi biçimli parametre ya da TIFF öngörücüsü (2) sessizce
-    // atlanınca çözülmemiş DELTALAR piksel sanılıp JPEG'e kodlanıyordu — görsel
-    // bozuluyordu. Bu yüzden: dizi biçimi filtreyle eşleştirilip sözlüğe indirgenir;
-    // geri alamadığımız öngörücü taşıyan görsel dokunulmadan ATLANIR.
-    let params: Option<lopdf::Dictionary> = match stream.dict.get(b"DecodeParms") {
-        Err(_) | Ok(Object::Null) => None,
-        Ok(Object::Dictionary(d)) => Some(d.clone()),
-        Ok(Object::Array(a)) if a.len() == filters.len() => match a.first() {
-            Some(Object::Dictionary(d)) => Some(d.clone()),
-            Some(Object::Null) | None => None,
-            _ => return Ok(None),
-        },
-        _ => return Ok(None),
     };
-    if let Some(d) = &params {
-        let predictor = d
-            .get(b"Predictor")
-            .ok()
+    // Zincirin sonundaki görsel kodeki (bugün yalnız DCTDecode) kalan baytları
+    // çözer; ondan önceki her süzgeç bir TAŞIMA katmanıdır ve sırayla geri
+    // alınır. Kodek yoksa sonuç ham örneklerdir.
+    let (jpeg, transport) = match chain.split_last() {
+        Some(((last, _), rest)) if last == b"DCTDecode" => (true, rest),
+        _ => (false, chain.as_slice()),
+    };
+    // Taşıma katmanı olarak yalnız FlateDecode geri alınır. Başka bir süzgeç —
+    // zincirin ortasında kalmış bir DCTDecode dâhil — görseli kapsam dışı
+    // bırakır: dokunulmaz, ATLANIR.
+    //
+    // /DecodeParms: lopdf yalnız PNG öngörücülerini (10–15) geri alır. TIFF
+    // öngörücüsü (2) sessizce atlanınca çözülmemiş DELTALAR piksel sanılıp
+    // JPEG'e kodlanıyordu — görsel bozuluyordu. Geri alamadığımız öngörücü
+    // taşıyan görsel dokunulmadan ATLANIR.
+    for (name, params) in transport {
+        if name != b"FlateDecode" {
+            return Ok(None);
+        }
+        let predictor = params
+            .as_ref()
+            .and_then(|d| d.get(b"Predictor").ok())
             .and_then(|v| v.as_i64().ok())
             .unwrap_or(1);
         if predictor != 1 && !(10..=15).contains(&predictor) {
             return Ok(None);
         }
+    }
+    let unwrap_transport = || -> Result<Vec<u8>> {
+        let mut bytes = stream.content.clone();
+        for (_, params) in transport {
+            // lopdf görsel akışlarını toptan reddeder; her katman, yalnız o
+            // katmanın süzgecini ve parametresini taşıyan bir akış olarak açılır.
+            let mut layer =
+                lopdf::Stream::new(lopdf::dictionary! {"Filter" => "FlateDecode"}, bytes);
+            if let Some(d) = params {
+                layer.dict.set("DecodeParms", Object::Dictionary(d.clone()));
+            }
+            bytes = layer
+                .decompressed_content()
+                .map_err(|e| fail(e.to_string()))?;
+        }
+        Ok(bytes)
+    };
+    if jpeg {
+        return image::load_from_memory(&unwrap_transport()?)
+            .map(Some)
+            .map_err(|e| fail(e.to_string()));
     }
     if stream
         .dict
@@ -108,28 +117,7 @@ pub fn decode_image(stream: &lopdf::Stream) -> Result<Option<image::DynamicImage
             .ok_or_else(|| fail("Geçersiz boyut".into()))
     };
     let (w, h) = (dimension(b"Width")?, dimension(b"Height")?);
-    let raw = if filters.is_empty() {
-        stream.content.clone()
-    } else {
-        // lopdf refuses image streams generically. Samples/color depth were checked above;
-        // decode an otherwise identical stream through its Flate/predictor implementation.
-        let mut encoded = stream.clone();
-        encoded.dict.remove(b"Subtype");
-        encoded
-            .dict
-            .set("Filter", Object::Name(b"FlateDecode".to_vec()));
-        match &params {
-            Some(d) => encoded
-                .dict
-                .set("DecodeParms", Object::Dictionary(d.clone())),
-            None => {
-                encoded.dict.remove(b"DecodeParms");
-            }
-        }
-        encoded
-            .decompressed_content()
-            .map_err(|e| fail(e.to_string()))?
-    };
+    let raw = unwrap_transport()?;
     // Örnek uzunluğu. Tam eşleşme çözülür. Sonda en çok iki bayt fazlalık —
     // bazı üreticilerin /Length'e kattığı satır sonu (LF/CRLF) — kırpılır.
     // Başka her uyuşmazlık "bu örnekleri güvenle yorumlayamıyoruz" demektir:
@@ -154,6 +142,43 @@ pub fn decode_image(stream: &lopdf::Stream) -> Result<Option<image::DynamicImage
             .map(Some)
             .ok_or_else(|| fail("Gri örnek uzunluğu uyuşmuyor".into()))
     }
+}
+
+/// Akışın süzgeçlerini ÇÖZME sırasında, her birini KENDİ parametresiyle
+/// eşleştirerek döndürür (ISO 32000-1 §7.4): `/Filter` dizisinin ilk öğesi en
+/// dıştaki kodlamadır; `/DecodeParms` dizisi ona paraleldir, `null` öğe "bu
+/// süzgecin parametresi yok" demektir.
+///
+/// Yapısı yorumlanamayan zincir `None` döner ve görsel ATLANIR: ad olmayan
+/// süzgeç öğesi, uzunluğu tutmayan ya da sözlük/null dışı öğe taşıyan
+/// parametre dizisi, birden çok süzgece verilmiş tek sözlük (hangi katmana ait
+/// olduğu belirsizdir). Eskiden ad olmayan öğe bütün sıkıştırmayı hata ile
+/// düşürüyordu; oysa dokunamayacağımız bir görsel, belgenin geri kalanının
+/// sıkıştırılmasına engel değildir.
+fn filter_chain(dict: &lopdf::Dictionary) -> Option<Vec<(Vec<u8>, Option<lopdf::Dictionary>)>> {
+    let names: Vec<Vec<u8>> = match dict.get(b"Filter") {
+        Err(_) | Ok(Object::Null) => return Some(Vec::new()),
+        Ok(Object::Name(n)) => vec![n.clone()],
+        Ok(Object::Array(a)) => a
+            .iter()
+            .map(|v| v.as_name().ok().map(<[u8]>::to_vec))
+            .collect::<Option<_>>()?,
+        _ => return None,
+    };
+    let params: Vec<Option<lopdf::Dictionary>> = match dict.get(b"DecodeParms") {
+        Err(_) | Ok(Object::Null) => vec![None; names.len()],
+        Ok(Object::Dictionary(d)) if names.len() == 1 => vec![Some(d.clone())],
+        Ok(Object::Array(a)) if a.len() == names.len() => a
+            .iter()
+            .map(|v| match v {
+                Object::Dictionary(d) => Some(Some(d.clone())),
+                Object::Null => Some(None),
+                _ => None,
+            })
+            .collect::<Option<_>>()?,
+        _ => return None,
+    };
+    Some(names.into_iter().zip(params).collect())
 }
 
 /// Görselin renk uzayını, örnekleri koruyarak çözebileceğimiz DEVICE adına
