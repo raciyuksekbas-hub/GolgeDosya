@@ -211,13 +211,21 @@ mod tests {
     use super::*;
 
     fn tmp() -> PathBuf {
+        // Süreç-genelinde artan sayaç (bkz. atomic::tests::tmp). macOS'ta
+        // SystemTime yalnız mikrosaniye çözünürlüklüdür: paralel koşan iki test
+        // aynı µs'de aynı dizini alıyor, biri ötekinin settings.json'ını ezip
+        // dizinini siliyordu. Yalnız bu testler koşunca 200'de 74 düşüyordu;
+        // taze klon kapısı bu yüzden kırmızıydı.
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
         let d = std::env::temp_dir().join(format!(
-            "belge-settings-{}-{}",
+            "belge-settings-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            N.fetch_add(1, Ordering::Relaxed),
         ));
         std::fs::create_dir_all(&d).unwrap();
         d
