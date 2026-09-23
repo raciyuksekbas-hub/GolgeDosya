@@ -85,20 +85,24 @@ jobs:
       # Her biri devam eder; sonuç en sonda toplu değerlendirilir. Amaç tek
       # koşuda azami bilgi: ilk düşen kapı installer'ı da görmemizi engellemesin.
 
-      - name: 'Kapı 1 — sürüm tutarlılığı'
-        id: gate_version
-        continue-on-error: true
-        run: cargo test -p belge-shell --test version_consistency --locked -- --nocapture
-
-      - name: 'Kapı 2 — arayüz tip denetimi'
+      - name: 'Kapı 1 — arayüz tip denetimi'
         id: gate_tsc
         continue-on-error: true
         working-directory: apps/belge-shell
         run: npm run typecheck
 
+      # Rust tarafindan ONCE gelmeli: `tauri::generate_context!()` derleme
+      # aninda frontendDist'i (../dist) diskte arar ve yoksa proc macro panikler.
+      # Ilk kosuda bu adim Kapi 1'den SONRA durdugu icin surum tutarliligi kapisi
+      # testin kendisiyle ilgisiz bir derleme hatasiyla dusmustu.
       - name: Arayüzü derle (Rust build.rs frontendDist bekliyor)
         working-directory: apps/belge-shell
         run: npm run build
+
+      - name: 'Kapı 2 — sürüm tutarlılığı'
+        id: gate_version
+        continue-on-error: true
+        run: cargo test -p belge-shell --test version_consistency --locked -- --nocapture
 
       # `npm test` Windows'ta cmd.exe uzerinden kosar ve `qa/tests/*.test.mjs`
       # globu GENISLETILMEZ. Ayrica vitest'i surum kapisinin kanitlanmis
@@ -119,7 +123,7 @@ jobs:
       - name: 'Kapı 4 — cargo test --workspace --locked (native Windows)'
         id: gate_rust
         continue-on-error: true
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked --no-fail-fast
 
       # § PDF önizleme arka ucunun Windows sözleşmesi (A/B ayrımı).
       - name: 'Kapı 5 — PDF önizleme platform sözleşmesi'
@@ -292,9 +296,9 @@ jobs:
           }
           $lines | Set-Content -Path out/SHA256SUMS -Encoding ascii
           "### SHA-256" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
-          "```"         | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          '```'         | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           $lines        | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
-          "```"         | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          '```'         | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
 
       - name: Artifact
         if: always()
@@ -307,6 +311,7 @@ jobs:
 
       # ---------- § Toplu kabul ----------
       - name: KABUL
+        if: always()
         run: |
           [Console]::OutputEncoding = [Text.Encoding]::UTF8
           $gates = [ordered]@{
