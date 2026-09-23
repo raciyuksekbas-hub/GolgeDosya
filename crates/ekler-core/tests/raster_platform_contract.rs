@@ -608,6 +608,33 @@ mod render {
         assert_golden(&src, 1, &p, 150, 0, "150 DPI");
     }
 
+    /// Tam piksel sınırındaki sayfa bir piksel FAZLA yuvarlanmaz. Gerçek A4
+    /// ondalıklı (595,28 × 841,89 pt); görsel dışa aktarma 34 pt pay ekler ve
+    /// yatay sayfada yükseklik 629,28 pt × 150/72 = tam 1311,0 olur. Windows'un
+    /// ilk native koşusu burada 1312 verdi (f32 yuvarlama); macOS 1311.
+    #[test]
+    fn a_page_on_an_exact_pixel_boundary_is_not_rounded_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("a4-yatay.pdf");
+        vector_pdf(
+            &src,
+            &[vpage(841.89, 595.28, &[fill(40., 40., 100., 100., BLACK)])],
+        );
+        let out = dir.path().join("cikti");
+        std::fs::create_dir_all(&out).unwrap();
+        let folder = raster::pdf_to_images(&src, &out, "jpg", 150, false).unwrap();
+        let img = image::open(folder.join("sayfa-0001.jpg")).unwrap();
+        // Beklenen değer, dosyadaki ONDALIK metinden (f64) hesaplanır.
+        let (w, h) = (841.89f64, 595.28f64 + 34.);
+        assert_eq!(img.width(), (w * 150. / 72.).ceil() as u32, "genişlik");
+        assert_eq!(
+            img.height(),
+            (h * 150. / 72.).ceil() as u32,
+            "yükseklik (1311, 1312 değil)"
+        );
+        assert_eq!(img.height(), 1311);
+    }
+
     /// Yatay sayfa ve yatay + dönük sayfa.
     #[test]
     fn landscape_pages_render_in_their_own_orientation() {

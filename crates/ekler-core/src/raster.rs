@@ -143,9 +143,22 @@ mod native {
         ready.then_some(()).ok_or_else(fail)
     }
 
+    /// PDF'e yazılmış bir gerçek sayının f64 değeri, macOS'un okuduğu gibi.
+    ///
+    /// lopdf gerçek sayıları f32 saklar ve dosyaya en kısa ondalık gösterimiyle
+    /// yazar ("595.28"); macOS renderer'ı AYNI metni f64 okur. Boyut f32'den
+    /// hesaplanınca tam piksel sınırındaki bir sayfa kayar: 629,28 pt × 150/72
+    /// tam 1311,0 iken f32'de 1311,00006 olur ve `ceil` bir piksel FAZLA verir.
+    /// Windows'ta ölçülen tek fark buydu (A4 yatay + işaret payı, 150 DPI).
+    /// Ondalık gösterimden f64'e dönüş, macOS'un okuduğu değerin tıpatıp
+    /// aynısıdır.
+    fn decimal(v: f32) -> f64 {
+        v.to_string().parse().unwrap_or(f64::from(v))
+    }
+
     /// Her sayfanın görünür kutusu (pt) ve saat yönündeki dönüşü; sayfa kopyada
     /// normalize edilir (MediaBox = CropBox = görünür kutu, `/Rotate` 0).
-    fn normalize(doc: &mut lopdf::Document) -> Result<Vec<([f32; 4], i64)>> {
+    fn normalize(doc: &mut lopdf::Document) -> Result<Vec<((f64, f64), i64)>> {
         let ids: Vec<lopdf::ObjectId> = doc.get_pages().into_values().collect();
         let mut pages = Vec::with_capacity(ids.len());
         for id in ids {
@@ -245,7 +258,12 @@ mod native {
             page.set("MediaBox", boxed.clone());
             page.set("CropBox", boxed);
             page.set("Rotate", 0);
-            pages.push((visible, rotation));
+            // Tuval CropBox boyutundadır; boyut, macOS'un okuduğu f64 değerlerle.
+            let size = (
+                decimal(crop[2]) - decimal(crop[0]),
+                decimal(crop[3]) - decimal(crop[1]),
+            );
+            pages.push((size, rotation));
         }
         Ok(pages)
     }
@@ -293,11 +311,7 @@ mod native {
 
         let mut images = Vec::with_capacity(pages.len());
         let mut budget = 0usize;
-        for (index, (visible, rotation)) in pages.into_iter().enumerate() {
-            let (w, h) = (
-                f64::from(visible[2] - visible[0]),
-                f64::from(visible[3] - visible[1]),
-            );
+        for (index, ((w, h), rotation)) in pages.into_iter().enumerate() {
             let width = (w * f64::from(dpi) / 72.).ceil();
             let height = (h * f64::from(dpi) / 72.).ceil();
             if !width.is_finite()
