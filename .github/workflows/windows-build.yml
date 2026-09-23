@@ -125,11 +125,17 @@ jobs:
         continue-on-error: true
         run: cargo test --workspace --locked --no-fail-fast
 
-      # § PDF önizleme arka ucunun Windows sözleşmesi (A/B ayrımı).
-      - name: 'Kapı 5 — PDF önizleme platform sözleşmesi'
+      # § PDF önizleme: GERÇEK render (Windows.Data.Pdf). Analitik altın görüntü,
+      # sayfa kimliği, /Rotate + kullanıcı dönüşü, CropBox, DPI, taranmış /
+      # Flate / PNG-öngörücülü görüntüler, GölgeDosya'nın kendi çıktıları, bozuk
+      # ve parolalı PDF. Eskiden bu kapı Windows'taki REDDİ doğruluyordu; artık
+      # macOS'la aynı raster sözleşme testlerini de koşturur.
+      - name: 'Kapı 5 — PDF önizleme: gerçek render (Windows.Data.Pdf)'
         id: gate_raster
         continue-on-error: true
-        run: cargo test -p ekler-core --test raster_platform_contract --locked -- --nocapture
+        run: |
+          cargo test -p ekler-core --locked --test raster_platform_contract --test workspace_raster_tests --test pdf_fidelity_tests --test round2_tooling_tests
+          cargo test -p belge-shell --locked --test duzenek_parity
 
       # ---------- § Üretim derlemesi ----------
       - name: Tauri üretim derlemesi (NSIS + portable)
@@ -304,7 +310,10 @@ jobs:
           $lines = Get-ChildItem out -File | Where-Object { $_.Name -ne "SHA256SUMS" } | ForEach-Object {
             "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
           }
-          $lines | Set-Content -Path out/SHA256SUMS -Encoding ascii
+          # UTF-8 (BOM'suz) ve LF: `shasum -c` / `sha256sum -c` her platformda
+          # okuyabilsin. ASCII kodlama Türkçe dosya adını '?' yapıyor, CRLF ise
+          # her satırın sonuna görünmez bir \r ekliyordu.
+          [IO.File]::WriteAllText((Join-Path (Resolve-Path out) 'SHA256SUMS'), (($lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
           "### SHA-256" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           '```'         | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           $lines        | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
@@ -329,7 +338,7 @@ jobs:
             'arayüz tip denetimi'          = '${{ steps.gate_tsc.outcome }}'
             'arayüz testleri'              = '${{ steps.gate_front.outcome }}'
             'cargo test --workspace'       = '${{ steps.gate_rust.outcome }}'
-            'PDF önizleme sözleşmesi'      = '${{ steps.gate_raster.outcome }}'
+            'PDF önizleme (gerçek render)' = '${{ steps.gate_raster.outcome }}'
             'sürüm metadata'               = '${{ steps.meta.outcome }}'
             'portable açılış smoke'        = '${{ steps.smoke_portable.outcome }}'
             'installer kur/çalıştır/kaldır'= '${{ steps.smoke_installer.outcome }}'
