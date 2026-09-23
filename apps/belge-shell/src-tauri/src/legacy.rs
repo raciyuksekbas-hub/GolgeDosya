@@ -356,21 +356,16 @@ pub fn migrate_duzenek_renderer(settings: &mut Settings) -> SourceStatus {
     }
 }
 
+/// Kayıtlı renderer yolu bugün hâlâ çalıştırılabilir mi?
+///
+/// Kural `process_bridge::validate_executable`in kendisidir. Burada onun ikinci
+/// bir kopyası duruyordu ve iki kopya ayrışmıştı: bu kopyanın
+/// `#[cfg(not(unix))]` kolu KOŞULSUZ `true` döndürüyordu, yani Windows'ta düz
+/// bir metin dosyası bile "kullanılabilir LibreOffice" sayılıyordu. Native
+/// Windows koşusunda düşen test buydu. Kopyayı çoğaltmak yerine kaldırdım:
+/// tek kural, tek yer.
 fn is_usable_renderer(p: &Path) -> bool {
-    if !p.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        p.metadata()
-            .map(|m| m.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
+    process_bridge::validate_executable(p).is_ok()
 }
 
 /// Eski WebKit localStorage'ından tek bir anahtarı oku.

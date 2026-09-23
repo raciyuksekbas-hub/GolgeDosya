@@ -197,6 +197,20 @@ pub fn validate_executable(path: &Path) -> Result<(), BridgeError> {
             return Err(BridgeError::NotExecutable(path.into()));
         }
     }
+    #[cfg(windows)]
+    {
+        // Windows'ta çalıştırılabilirlik bir izin biti değil, UZANTIDIR. Bu kol
+        // olmadan işlev orada yalnız "dosya mı" diye sorardı: düz bir metin
+        // dosyası geçer, `discover` onu program diye seçebilirdi. Yani koruma
+        // macOS'ta gerçek, Windows'ta görüntüydü. Native Windows koşusunda
+        // `a_plain_file_is_not_executable` bunu düşürerek ortaya çıkardı.
+        let runnable = path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+            ["exe", "com", "bat", "cmd"].contains(&e.to_ascii_lowercase().as_str())
+        });
+        if !runnable {
+            return Err(BridgeError::NotExecutable(path.into()));
+        }
+    }
     Ok(())
 }
 
@@ -317,20 +331,59 @@ mod tests {
         let _ = std::fs::remove_file(&f);
     }
 
+    /// Dış süreç semantiği HER platformda anlamlıdır; değişen yalnız programın
+    /// yoludur. Bu testler `/bin/sh`, `/bin/echo` ve `/bin/sleep`'e çakılıydı ve
+    /// `cargo test --workspace` Windows'ta yalnız bu yüzden düşüyordu — ölçülen
+    /// davranış taşınabilirdi, ölçüm aracı değildi.
+    fn shell() -> PathBuf {
+        #[cfg(target_os = "windows")]
+        {
+            std::env::var_os("ComSpec")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(r"C:\Windows\System32\cmd.exe"))
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            PathBuf::from("/bin/sh")
+        }
+    }
+
+    /// Kabuğa tek bir komut dizesi geçirmenin platform biçimi.
+    fn shell_args(script: &str) -> [&str; 2] {
+        #[cfg(target_os = "windows")]
+        {
+            ["/C", script]
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            ["-c", script]
+        }
+    }
+
+    /// Uzun süren, kullanıcı kurulumuna bağlı olmayan bir komut. Windows'ta
+    /// `timeout` çıktı yönlendirildiğinde çalışmayı reddeder; `ping` etmez.
+    const SLEEP_SCRIPT: &str = if cfg!(target_os = "windows") {
+        "ping -n 31 127.0.0.1"
+    } else {
+        "sleep 30"
+    };
+
     #[test]
     fn discovery_skips_what_cannot_run() {
+        let shell = shell();
         let found = discover([
             PathBuf::from("/bu/yol/yok"),
             std::env::temp_dir(),
-            PathBuf::from("/bin/echo"),
+            shell.clone(),
         ]);
-        assert_eq!(found, Some(PathBuf::from("/bin/echo")));
+        assert_eq!(found, Some(shell));
     }
 
     #[test]
     fn a_process_that_exceeds_its_timeout_is_killed() {
-        let err = run(Spawn::new(Path::new("/bin/sleep"))
-            .arg("30")
+        let shell = shell();
+        let err = run(Spawn::new(&shell)
+            .args(shell_args(SLEEP_SCRIPT))
             .timeout(Duration::from_millis(300))
             .network(NetworkPolicy::Inherit))
         .expect_err("zaman aşımına uğramalıydı");
@@ -339,8 +392,9 @@ mod tests {
 
     #[test]
     fn a_nonzero_exit_is_an_error_not_a_success() {
-        let err = run(Spawn::new(Path::new("/bin/sh"))
-            .args(["-c", "exit 3"])
+        let shell = shell();
+        let err = run(Spawn::new(&shell)
+            .args(shell_args("exit 3"))
             .network(NetworkPolicy::Inherit))
         .expect_err("başarısızlık bekleniyordu");
         assert!(
@@ -351,8 +405,9 @@ mod tests {
 
     #[test]
     fn output_is_captured_when_asked_for() {
-        let out = run(Spawn::new(Path::new("/bin/echo"))
-            .arg("merhaba")
+        let shell = shell();
+        let out = run(Spawn::new(&shell)
+            .args(shell_args("echo merhaba"))
             .network(NetworkPolicy::Inherit))
         .unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "merhaba");
