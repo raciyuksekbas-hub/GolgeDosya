@@ -1,0 +1,330 @@
+# GölgeDosya — Windows x64 paketi (NSIS installer + portable)
+#
+# NEDEN CI: NSIS'in macOS/ARM portu (Homebrew makensis 3.12) dört satırlık
+# boş bir betikte bile "Generating language tables" adımında std::bad_alloc
+# ile çöküyor. Ürün ya da Tauri kaynaklı değil. GitHub'ın `windows-latest`
+# runner'ı bu iş için GERÇEK bir Windows ortamıdır: derleme, installer üretimi,
+# kurulum ve süreç düzeyinde açılış orada kanıtlanır.
+#
+# Yalnız elle tetiklenir. Tag, Release ve yayımlama YOK: çıktı sadece bir
+# Actions artifact'ıdır.
+name: Windows paketi
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "Beklenen FINAL_HEAD (40 haneli tam SHA). Boş bırakılırsa doğrulama atlanır."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # § Kaynak bütünlüğü: başka bir commit'ten build kabul edilmez.
+      - name: Kaynak bütünlüğü
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          $sha = (git rev-parse HEAD).Trim()
+          "commit    : $sha"                        | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          "ref       : $env:GITHUB_REF"             | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          if ($env:EXPECTED_SHA) {
+            if ($env:EXPECTED_SHA.Trim() -ne $sha) {
+              throw "FINAL_HEAD uyuşmuyor. Beklenen $($env:EXPECTED_SHA.Trim()), derlenen $sha"
+            }
+            "FINAL_HEAD dogrulandi." | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          } else {
+            "UYARI: expected_sha verilmedi, FINAL_HEAD dogrulanmadi." | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          }
+          "SHA=$sha" >> $env:GITHUB_ENV
+
+      - name: Rust zinciri (stable)
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add x86_64-pc-windows-msvc
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/belge-shell/package-lock.json
+
+      - name: Ortam raporu
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $rows = @(
+            "| araç | sürüm |", "|---|---|",
+            "| rustc | $((rustc -V))|",
+            "| cargo | $((cargo -V))|",
+            "| node | $((node -v))|",
+            "| npm | $((npm -v))|",
+            "| Windows | $([Environment]::OSVersion.Version.ToString()) ($((Get-CimInstance Win32_OperatingSystem).Caption))|",
+            "| runner image | $env:ImageOS / $env:ImageVersion|"
+          )
+          $rows | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+
+      - name: Bağımlılıklar (npm ci)
+        working-directory: apps/belge-shell
+        run: npm ci
+
+      # ---------- § Windows üzerinde ön kapılar ----------
+      # Her biri devam eder; sonuç en sonda toplu değerlendirilir. Amaç tek
+      # koşuda azami bilgi: ilk düşen kapı installer'ı da görmemizi engellemesin.
+
+      - name: 'Kapı 1 — sürüm tutarlılığı'
+        id: gate_version
+        continue-on-error: true
+        run: cargo test -p belge-shell --test version_consistency --locked -- --nocapture
+
+      - name: 'Kapı 2 — arayüz tip denetimi'
+        id: gate_tsc
+        continue-on-error: true
+        working-directory: apps/belge-shell
+        run: npm run typecheck
+
+      - name: Arayüzü derle (Rust build.rs frontendDist bekliyor)
+        working-directory: apps/belge-shell
+        run: npm run build
+
+      # `npm test` Windows'ta cmd.exe uzerinden kosar ve `qa/tests/*.test.mjs`
+      # globu GENISLETILMEZ. Ayrica vitest'i surum kapisinin kanitlanmis
+      # bicimiyle cagiriyoruz (tek fork): varsayilan havuz Windows'ta kirilgan.
+      - name: 'Kapı 3 — arayüz testleri (UX + a11y + motor)'
+        id: gate_front
+        continue-on-error: true
+        shell: bash
+        working-directory: apps/belge-shell
+        run: |
+          node --test qa/tests/*.test.mjs
+          npx vitest run --pool=forks --poolOptions.forks.singleFork=true
+
+      # § Windows'a özgü başarısızlık burada görünür: macOS'un geçmiş olması
+      # Windows'u kanıtlamaz. Bu adım aynı zamanda §16'nın motor smoke'udur —
+      # pdf-core, document-core, ekler-core, ikincigoz-core, process-bridge ve
+      # kabuk komutları native Windows'ta koşar.
+      - name: 'Kapı 4 — cargo test --workspace --locked (native Windows)'
+        id: gate_rust
+        continue-on-error: true
+        run: cargo test --workspace --locked
+
+      # § PDF önizleme arka ucunun Windows sözleşmesi (A/B ayrımı).
+      - name: 'Kapı 5 — PDF önizleme platform sözleşmesi'
+        id: gate_raster
+        continue-on-error: true
+        run: cargo test -p ekler-core --test raster_platform_contract --locked -- --nocapture
+
+      # ---------- § Üretim derlemesi ----------
+      - name: Tauri üretim derlemesi (NSIS + portable)
+        working-directory: apps/belge-shell
+        run: npm run tauri build -- --target x86_64-pc-windows-msvc --bundles nsis --verbose
+
+      - name: Çıktıları topla
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $rel = "target/x86_64-pc-windows-msvc/release"
+          $setup = Get-ChildItem "$rel/bundle/nsis/*-setup.exe" -ErrorAction Stop | Select-Object -First 1
+          $portable = Get-ChildItem "$rel/belge-shell.exe" -ErrorAction Stop
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Copy-Item $setup.FullName  "out/$($setup.Name)"
+          Copy-Item $portable.FullName "out/GolgeDosya_0.3.0_x64.exe"
+          Copy-Item LICENSE out/LICENSE
+          Copy-Item THIRD_PARTY_NOTICES.md out/THIRD_PARTY_NOTICES.md
+          "SETUP_NAME=$($setup.Name)" >> $env:GITHUB_ENV
+          "### Üretilen dosyalar"                                    | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          Get-ChildItem out | ForEach-Object { "- $($_.Name) — $($_.Length) bayt" } |
+            Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+
+      # § Sürüm metadata: eski sürüm/ürün adı kullanıcıya görünen alanlarda kalmamalı.
+      - name: 'Sürüm metadata ve mimari'
+        id: meta
+        continue-on-error: true
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $ok = $true
+          foreach ($f in @("out/GolgeDosya_0.3.0_x64.exe", "out/$env:SETUP_NAME")) {
+            $v = (Get-Item $f).VersionInfo
+            # PE COFF başlığından makine tipi: 0x8664 = x64
+            $fs = [IO.File]::OpenRead((Resolve-Path $f)); $br = New-Object IO.BinaryReader($fs)
+            $fs.Position = 0x3C; $pe = $br.ReadInt32(); $fs.Position = $pe + 4
+            $machine = $br.ReadUInt16(); $br.Dispose(); $fs.Dispose()
+            $arch = switch ($machine) { 0x8664 {"x64"} 0x14c {"x86"} 0xAA64 {"arm64"} default {"0x{0:X}" -f $machine} }
+            "### $f"                                  | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+            "- ProductName    : $($v.ProductName)"    | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+            "- FileVersion    : $($v.FileVersion)"    | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+            "- ProductVersion : $($v.ProductVersion)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+            "- mimari         : $arch"                | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+            if ($arch -ne "x64") { "  ✗ x64 degil"; $ok = $false }
+            if ("$($v.FileVersion)$($v.ProductVersion)" -match "0\.2\.0") { "  ✗ eski surum 0.2.0 izi"; $ok = $false }
+          }
+          # Portable exe kullanıcıya görünen alanları taşımalı; installer'ın
+          # kendi VersionInfo'su NSIS'ten gelir ve ürün sürümünü taşımayabilir.
+          $pv = (Get-Item "out/GolgeDosya_0.3.0_x64.exe").VersionInfo
+          if ($pv.ProductName -ne "GölgeDosya") { "✗ ProductName 'GölgeDosya' degil: $($pv.ProductName)"; $ok = $false }
+          foreach ($field in @($pv.FileVersion, $pv.ProductVersion)) {
+            if ($field -notmatch "^0\.3\.0") { "✗ surum 0.3.0 ile baslamiyor: $field"; $ok = $false }
+          }
+          if (-not $ok) { throw "surum metadata dogrulamasi basarisiz" }
+
+      # § WebView2 durumu.
+      - name: WebView2 durumu
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $guid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $found = $false
+          foreach ($k in @(
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$guid",
+            "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$guid",
+            "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$guid")) {
+            $p = Get-ItemProperty $k -ErrorAction SilentlyContinue
+            if ($p -and $p.pv) { "WebView2 Runtime: $($p.pv)  ($k)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY; $found = $true; break }
+          }
+          if (-not $found) { "WebView2 Runtime: KAYITTA BULUNAMADI" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
+
+      # § Portable exe native açılış smoke: süreç gerçekten oluşuyor mu, hemen
+      # çöküyor mu, belirli süre canlı kalıyor mu?
+      - name: 'Smoke 1 — portable native açılış'
+        id: smoke_portable
+        continue-on-error: true
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $p = Start-Process -FilePath (Resolve-Path "out/GolgeDosya_0.3.0_x64.exe") -PassThru
+          "PID $($p.Id) baslatildi"
+          Start-Sleep -Seconds 20
+          $alive = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
+          if (-not $alive) { throw "portable exe 20 saniye icinde oldu (sessiz cokme) — exit $($p.ExitCode)" }
+          "20 saniye sonra hala canli. Bellek: $([math]::Round($alive.WorkingSet64/1MB,1)) MB"  |
+            Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          Stop-Process -Id $p.Id -Force
+          "portable acilis smoke: GECTI" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+
+      # § Installer smoke: sessiz kurulum → kurulu yolu bul → sürüm → aç →
+      #   bildirim dosyaları → kaldır.
+      - name: 'Smoke 2 — installer kur / çalıştır / kaldır'
+        id: smoke_installer
+        continue-on-error: true
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $roots = @("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+                     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall")
+          function Snapshot { $roots | ForEach-Object { Get-ChildItem $_ -ErrorAction SilentlyContinue } | ForEach-Object { $_.PSPath } }
+          $before = Snapshot
+
+          # Tauri NSIS sessiz kurulum bayrağı: /S (buyuk S) — Tauri dokumantasyonu.
+          $setup = Resolve-Path "out/$env:SETUP_NAME"
+          "kurulum: $setup /S"
+          $proc = Start-Process -FilePath $setup -ArgumentList "/S" -PassThru -Wait
+          "installer cikis kodu: $($proc.ExitCode)"
+          if ($proc.ExitCode -ne 0) { throw "installer sifirdan farkli cikis kodu dondurdu: $($proc.ExitCode)" }
+          Start-Sleep -Seconds 5
+
+          $new = Snapshot | Where-Object { $before -notcontains $_ }
+          if (-not $new) { throw "kurulumdan sonra yeni bir Uninstall kaydi olusmadi" }
+          $key = Get-ItemProperty $new[0]
+          "### Kurulu kayit" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          "- DisplayName     : $($key.DisplayName)"     | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          "- DisplayVersion  : $($key.DisplayVersion)"  | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          "- Publisher       : $($key.Publisher)"       | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          "- InstallLocation : $($key.InstallLocation)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          if ($key.DisplayVersion -ne "0.3.0") { throw "kurulu surum 0.3.0 degil: $($key.DisplayVersion)" }
+
+          $dir = $key.InstallLocation
+          if (-not (Test-Path $dir)) { throw "InstallLocation diskte yok: $dir" }
+          "### Kurulu dizin" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          Get-ChildItem $dir -Recurse -File | ForEach-Object {
+            "- $($_.FullName.Substring($dir.Length).TrimStart('\')) — $($_.Length) bayt"
+          } | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+
+          # § Bildirim dosyaları GERÇEK kurulu yolda olmalı; depoda olması yetmez.
+          $missing = @()
+          foreach ($n in @("LICENSE", "THIRD_PARTY_NOTICES.md")) {
+            $hit = Get-ChildItem $dir -Recurse -File -Filter $n -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($hit) { "bildirim bulundu: $($hit.FullName) ($($hit.Length) bayt)" }
+            else { $missing += $n }
+          }
+          if ($missing) { throw "kurulu uygulamada bildirim dosyasi eksik: $($missing -join ', ')" }
+
+          # Kurulu exe native acilis smoke
+          $exe = Get-ChildItem $dir -Filter "*.exe" -File | Where-Object { $_.Name -notmatch "uninstall" } | Select-Object -First 1
+          $iv = (Get-Item $exe.FullName).VersionInfo
+          "kurulu exe: $($exe.Name)  ProductName=$($iv.ProductName)  FileVersion=$($iv.FileVersion)"
+          $p = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 20
+          $alive = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
+          if (-not $alive) { throw "kurulu exe 20 saniye icinde oldu (sessiz cokme) — exit $($p.ExitCode)" }
+          "kurulu uygulama 20 saniye canli kaldi" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          Stop-Process -Id $p.Id -Force
+          Start-Sleep -Seconds 3
+
+          # Kaldırma: Tauri NSIS kaldiricisi da /S destekler.
+          $unins = if ($key.QuietUninstallString) { $key.QuietUninstallString } else { "$($key.UninstallString) /S" }
+          "kaldirma: $unins"
+          $exePath = ($unins -split '"')[1]
+          if (-not $exePath) { $exePath = ($unins -split ' ')[0] }
+          $u = Start-Process -FilePath $exePath -ArgumentList "/S" -PassThru -Wait
+          Start-Sleep -Seconds 8
+          "kaldirici cikis kodu: $($u.ExitCode)"
+          if (Test-Path $dir) {
+            $left = Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue
+            if ($left) { "UYARI: kaldirmadan sonra kalan dosya: $($left.Count)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
+            else { "kaldirma temiz (dizin bos)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
+          } else { "kaldirma temiz (dizin silindi)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
+
+      - name: SHA-256 ve SHA256SUMS
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $lines = Get-ChildItem out -File | Where-Object { $_.Name -ne "SHA256SUMS" } | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          }
+          $lines | Set-Content -Path out/SHA256SUMS -Encoding ascii
+          "### SHA-256" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          "```"         | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          $lines        | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          "```"         | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+
+      - name: Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GolgeDosya-v0.3.0-windows-x64
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
+
+      # ---------- § Toplu kabul ----------
+      - name: KABUL
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $gates = [ordered]@{
+            'sürüm tutarlılığı'            = '${{ steps.gate_version.outcome }}'
+            'arayüz tip denetimi'          = '${{ steps.gate_tsc.outcome }}'
+            'arayüz testleri'              = '${{ steps.gate_front.outcome }}'
+            'cargo test --workspace'       = '${{ steps.gate_rust.outcome }}'
+            'PDF önizleme sözleşmesi'      = '${{ steps.gate_raster.outcome }}'
+            'sürüm metadata'               = '${{ steps.meta.outcome }}'
+            'portable açılış smoke'        = '${{ steps.smoke_portable.outcome }}'
+            'installer kur/çalıştır/kaldır'= '${{ steps.smoke_installer.outcome }}'
+          }
+          "### Kapılar" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          $bad = @()
+          foreach ($g in $gates.GetEnumerator()) {
+            $mark = if ($g.Value -eq 'success') { 'GECTI' } else { 'DUSTU'; }
+            if ($g.Value -ne 'success') { $bad += $g.Key }
+            "- $($g.Key): $mark ($($g.Value))" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          }
+          if ($bad) { throw "Dusen kapilar: $($bad -join ', ')" }
+          "TUM KAPILAR GECTI" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
