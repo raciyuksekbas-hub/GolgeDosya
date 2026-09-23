@@ -22,7 +22,10 @@ use lopdf::content::{Content, Operation};
 use lopdf::{dictionary, Dictionary, Document, Object, Stream};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+// Yalnız macOS'a kapatılan rasterleştirme paritesinde kullanılıyor.
+#[cfg(target_os = "macos")]
+use std::path::PathBuf;
 
 /// Bağımsız uygulamanın `crates/ekler-core/tests/toolbox_tests.rs` dosyasındaki
 /// `make_pdf` ile aynı fikstür: her sayfada "Sayfa N" yazar, böylece çıktıdaki
