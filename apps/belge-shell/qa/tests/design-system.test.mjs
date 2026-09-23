@@ -7,16 +7,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 const tokens = readFileSync("src/shared-ui/tokens.css", "utf8");
 const shell = readFileSync("src/shared-ui/shell.css", "utf8");
 const primitives = readFileSync("src/shared-ui/primitives.tsx", "utf8");
 
+// Yol ayıracı POSIX'e normalize edilir. Windows'ta `join` ters bölü üretir ve
+// aşağıdaki `endsWith("shared-ui/failure.ts")` muafiyeti HİÇ eşleşmez: muaf
+// tutulması gereken dosya kendi kuralına takılır ve test, ölçmek istediği şeyi
+// değil kendi yol varsayımını ölçer. Native Windows koşusunda tam olarak bu
+// oldu. Node ileri bölüyü her platformda kabul eder; `readFileSync` etkilenmez.
 function walk(dir) {
   return readdirSync(dir).flatMap((n) => {
     const p = join(dir, n);
-    return statSync(p).isDirectory() ? walk(p) : [p];
+    return statSync(p).isDirectory() ? walk(p) : [p.split(sep).join("/")];
   });
 }
 const sources = walk("src").filter((p) => /\.tsx?$/.test(p) && !/\.test\./.test(p));
