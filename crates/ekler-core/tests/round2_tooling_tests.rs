@@ -92,7 +92,7 @@ fn logo_is_not_added_to_byte_identical_signed_original() {
     );
 }
 #[test]
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn preview_and_brand_gutter_preserve_source_pixels() {
     let dir = tempfile::tempdir().unwrap();
     let src = source("vector.pdf");

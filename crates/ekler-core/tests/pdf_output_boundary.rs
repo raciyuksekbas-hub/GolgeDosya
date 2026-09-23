@@ -91,7 +91,9 @@ fn a_pdf_is_serialised_only_at_the_boundary_or_for_measurement() {
         ("crates/pdf-core/src/optimizer.rs", 2),
         ("crates/ekler-core/src/toolbox.rs", 1),
         ("crates/ekler-core/src/pipeline.rs", 1),
-        ("crates/ekler-core/src/raster.rs", 2),
+        // macOS/Windows çalışma kopyası (TempDir) ve Windows renderer'ının
+        // BELLEKTEKİ normalize kopyası (diske yazılmaz, yayımlanmaz).
+        ("crates/ekler-core/src/raster.rs", 3),
     ];
     expect(".save_to(", PDF_CRATES, &allowed, why);
     expect(".save(", PDF_CRATES, &[], why);

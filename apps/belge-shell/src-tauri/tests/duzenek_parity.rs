@@ -24,7 +24,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::path::Path;
 // Yalnız macOS'a kapatılan rasterleştirme paritesinde kullanılıyor.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::path::PathBuf;
 
 /// Bağımsız uygulamanın `crates/ekler-core/tests/toolbox_tests.rs` dosyasındaki
@@ -510,12 +510,11 @@ fn a_failing_compression_is_reported_as_failed_not_as_success() {
 
 // ---------------------------------------------------------------- rasterleştirme
 
-// PDF -> gorsel yerel bir isletim sistemi renderer'ina dayanir ve bugun yalniz
-// macOS'ta uygulanmistir (bkz. `ekler_core::raster`). Parite de zaten macOS'taki
-// bagimsiz uygulamayla karsilastirmadir. Windows'taki DOGRU davranis
-// `crates/ekler-core/tests/raster_platform_contract.rs` icinde olculuyor:
-// orada bu giris temiz, kullaniciya gosterilebilir bir redde donuyor.
-#[cfg(target_os = "macos")]
+// PDF -> gorsel yerel bir isletim sistemi renderer'ina dayanir: macOS'ta
+// CoreGraphics, Windows'ta Windows.Data.Pdf (bkz. `ekler_core::raster`). Bu iki
+// platform disinda giris temiz bir redde doner; o davranis
+// `crates/ekler-core/tests/raster_platform_contract.rs` icinde olculur.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[test]
 fn pdf_to_png_and_jpeg_produce_one_readable_file_per_page() {
     for (format, magic) in [

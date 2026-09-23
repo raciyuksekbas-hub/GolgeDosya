@@ -27,3 +27,16 @@ tempfile.workspace = true
 libc.workspace = true
 url.workspace = true
 flate2.workspace = true
+
+# Windows PDF raster: işletim sisteminin kendi renderer'ı (Windows.Data.Pdf,
+# WinRT). Yeni bir crate DEĞİL: `windows` 0.61 Windows derlemesinde zaten
+# tauri/tao/wry/webview2-com üzerinden ürünün içinde; burada yalnız PDF,
+# akış ve renk özellikleri açılır. Paketlenecek DLL, kurulacak bileşen yok.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Data_Pdf",
+    "Foundation",
+    "Storage_Streams",
+    "UI",
+    "Win32_System_Com",
+] }

@@ -1,4 +1,4 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "windows"))]
 use ekler_core::{calculate_sha256, raster};
 use lopdf::{dictionary, Document, Stream};
 use std::path::PathBuf;

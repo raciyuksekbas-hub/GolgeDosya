@@ -126,7 +126,7 @@ fn stamp_resolves_inheritance_isolates_graphics_and_uses_rotated_crop() {
             == vec![0., 1., -1., 0., 290., 10.]));
 }
 #[test]
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn native_pdf_raster_has_expected_rotated_crop_and_visible_content() {
     let d = tempfile::tempdir().unwrap();
     let path = d.path().join("source.pdf");

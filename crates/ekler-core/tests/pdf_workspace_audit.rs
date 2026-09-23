@@ -1183,7 +1183,7 @@ fn colour_pdf(sizes: &[[f32; 2]]) -> Document {
     d
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn mae_top_left(reference: &image::RgbImage, candidate: &image::RgbImage) -> f64 {
     // Çıktının altına marka payı eklenir; karşılaştırma önizlemenin kapladığı
     // sol-üst bölgeyle sınırlıdır (son iki satır kenar yumuşatması nedeniyle atlanır).
@@ -1200,7 +1200,7 @@ fn mae_top_left(reference: &image::RgbImage, candidate: &image::RgbImage) -> f64
     delta as f64 / (w as f64 * h as f64 * 3.0)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[test]
 fn preview_matches_saved_output_for_rotation_and_order() {
     use ekler_core::raster;
@@ -1265,7 +1265,7 @@ fn preview_matches_saved_output_for_rotation_and_order() {
 
 // ======================================================= PDF → PNG / JPG (§18)
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[test]
 fn export_images_every_page_in_order_with_dpi_and_rotation() {
     use ekler_core::raster;
@@ -1323,7 +1323,7 @@ fn export_images_every_page_in_order_with_dpi_and_rotation() {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[test]
 fn export_images_refuses_annotated_pages_without_partial_output() {
     use ekler_core::raster;
@@ -2885,7 +2885,7 @@ fn dangling_reference_outside_page_graph_opens_previews_saves_and_reopens() {
     // İmza alanı taşıdığı için türetilmiş kopya onayla yapılır (ayrı sözleşme).
     assert!(receipt.sources[0].is_signed);
     // Önizle: kabuğun sayfa önizlemesi.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         let png = ekler_core::raster::preview_page(&src, 1, 72, 0).unwrap();
         let image = image::load_from_memory(&png).unwrap();
@@ -4401,11 +4401,11 @@ fn looped_name_tree_cannot_hang_preview_or_select() {
         )
         .map(|_| ())
         .map_err(|e| e.to_string());
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let preview = ekler_core::raster::preview_page(&job.0, 1, 72, 0)
             .map(|_| ())
             .map_err(|e| e.to_string());
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let preview: std::result::Result<(), String> = Ok(());
         let _ = tx.send((selected, preview));
     });

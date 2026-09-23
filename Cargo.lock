@@ -984,6 +984,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tiff 0.9.1",
  "url",
+ "windows",
  "zip",
 ]
 
