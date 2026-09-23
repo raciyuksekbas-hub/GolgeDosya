@@ -135,7 +135,27 @@ fn apply_stamp_to_page(
     let rotation = if rotation % 90 == 0 { rotation } else { 0 };
     let original_box = (x0, y0, x1, y1);
 
-    let gutter = config.margin_pt * 2.0 + config.font_size + 10.0;
+    // PDF çıktısındaki GölgeDosya işareti sayfanın boyutuyla ölçeklenir; bkz.
+    // `brand_scale`. Raster önizlemenin kendi ölçüsü var, metin damgaları
+    // (filigran, sayfa numarası) kullanıcının istediği punto ile basılır.
+    let pdf_brand = brand.as_ref().is_some_and(|b| b.raster_dpi.is_none());
+    let scale = if pdf_brand {
+        let (w, h) = if rotation == 90 || rotation == 270 {
+            (y1 - y0, x1 - x0)
+        } else {
+            (x1 - x0, y1 - y0)
+        };
+        brand_scale(w, h)
+    } else {
+        1.0
+    };
+    if !(scale.is_finite() && scale > MIN_BRAND_SCALE) {
+        return Err(EklerError::InvalidPdf(
+            "Sayfa GölgeDosya işaretini taşıyamayacak kadar küçük".into(),
+        ));
+    }
+    let margin = config.margin_pt * scale;
+    let gutter = (config.margin_pt * 2.0 + config.font_size + 10.0) * scale;
     let top = matches!(
         config.position,
         StampPosition::TopRight | StampPosition::TopLeft
@@ -154,16 +174,20 @@ fn apply_stamp_to_page(
         (x1 - x0, y1 - y0)
     };
     let badge_w = if brand_form.is_some() {
-        56.0
+        BRAND_MARK_WIDTH * scale
     } else {
         (stamp_text.chars().count() as f32 * config.font_size * 0.65 + 16.0).max(40.0)
     };
-    let badge_h = config.font_size + 10.0;
+    let badge_h = (config.font_size + 10.0) * scale;
     // Sığmazlık denetimi SAYFA DEĞİŞTİRİLMEDEN önce yapılır: sığmıyorsa sayfaya
-    // hiç dokunulmaz (kutu genişletilmez, kaynak/içerik değişmez) ve sayfa
-    // işaretsiz atlanır. Marka/filigran/numara isteğe bağlı bir işarettir;
-    // tek bir küçük sayfa bütün işlemi düşürmemeli.
-    if page_w < badge_w + config.margin_pt * 2.0 || page_h < badge_h + config.margin_pt * 2.0 {
+    // hiç dokunulmaz. Filigran ve sayfa numarası isteğe bağlı işaretlerdir;
+    // tek bir küçük sayfa bütün işlemi düşürmemeli, sayfa işaretsiz atlanır.
+    //
+    // GölgeDosya işareti İSTEĞE BAĞLI DEĞİLDİR (ürün kuralı: her PDF çıktısı
+    // işareti taşır). Eskiden o da buradan sessizce atlanıyordu. PDF işareti
+    // için `brand_scale` sayfaya sığacak ölçeği zaten seçti; bu dal ona
+    // uğramaz.
+    if !pdf_brand && (page_w < badge_w + margin * 2.0 || page_h < badge_h + margin * 2.0) {
         return Ok(false);
     }
 
@@ -253,8 +277,6 @@ fn apply_stamp_to_page(
         .and_then(|o| o.as_dict_mut())
         .map_err(pdf_error)?
         .set("Resources", resources);
-
-    let margin = config.margin_pt;
 
     let (badge_x, badge_y, text_x, text_y) = match config.position {
         StampPosition::TopRight => {
@@ -346,7 +368,7 @@ fn apply_stamp_to_page(
         let mark_width = if let Some(dpi) = brand.as_ref().and_then(|b| b.raster_dpi) {
             (page_w * dpi as f32 / 72. * 0.094).clamp(32., 240.) * 72. / dpi as f32
         } else {
-            56.
+            BRAND_MARK_WIDTH * scale
         };
         let mark_width = mark_width
             .min((page_w - margin * 2.).max(1.))
@@ -417,7 +439,7 @@ fn apply_stamp_to_page(
         // `/Contents` dolaylı olup bir DİZİYE çözülebilir (`5 0 R` → `[6 0 R]`).
         // Düzleştirmeden önce çöz; yoksa yeni diziye bir DİZİYE başvuru gömülür
         // ve çıktı "Contents stream eksik" ile doğrulamada düşer (okuma yolu
-        // zaten dereference ediyor — bkz. brand_visible_on_page).
+        // zaten dereference ediyor — bkz. content_items).
         let resolved_old = doc
             .dereference(&old)
             .map(|(_, o)| o.clone())
@@ -664,6 +686,37 @@ const OUTDATED_BRAND_LOGOS: [&[u8]; 2] = [LEGACY_BRAND_LOGO, SUPERSEDED_BRAND_LO
 const BRAND_FORM_CONTENT: &[u8] = b"q /BrandAlpha gs /Mark Do Q";
 const BRAND_BBOX: [f32; 4] = [0., 0., 290., 72.];
 
+/// Kabul edilmiş işaretin genişliği: 56 pt, sayfa payı 34 pt.
+const BRAND_MARK_WIDTH: f32 = 56.0;
+/// Bu kısa kenara kadar (Letter, 612 pt; A4 595 pt) işaret kabul edilmiş
+/// boyutunda, BAYT BAYT aynı basılır. Daha büyük sayfada işaret, payı ve
+/// kenar boşluğuyla birlikte sayfayla orantılı büyür.
+///
+/// Saha bulgusu: işaret sabit 56 pt basılıyordu. Telefonla çekilmiş belgeler
+/// 1414–1851 pt genişlikte (1 px = 1 pt) geliyor; işaret sayfanın %3'üne,
+/// sayfaya sığdır görünümünde 5–7 px'lik bir lekeye iniyordu. Nesne olarak
+/// oradaydı, kullanıcı için yoktu. Raster dışa aktarma bu oranı zaten
+/// uyguluyordu (`page_w · 0,094` = 56/595); PDF yolu uygulamıyordu.
+const BRAND_REFERENCE_SHORT_SIDE: f32 = 612.0;
+/// Doğrulamanın okunurluk eşiği: görünür kutunun kısa kenarına oranla işaret
+/// genişliği. Kabul edilmiş işaret A4'te %9,4, en kötü standart sayfada
+/// (yatay Letter/Legal, pay dahil) %8,7'dir; sahadaki okunmaz işaret %3–4.
+pub const MIN_BRAND_MARK_RATIO: f32 = 0.08;
+/// Bundan küçük ölçek, işaretin fiziksel olarak basılamadığı (genişliği
+/// ~4 pt'nin altında) dejenere bir sayfa demektir.
+const MIN_BRAND_SCALE: f32 = 0.05;
+
+/// PDF işaretinin sayfaya göre ölçeği.
+///
+/// Büyük sayfada `kısa kenar / 612` ile büyür, standart sayfada 1'dir. İşaret
+/// taşıyamayacak kadar dar sayfada (işaret + iki kenar boşluğu = 72 pt)
+/// sığacak kadar KÜÇÜLÜR: eskiden bu sayfalar sessizce işaretsiz kalıyordu.
+fn brand_scale(display_w: f32, display_h: f32) -> f32 {
+    let grow = (display_w.min(display_h) / BRAND_REFERENCE_SHORT_SIDE).max(1.0);
+    let fit = display_w / 72.0;
+    grow.min(fit)
+}
+
 /// Marka kelime işareti için base-14 Helvetica-Bold. Damga yolunun zaten
 /// kullandığı mekanizma; gömülü font yok, her uyumlu görüntüleyicide bulunur.
 fn brand_font(doc: &mut LopdfDoc) -> lopdf::ObjectId {
@@ -732,15 +785,26 @@ fn apply_branding_for_output(doc: &mut LopdfDoc, raster_dpi: Option<u32>) -> Res
     // Kırpma işareti görünür alanın dışında bıraktıysa sayfa yeniden işaretlenir.
     // Eski DüzenEk işareti taşıyan belgeler ÖNCE yükseltilir: aksi hâlde işaret
     // tanınmaz, sayfaya ikinci bir işaret eklenir ve çift filigran oluşur.
+    //
+    // "İşaretli" artık "tam bir, görünür ve OKUNUR işaret" demektir. Düzeltmeden
+    // önce büyük sayfaya basılmış küçük işaret, kırpma yüzünden görünmez kalmış
+    // işaret ya da çift işaret: sayfa yeniden işaretlenir ve GölgeDosya'nın
+    // KENDİ yazdığı eski işaret akışı önce sökülür (`detach_brand_stamps`).
+    // Böylece yükseltme ikinci bir işaret DEĞİL, tek bir doğru işaret bırakır.
     upgrade_legacy_brand_marks(doc)?;
     let existing = existing_brand_forms(doc);
     let pending: Vec<lopdf::ObjectId> = doc
         .get_pages()
         .into_values()
-        .filter(|page| !brand_visible_on_page(doc, *page, &existing))
+        .filter(|page| !page_mark_is_canonical(doc, *page, &existing))
         .collect();
     if pending.is_empty() {
         return Ok(());
+    }
+    if !existing.is_empty() {
+        for page in &pending {
+            detach_brand_stamps(doc, *page, &existing)?;
+        }
     }
     let form_id = match existing.iter().min() {
         Some(form) => *form,
@@ -767,7 +831,13 @@ fn apply_branding_for_output(doc: &mut LopdfDoc, raster_dpi: Option<u32>) -> Res
         raster_dpi,
     };
     for id in pending {
-        apply_stamp_to_page(doc, id, "GölgeDosya", (0, 0), &config, Some(&mut resources))?;
+        let stamped =
+            apply_stamp_to_page(doc, id, "GölgeDosya", (0, 0), &config, Some(&mut resources))?;
+        if !stamped && raster_dpi.is_none() {
+            return Err(EklerError::InvalidPdf(
+                "GölgeDosya işareti sayfaya basılamadı".into(),
+            ));
+        }
     }
     Ok(())
 }
@@ -826,78 +896,102 @@ fn existing_brand_forms(doc: &LopdfDoc) -> std::collections::HashSet<lopdf::Obje
         .collect()
 }
 
-/// Sayfa bir marka formunu çiziyor ve işaret sayfanın görünür kutusunun
-/// içinde mi? İşaretin kutusu, çizildiği akıştaki `cm` dönüşümlerinden
-/// hesaplanır.
-fn brand_visible_on_page(
-    doc: &LopdfDoc,
-    page_id: lopdf::ObjectId,
-    forms: &std::collections::HashSet<lopdf::ObjectId>,
-) -> bool {
-    if forms.is_empty() {
-        return false;
-    }
-    let Ok(page) = super::resolved_page_dictionary(doc, page_id) else {
-        return false;
-    };
-    let Some(xobjects) = dictionary_at(doc, page.get(b"Resources").ok())
-        .and_then(|r| dictionary_at(doc, r.get(b"XObject").ok()))
-    else {
-        return false;
-    };
-    let names: Vec<&[u8]> = xobjects
-        .iter()
-        .filter(|(_, v)| v.as_reference().is_ok_and(|id| forms.contains(&id)))
-        .map(|(k, _)| k.as_slice())
-        .collect();
-    if names.is_empty() {
-        return false;
-    }
+/// Sayfadaki bir marka çizimi: görünür kutunun içinde mi, kaç pt genişlikte.
+#[derive(Debug, Clone, Copy)]
+struct BrandDraw {
+    inside: bool,
+    width: f32,
+}
+
+/// Görünür kutu (CropBox, yoksa MediaBox), köşeleri normalize.
+fn visible_box(doc: &LopdfDoc, page: &Dictionary) -> Option<[f32; 4]> {
     let number = |o: &Object| o.as_float().ok();
-    let Some(visible) = page
-        .get(b"CropBox")
+    page.get(b"CropBox")
         .or_else(|_| page.get(b"MediaBox"))
         .ok()
         .and_then(|b| doc.dereference(b).ok())
         .and_then(|(_, b)| b.as_array().ok())
         .filter(|b| b.len() == 4)
         .and_then(|b| {
-            Some([
+            let v = [
                 number(&b[0])?,
                 number(&b[1])?,
                 number(&b[2])?,
                 number(&b[3])?,
+            ];
+            Some([
+                v[0].min(v[2]),
+                v[1].min(v[3]),
+                v[0].max(v[2]),
+                v[1].max(v[3]),
             ])
         })
-    else {
-        return false;
-    };
-    let (vx0, vx1) = (visible[0].min(visible[2]), visible[0].max(visible[2]));
-    let (vy0, vy1) = (visible[1].min(visible[3]), visible[1].max(visible[3]));
-    let streams: Vec<Object> = match page.get(b"Contents") {
+}
+
+/// Sayfanın içerik akışları, sırayla. `/Contents` dolaylı bir diziye çözülebilir.
+fn content_items(doc: &LopdfDoc, page: &Dictionary) -> Vec<Object> {
+    match page.get(b"Contents") {
         Ok(Object::Array(items)) => items.clone(),
         Ok(Object::Reference(id)) => match doc.get_object(*id) {
             Ok(Object::Array(items)) => items.clone(),
             _ => vec![Object::Reference(*id)],
         },
         _ => Vec::new(),
-    };
-    for item in streams {
-        let Some(data) = doc
-            .dereference(&item)
-            .ok()
-            .and_then(|(_, s)| s.as_stream().ok())
-            .and_then(stream_data)
-        else {
-            continue;
-        };
-        let Ok(content) = Content::decode(&data) else {
+    }
+}
+
+/// Sayfanın kaynaklarında bir marka formuna bağlı XObject adları.
+fn brand_names(
+    doc: &LopdfDoc,
+    page: &Dictionary,
+    forms: &std::collections::HashSet<lopdf::ObjectId>,
+) -> Vec<Vec<u8>> {
+    dictionary_at(doc, page.get(b"Resources").ok())
+        .and_then(|r| dictionary_at(doc, r.get(b"XObject").ok()))
+        .map(|xobjects| {
+            xobjects
+                .iter()
+                .filter(|(_, v)| v.as_reference().is_ok_and(|id| forms.contains(&id)))
+                .map(|(k, _)| k.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn stream_operations(doc: &LopdfDoc, item: &Object) -> Option<Vec<Operation>> {
+    let (_, obj) = doc.dereference(item).ok()?;
+    let data = stream_data(obj.as_stream().ok()?)?;
+    Content::decode(&data).ok().map(|c| c.operations)
+}
+
+/// Sayfadaki bütün marka çizimleri ve görünür kutunun kısa kenarı.
+///
+/// İşaretin kutusu, çizildiği akıştaki `cm` dönüşümlerinden hesaplanır;
+/// genişliği dönüşümün x ekseni uzunluğu × form kutusu. Her akış kendi
+/// başına yürünür: GölgeDosya belge içeriğini `q … Q` ile sarmaladığı için
+/// işaret akışı temiz grafik durumundan başlar.
+fn brand_draws_on_page(
+    doc: &LopdfDoc,
+    page_id: lopdf::ObjectId,
+    forms: &std::collections::HashSet<lopdf::ObjectId>,
+) -> Option<(Vec<BrandDraw>, f32)> {
+    let page = super::resolved_page_dictionary(doc, page_id).ok()?;
+    let visible = visible_box(doc, &page)?;
+    let short_side = (visible[2] - visible[0]).min(visible[3] - visible[1]);
+    let names = brand_names(doc, &page, forms);
+    if names.is_empty() {
+        return Some((Vec::new(), short_side));
+    }
+    let number = |o: &Object| o.as_float().ok();
+    let mut draws = Vec::new();
+    for item in content_items(doc, &page) {
+        let Some(operations) = stream_operations(doc, &item) else {
             continue;
         };
         // [a b c d e f]; nokta: x' = a·x + c·y + e, y' = b·x + d·y + f.
         let mut ctm = [1f32, 0., 0., 1., 0., 0.];
         let mut saved = Vec::new();
-        for op in &content.operations {
+        for op in &operations {
             match op.operator.as_str() {
                 "q" => saved.push(ctm),
                 "Q" => ctm = saved.pop().unwrap_or([1., 0., 0., 1., 0., 0.]),
@@ -918,7 +1012,7 @@ fn brand_visible_on_page(
                     .operands
                     .first()
                     .and_then(|o| o.as_name().ok())
-                    .is_some_and(|n| names.contains(&n)) =>
+                    .is_some_and(|n| names.iter().any(|m| m == n)) =>
                 {
                     let corners = [
                         (BRAND_BBOX[0], BRAND_BBOX[1]),
@@ -932,18 +1026,221 @@ fn brand_visible_on_page(
                             ctm[0] * x + ctm[2] * y + ctm[4],
                             ctm[1] * x + ctm[3] * y + ctm[5],
                         );
-                        ux >= vx0 - TOLERANCE
-                            && ux <= vx1 + TOLERANCE
-                            && uy >= vy0 - TOLERANCE
-                            && uy <= vy1 + TOLERANCE
+                        ux >= visible[0] - TOLERANCE
+                            && ux <= visible[2] + TOLERANCE
+                            && uy >= visible[1] - TOLERANCE
+                            && uy <= visible[3] + TOLERANCE
                     });
-                    if inside {
-                        return true;
-                    }
+                    let width = (ctm[0] * ctm[0] + ctm[1] * ctm[1]).sqrt()
+                        * (BRAND_BBOX[2] - BRAND_BBOX[0]);
+                    draws.push(BrandDraw { inside, width });
                 }
                 _ => {}
             }
         }
     }
-    false
+    Some((draws, short_side))
+}
+
+/// Sayfa kuralı sağlıyor mu: tam BİR görünür işaret ve okunur boyutta.
+///
+/// Görünür alanın dışında kalmış (ör. sonradan kırpılmış) bir çizim sayılmaz:
+/// kullanıcı onu görmez. Görünür iki işaret, okunmaz tek işaret ya da hiç
+/// işaret kuralı bozar.
+fn page_mark_is_canonical(
+    doc: &LopdfDoc,
+    page_id: lopdf::ObjectId,
+    forms: &std::collections::HashSet<lopdf::ObjectId>,
+) -> bool {
+    brand_draws_on_page(doc, page_id, forms).is_some_and(|(draws, short_side)| {
+        let mut visible = draws.iter().filter(|d| d.inside);
+        match (visible.next(), visible.next()) {
+            (Some(only), None) => only.width >= MIN_BRAND_MARK_RATIO * short_side,
+            _ => false,
+        }
+    })
+}
+
+/// GölgeDosya'nın bu sayfaya daha önce yazdığı işaret akışlarını söker.
+///
+/// Yalnız GölgeDosya'nın yazdığı BİREBİR kalıp sökülür: kendi başına bir
+/// akış, içeriği tam olarak `q cm cm Do Q`, `Do` bir marka formuna. Bu kalıp
+/// DüzenEk döneminden bugüne değişmedi (sahadaki eski çıktılarda ölçüldü).
+/// Belge içeriği hiçbir koşulda değişmez; kalıba uymayan bir çizim yerinde
+/// bırakılır ve `verify_canonical_branding` onu yakalar.
+///
+/// İşaret en dış sarmalsa — ilk akış `q x y w h re W n`, sondan ikinci `Q`,
+/// son akış işaret — ve görünür kutu sarmalın kırptığı kutudan YALNIZ bir
+/// kenarda genişse, sarmal da açılır ve kutu işaretlenmeden önceki hâline
+/// döner. Yeni işaret böylece eski payın altına ikinci bir pay eklemez.
+fn detach_brand_stamps(
+    doc: &mut LopdfDoc,
+    page_id: lopdf::ObjectId,
+    forms: &std::collections::HashSet<lopdf::ObjectId>,
+) -> Result<()> {
+    let page = super::resolved_page_dictionary(doc, page_id)?;
+    let names = brand_names(doc, &page, forms);
+    if names.is_empty() {
+        return Ok(());
+    }
+    let items = content_items(doc, &page);
+    let is_stamp = |ops: &[Operation]| match ops {
+        [q, a, b, draw, end] => {
+            q.operator == "q"
+                && a.operator == "cm"
+                && a.operands.len() == 6
+                && b.operator == "cm"
+                && b.operands.len() == 6
+                && draw.operator == "Do"
+                && draw
+                    .operands
+                    .first()
+                    .and_then(|n| n.as_name().ok())
+                    .is_some_and(|n| names.iter().any(|m| m == n))
+                && end.operator == "Q"
+        }
+        _ => false,
+    };
+    let stamps: Vec<usize> = items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| stream_operations(doc, item).is_some_and(|ops| is_stamp(&ops)))
+        .map(|(i, _)| i)
+        .collect();
+    if stamps.is_empty() {
+        return Ok(());
+    }
+    let last = items.len() - 1;
+    let clip = if stamps == [last] && items.len() >= 3 {
+        let prefix = stream_operations(doc, &items[0]).unwrap_or_default();
+        let suffix = stream_operations(doc, &items[last - 1]).unwrap_or_default();
+        let rect = match prefix.as_slice() {
+            [q, re, w, n]
+                if q.operator == "q"
+                    && re.operator == "re"
+                    && w.operator == "W"
+                    && n.operator == "n" =>
+            {
+                let v: Vec<f32> = re
+                    .operands
+                    .iter()
+                    .filter_map(|o| o.as_float().ok())
+                    .collect();
+                (v.len() == 4).then(|| {
+                    let (xa, ya, xb, yb) = (v[0], v[1], v[0] + v[2], v[1] + v[3]);
+                    [xa.min(xb), ya.min(yb), xa.max(xb), ya.max(yb)]
+                })
+            }
+            _ => None,
+        };
+        rect.filter(|_| suffix.len() == 1 && suffix[0].operator == "Q")
+    } else {
+        None
+    };
+    let unwrap = match (clip, visible_box(doc, &page)) {
+        (Some(c), Some(v)) => {
+            const EPS: f32 = 0.01;
+            let contains = v[0] <= c[0] + EPS
+                && v[1] <= c[1] + EPS
+                && v[2] >= c[2] - EPS
+                && v[3] >= c[3] - EPS;
+            let equal_edges = (0..4).filter(|i| (c[*i] - v[*i]).abs() < EPS).count();
+            (contains && equal_edges == 3).then_some(c)
+        }
+        _ => None,
+    };
+    let mut kept: Vec<Object> = items
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !stamps.contains(i))
+        .map(|(_, o)| o)
+        .collect();
+    let page = doc
+        .get_object_mut(page_id)
+        .and_then(|o| o.as_dict_mut())
+        .map_err(pdf_error)?;
+    if let Some(c) = unwrap {
+        kept.pop();
+        kept.remove(0);
+        page.set(
+            "CropBox",
+            c.iter().map(|v| Object::Real(*v)).collect::<Vec<_>>(),
+        );
+    }
+    page.set("Contents", kept);
+    Ok(())
+}
+
+/// Ürün kuralının doğrulaması: her sayfada tam bir görünür GölgeDosya işareti,
+/// okunur boyutta; eski dönem çizimi yok. Yayımdan önceki son söz budur.
+pub fn verify_canonical_branding(doc: &LopdfDoc) -> Result<()> {
+    let outdated = doc.objects.values().any(|obj| {
+        obj.as_stream().is_ok_and(|s| {
+            s.dict.get(b"Subtype").and_then(|t| t.as_name()).ok() == Some(b"Form")
+                && stream_data(s).is_some_and(|d| OUTDATED_BRAND_LOGOS.iter().any(|o| d == *o))
+        })
+    });
+    if outdated {
+        return Err(EklerError::ValidationFailed(
+            "Çıktıda eski bir ürün işareti kaldı; güvenlik için yayımlanmadı".into(),
+        ));
+    }
+    let forms = existing_brand_forms(doc);
+    for (number, id) in doc.get_pages() {
+        if !page_mark_is_canonical(doc, id, &forms) {
+            return Err(EklerError::ValidationFailed(format!(
+                "Sayfa {number}: çıktı GölgeDosya işaretini doğru taşımıyor; güvenlik için yayımlanmadı"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// GölgeDosya'nın ÜRETTİĞİ ya da DEĞİŞTİRDİĞİ bir PDF'in yayına hazır hâli.
+///
+/// Yalnız `finalize_pdf_output` üretir: işaretlenmiş, yeniden açılıp
+/// doğrulanmış baytlar. `ekler_core::safe_io::publish_pdf` yalnız bunu kabul
+/// eder ve genel yazıcı ham PDF baytını reddeder. İşaret böylece araç
+/// geliştiricisinin hatırlamasına bağlı değildir: unutulursa yayım olmaz.
+#[derive(Debug)]
+pub struct BrandedPdf {
+    bytes: Vec<u8>,
+}
+
+impl BrandedPdf {
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    pub fn len(&self) -> u64 {
+        self.bytes.len() as u64
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+}
+
+/// Kullanıcıya teslim edilecek her PDF'in TEK kapısı: işaretle → serileştir →
+/// yeniden aç → yapı, sayfa sayısı ve işaret doğrulaması.
+///
+/// İdempotenttir: zaten kurala uyan bir belgeye ikinci işaret eklemez.
+pub fn finalize_pdf_output(doc: &mut LopdfDoc) -> Result<BrandedPdf> {
+    let expected = doc.get_pages().len();
+    if expected == 0 {
+        return Err(EklerError::InvalidPdf(
+            "PDF en az bir sayfa içermeli".into(),
+        ));
+    }
+    apply_branding(doc)?;
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes)
+        .map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
+    let reopened = LopdfDoc::load_mem(&bytes).map_err(pdf_error)?;
+    super::validate_document(&reopened)?;
+    if reopened.get_pages().len() != expected {
+        return Err(EklerError::InvalidPdf("Sayfa sayısı değişti".into()));
+    }
+    verify_canonical_branding(&reopened)?;
+    Ok(BrandedPdf { bytes })
 }

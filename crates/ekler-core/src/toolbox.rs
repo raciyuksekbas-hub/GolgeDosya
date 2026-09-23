@@ -1,5 +1,6 @@
 use crate::error::{EklerError, Result};
 use crate::image::image_file_to_pdf;
+use crate::pdf::stamp::BrandedPdf;
 use crate::pdf::{extract_pages, load_pdf_tolerant, merge_documents};
 use lopdf::{Document as LopdfDoc, Object};
 use std::path::{Path, PathBuf};
@@ -459,21 +460,22 @@ fn run_tool_inner(
                     continue;
                 }
                 let body = validated_pdf_bytes(&mut candidate)?.len() as u64;
-                crate::pdf::stamp::apply_branding(&mut candidate)?;
-                let final_size = validated_pdf_bytes(&mut candidate)?.len() as u64;
+                // Adaylar kullanıcıya GİDECEK baytla yarışır: işaretli, yeniden
+                // açılıp doğrulanmış çıktı. "Kazanç yok" eşiği de onun üzerinden
+                // hesaplanır; işaretin maliyeti küçülmeyi gizleyemez, şişiremez.
+                let branded = crate::pdf::stamp::finalize_pdf_output(&mut candidate)?;
                 if best
                     .as_ref()
-                    .is_none_or(|(_, _, _, size)| final_size < *size)
+                    .is_none_or(|(kept, _, _): &(BrandedPdf, _, _)| branded.len() < kept.len())
                 {
-                    best = Some((candidate, stats, body, final_size));
+                    best = Some((branded, stats, body));
                 }
             }
-            let (candidate, stats, body, _) = best.ok_or_else(|| {
+            let (branded, stats, body) = best.ok_or_else(|| {
                 quality_errors.dedup();
                 EklerError::ValidationFailed(quality_errors.join("; "))
             })?;
-            doc = candidate;
-            compression = Some((body, stats));
+            compression = Some((body, stats, branded));
         }
         ToolOperation::Crop { margin_pt } => {
             if !margin_pt.is_finite() || *margin_pt < 0. {
@@ -567,19 +569,16 @@ fn run_tool_inner(
             return Err(EklerError::SourceIntegrityCompromised { path: p.clone() });
         }
     }
-    if compression.is_none() {
-        crate::pdf::stamp::apply_branding(&mut doc)?;
-    }
-    let bytes = validated_pdf_bytes(&mut doc)?;
-    if let Some((body_bytes, stats)) = compression {
+    if let Some((body_bytes, stats, pdf)) = compression {
         // Kalan quality_errors yalnız daha sert bir ön ayarın PİKSEL kalitesi
         // nedeniyle elendiğini söyler; kazanan aday geçerlidir. Kazanç anlamlı
-        // değilse bu dürüstçe "kazanç yok"tur, hata değil.
-        if !is_meaningful_saving(source_bytes, bytes.len() as u64) {
+        // değilse bu dürüstçe "kazanç yok"tur, hata değil — ve diske hiçbir şey
+        // yazılmaz: işaretli aday bellekte kalır.
+        if !is_meaningful_saving(source_bytes, pdf.len()) {
             return Ok(ToolOutcome::NoBenefit {
                 source_bytes,
                 body_bytes,
-                candidate_bytes: bytes.len() as u64,
+                candidate_bytes: pdf.len(),
                 images_found: stats.images_found,
                 images_recompressed: stats.images_recompressed_count,
                 previously_processed: original
@@ -587,18 +586,21 @@ fn run_tool_inner(
                     .is_some_and(crate::pdf::stamp::is_golgedosya_output),
             });
         }
-        crate::safe_io::write_new_bytes(output, paths, &bytes)?;
+        crate::safe_io::publish_pdf(output, paths, &pdf)?;
         return Ok(ToolOutcome::Compressed {
             source_bytes,
             body_bytes,
-            output_bytes: bytes.len() as u64,
+            output_bytes: pdf.len(),
             images_found: stats.images_found,
             images_recompressed: stats.images_recompressed_count,
         });
     }
-    crate::safe_io::write_new_bytes(output, paths, &bytes)?;
+    // Her araç çıktısı aynı kapıdan geçer: işaret, yapı, sayfa sayısı ve işaret
+    // doğrulaması. Araç kendi başına işaret basmaz; unutamaz da.
+    let pdf = crate::pdf::stamp::finalize_pdf_output(&mut doc)?;
+    crate::safe_io::publish_pdf(output, paths, &pdf)?;
     Ok(ToolOutcome::Published {
-        output_bytes: bytes.len() as u64,
+        output_bytes: pdf.len(),
     })
 }
 

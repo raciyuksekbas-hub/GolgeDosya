@@ -8,8 +8,6 @@ use crate::pdf::{
 };
 use crate::validation::{validate_project_and_outputs, ValidationReport};
 use lopdf::Document as LopdfDoc;
-use std::fs::File;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -125,7 +123,7 @@ pub(crate) fn execute_with_expected_outputs(
     )?;
     crate::safe_io::write_new_bytes(&staging.path().join("manifest.json"), &[], &manifest)?;
     #[cfg(unix)]
-    File::open(staging.path())
+    std::fs::File::open(staging.path())
         .and_then(|f| f.sync_all())
         .map_err(|source| EklerError::IoError {
             path: staging.path().into(),
@@ -204,11 +202,9 @@ fn run_pipeline_in_staging(project: &Project, staging_dir: &Path) -> Result<Stag
                         "İmzalı PDF sayfa sayısı değişmiş".into(),
                     ));
                 }
-                crate::safe_io::write_new_bytes(
-                    &staged_path,
-                    std::slice::from_ref(&source.path),
-                    &original,
-                )?;
+                // Kuralın tek istisnası: imzalı orijinal bayt bayt geçer (işaret
+                // e-imzayı bozardı). Yayıcı baytları ve imzayı yeniden doğrular.
+                crate::safe_io::publish_signed_original(&staged_path, &source.path, &original)?;
                 let size = original.len() as u64;
                 let hash =
                     calculate_sha256(&staged_path).map_err(|source_error| EklerError::IoError {
@@ -360,25 +356,10 @@ fn run_pipeline_in_staging(project: &Project, staging_dir: &Path) -> Result<Stag
     let list_plain = ExhibitsListGenerator::generate_plain_text(project, &exhibit_page_counts);
     let list_md = ExhibitsListGenerator::generate_markdown(project, &exhibit_page_counts);
 
+    // Paketin her dosyası ortak yazıcıdan geçer: Ekler'de doğrudan dosya
+    // oluşturan yer kalmaz (bkz. `tests/pdf_output_boundary.rs`).
     let list_path = staging_dir.join("EKLER_LISTESI.txt");
-    let mut f = File::create(&list_path).map_err(|e| EklerError::IoError {
-        path: list_path.clone(),
-        source: e,
-    })?;
-    f.write_all(list_plain.as_bytes())
-        .map_err(|e| EklerError::IoError {
-            path: list_path.clone(),
-            source: e,
-        })?;
-    f.flush().map_err(|e| EklerError::IoError {
-        path: list_path.clone(),
-        source: e,
-    })?;
-    f.sync_all().map_err(|e| EklerError::IoError {
-        path: list_path.clone(),
-        source: e,
-    })?;
-    drop(f);
+    crate::safe_io::write_new_bytes(&list_path, &[], list_plain.as_bytes())?;
 
     Ok(StagedExecutionResult {
         outputs: all_outputs,
@@ -416,7 +397,10 @@ fn process_exhibit_with_smart_split(
         // Çıktı belgesini üret ve damgala
         let mut slice_doc = extract_page_range(unified_doc, current_page, best_end)?;
         apply_stamp_to_document(&mut slice_doc, exhibit.order, current_page, stamp_config)?;
-        crate::pdf::stamp::apply_branding(&mut slice_doc)?;
+        // İşaret, yapı, sayfa sayısı ve işaret doğrulaması YAYIMDAN ÖNCE.
+        // Bayt dizisi `measure_candidate_size`'ın ölçtüğüyle birebir aynıdır
+        // (aynı işaretleme, aynı serileştirme): hedef boyut hesabı kaymaz.
+        let pdf = crate::pdf::stamp::finalize_pdf_output(&mut slice_doc)?;
 
         // Dosya adını oluştur:
         // EK-01_Sozlesme_S001-S018.pdf veya EK-01_DEVAM_Sozlesme_S019-S020.pdf
@@ -436,23 +420,9 @@ fn process_exhibit_with_smart_split(
         };
 
         let out_path = output_dir.join(&file_name);
-        let mut out_file = File::create(&out_path).map_err(|e| EklerError::IoError {
-            path: out_path.clone(),
-            source: e,
-        })?;
-
-        slice_doc
-            .save_to(&mut out_file)
-            .map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
-        out_file.flush().map_err(|e| EklerError::IoError {
-            path: out_path.clone(),
-            source: e,
-        })?;
-        out_file.sync_all().map_err(|e| EklerError::IoError {
-            path: out_path.clone(),
-            source: e,
-        })?;
-        drop(out_file);
+        // Eskiden burada doğrudan `File::create` + `save_to` vardı: Ekler, ortak
+        // yayın sınırını tamamen atlıyordu. Artık yalnız işaretli değer yazılır.
+        crate::safe_io::publish_pdf(&out_path, &[], &pdf)?;
 
         // Strict Post-Write Invariant Validation
         let actual_size = std::fs::metadata(&out_path).map(|m| m.len()).unwrap_or(0);

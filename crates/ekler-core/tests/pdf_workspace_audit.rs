@@ -5178,7 +5178,11 @@ fn branding_is_idempotent_across_chained_derivations() {
             "birlestir/s.{page}: {media:?}"
         );
     }
-    // İşareti görünür alanın dışında bırakan kırpma: yeni işaret eklenir.
+    // İşareti görünür alanın dışında bırakan kırpma: yeni işaret eklenir ve
+    // GÖRÜNMEZ kalan eski işaret akışı sökülür. Eskiden gizli çizim dosyada
+    // kalıyor, sayfa iki işaret çizimi taşıyordu; ürün kuralı artık "tam bir
+    // işaret" (bkz. `pdf_branding_invariant.rs`). Kullanıcının kırpması geri
+    // ALINMAZ: pay, kırpılmış kutunun altına eklenir.
     let (o, k) = run(
         &lab,
         std::slice::from_ref(&a),
@@ -5191,8 +5195,8 @@ fn branding_is_idempotent_across_chained_derivations() {
     for page in 1..=3 {
         assert_eq!(
             brand_draws(&cropped, page),
-            2,
-            "kirp/s.{page}: gizlenen işaretin yerine yenisi"
+            1,
+            "kirp/s.{page}: gizlenen işaretin yerine tek yeni işaret"
         );
         let (_, crop) = boxes(&cropped, page);
         let crop = crop.unwrap();

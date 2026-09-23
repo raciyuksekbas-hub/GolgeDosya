@@ -240,16 +240,12 @@ pub fn convert_to_pdf_file(source: &Path, output: &Path, approved: bool) -> Resu
     safe_io::ensure_new_destination(output, &[source.into()])?;
     let before = calculate_sha256(source).map_err(|e| err(e.to_string()))?;
     let mut doc = convert_to_pdf(source, approved)?;
-    crate::pdf::stamp::apply_branding(&mut doc)?;
-    let mut bytes = Vec::new();
-    doc.save_to(&mut bytes).map_err(|e| err(e.to_string()))?;
-    crate::pdf::validate_document(
-        &lopdf::Document::load_mem(&bytes).map_err(|e| err(e.to_string()))?,
-    )?;
+    // LibreOffice'in ürettiği PDF de GölgeDosya çıktısıdır: aynı kapı.
+    let pdf = crate::pdf::stamp::finalize_pdf_output(&mut doc)?;
     if before != calculate_sha256(source).map_err(|e| err(e.to_string()))? {
         return Err(EklerError::SourceIntegrityCompromised {
             path: source.into(),
         });
     }
-    safe_io::write_new_bytes(output, &[source.into()], &bytes)
+    safe_io::publish_pdf(output, &[source.into()], &pdf)
 }

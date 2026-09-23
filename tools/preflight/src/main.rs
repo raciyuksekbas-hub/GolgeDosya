@@ -285,10 +285,15 @@ fn office_conversion() -> Result<Option<String>, String> {
 }
 
 /// Atomik, üzerine-yazmayan yayın: gerçek dosya sisteminde.
+///
+/// İçerik bilerek PDF DEĞİL: genel yazıcı ham PDF baytını reddeder (PDF yalnız
+/// GölgeDosya işaret kapısından çıkar). Burada ölçülen, içerikten bağımsız
+/// üzerine-yazmama sözleşmesidir.
 fn safe_publication() -> Result<String, String> {
+    const FIRST: &[u8] = b"ILK YAYIN\n";
     let d = tmpdir("safeio");
-    let target = d.join("cikti.pdf");
-    ekler_core::safe_io::write_new_bytes(&target, &[], b"%PDF-1.5\n")
+    let target = d.join("cikti.txt");
+    ekler_core::safe_io::write_new_bytes(&target, &[], FIRST)
         .map_err(|e| format!("ilk yazma başarısız: {e}"))?;
     let second = ekler_core::safe_io::write_new_bytes(&target, &[], b"UZERINE YAZILDI");
     let content = std::fs::read(&target).map_err(|e| e.to_string())?;
@@ -296,7 +301,7 @@ fn safe_publication() -> Result<String, String> {
     if second.is_ok() {
         return Err("mevcut dosyanın üzerine YAZILDI".into());
     }
-    if content != b"%PDF-1.5\n" {
+    if content != FIRST {
         return Err("ilk çıktının içeriği değişti".into());
     }
     Ok("atomik yazma çalıştı; ikinci yazma reddedildi, ilk içerik korundu".into())

@@ -56,8 +56,7 @@ pub fn pdf_to_images(
             .save_to(&mut bytes)
             .map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
         let temp = tempfile::tempdir().map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
-        let copy = temp.path().join("source.pdf");
-        safe_io::write_new_bytes(&copy, &[], &bytes)?;
+        let copy = safe_io::write_render_scratch(&temp, "source.pdf", &bytes)?;
         let images = native::render(&copy, dpi)?;
         if images.len() != info.page_count {
             return Err(EklerError::InvalidPdf(
@@ -319,10 +318,11 @@ pub fn preview_page(source: &Path, page: usize, dpi: u32, rotation: i32) -> Resu
                 .set("Rotate", (old + i64::from(rotation)).rem_euclid(360));
         }
         let dir = tempfile::tempdir().map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
-        let path = dir.path().join("preview.pdf");
+        let mut working = Vec::new();
         selected
-            .save(&path)
+            .save_to(&mut working)
             .map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
+        let path = safe_io::write_render_scratch(&dir, "preview.pdf", &working)?;
         let mut images = native::render(&path, dpi)?;
         let img = images
             .pop()
