@@ -111,7 +111,11 @@ type Page = {
     key: string;
 };
 // Bound native render requests; thumbnails render only when near the viewport.
+// Etkin sayfanın büyük önizlemesi küçük resim sütununun ARKASINDA beklemez:
+// kendi kuyruğu vardır. Aynı anda en fazla iki render (biri etkin sayfa) —
+// bellek sınırlı kalır, sayfa geçişi küçük resimlere takılmaz.
 let queue: Promise<unknown> = Promise.resolve();
+let activeQueue: Promise<unknown> = Promise.resolve();
 /** Yol yerine dosya adı: kullanıcı belgesini adıyla tanır, yoluyla değil. */
 export function baseNameOf(path: string): string {
     return path.split(/[\\/]/).pop() || path;
@@ -141,7 +145,7 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
         const load = () => {
             if (started) return;
             started = true;
-            queue = queue.catch(() => {}).then(async () => {
+            const render = async () => {
                 if (!alive) return;
                 try {
                     // Rotation is visual and immediate; both views share the same unrotated bitmap geometry.
@@ -152,7 +156,9 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
                     const img = new Image(); img.src = url; await img.decode();
                     if (alive) { setBitmap(previous => ({url, width: previous?.width || img.naturalWidth * 96 / dpi, height: previous?.height || img.naturalHeight * 96 / dpi})); setError(''); }
                 } catch (e) { if (alive) setError(String(e)); }
-            });
+            };
+            if (large) activeQueue = activeQueue.catch(() => {}).then(render);
+            else queue = queue.catch(() => {}).then(render);
         };
         const observer = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) load(); }, {rootMargin: '100px'});
         if (ref.current) observer.observe(ref.current);
@@ -163,7 +169,7 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
     // ve kısa bir etiket. Hata olursa kategorisinin tek cümlesi gösterilir;
     // ham motor metni kullanıcı yüzeyine çıkmaz.
     const wait = error
-        ? <p className="pdf-wait" data-tone="error" role="status">{safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}</p>
+        ? <p className="pdf-wait" data-tone="error" role="status" title={safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}>{safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}</p>
         : <p className="pdf-wait" role="status"><span className="spinner" aria-hidden="true"/>Önizleme hazırlanıyor</p>;
     return <div ref={ref} className={large ? 'pdf-preview-stage' : 'pdf-thumbnail-stage'} style={large && geometry ? {width: Math.max(viewport.width, geometry.width + 16), minHeight: Math.max(viewport.height, geometry.height + 16)} : undefined}>
         {bitmap && geometry ? <div className="pdf-page-surface" style={{width: geometry.width, height: geometry.height}}><img src={bitmap.url} alt={`${item.source.file_name}, sayfa ${item.page}`} style={{width: geometry.imageWidth, height: geometry.imageHeight, transform: `translate(-50%, -50%) rotate(${rotation}deg)`}}/></div> : wait}

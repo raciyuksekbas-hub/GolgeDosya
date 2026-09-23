@@ -220,6 +220,21 @@
   justify-content: center;
   width: 100%;
   height: 112px;
+  /* Sayfa düzeyindeki bir hata cümlesi küçük resmin dışına taşıp komşu
+     sayfaları ve araçları örtmemeli (sahada tam olarak böyle görüldü). */
+  overflow: hidden;
+}
+/* Küçük resimdeki hata: kutunun içinde, en fazla dört satır. Tam cümle DOM'da
+   kalır (ekran okuyucu `role="status"` ile okur) ve `title` ile görülebilir. */
+.pdf-root .pdf-thumbnail-stage .pdf-wait[data-tone="error"] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  padding: 0 var(--space-2);
+  text-align: center;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 .pdf-root .pdf-page-surface {
   position: relative;
