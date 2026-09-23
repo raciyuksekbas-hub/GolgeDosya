@@ -171,7 +171,9 @@ jobs:
             "- FileVersion    : $($v.FileVersion)"    | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
             "- ProductVersion : $($v.ProductVersion)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
             "- mimari         : $arch"                | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
-            if ($arch -ne "x64") { "  ✗ x64 degil"; $ok = $false }
+            # NSIS installer stub'i BILEREK 32-bit'tir (her Windows'ta calissin
+            # diye); tasidigi yuk x64'tur. Mimari sarti yalniz uygulama ikilisine.
+            if ($f -notmatch "setup" -and $arch -ne "x64") { "  ✗ uygulama ikilisi x64 degil"; $ok = $false }
             if ("$($v.FileVersion)$($v.ProductVersion)" -match "0\.2\.0") { "  ✗ eski surum 0.2.0 izi"; $ok = $false }
           }
           # Portable exe kullanıcıya görünen alanları taşımalı; installer'ın
@@ -236,8 +238,12 @@ jobs:
           if ($proc.ExitCode -ne 0) { throw "installer sifirdan farkli cikis kodu dondurdu: $($proc.ExitCode)" }
           Start-Sleep -Seconds 5
 
-          $new = Snapshot | Where-Object { $before -notcontains $_ }
-          if (-not $new) { throw "kurulumdan sonra yeni bir Uninstall kaydi olusmadi" }
+          # @(...) ZORUNLU: tek bir yeni anahtar bulundugunda PowerShell diziyi
+          # skalere indirger ve $new[0] dizinin ilk ogesini degil DIZENIN ilk
+          # KARAKTERINI ('M') verir. Ilk kosuda kurulum basariliydi, bu adim
+          # tam olarak bu yuzden dustu.
+          $new = @(Snapshot | Where-Object { $before -notcontains $_ })
+          if ($new.Count -eq 0) { throw "kurulumdan sonra yeni bir Uninstall kaydi olusmadi" }
           $key = Get-ItemProperty $new[0]
           "### Kurulu kayit" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           "- DisplayName     : $($key.DisplayName)"     | Tee-Object -Append $env:GITHUB_STEP_SUMMARY

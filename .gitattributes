@@ -1,0 +1,40 @@
+# Satır sonu rejimi — Windows checkout'u ikili fixture'ları BOZUYORDU.
+#
+# Git, Windows'ta `core.autocrlf=true` ile (GitHub `windows-latest` runner'ının
+# varsayılanı) checkout sırasında LF'yi CRLF'e çevirir. Hangi dosyanın metin
+# olduğuna ilk 8000 baytta NUL arayarak karar verir. Küçük, akışları
+# sıkıştırılmamış PDF'lerimizde NUL yoktur: Git onları "metin" sanıp içlerine
+# 0x0D serpiyor ve dosya bozuluyordu. Native Windows koşusunda görülen
+# "Catalog referansı yok", "Trailer", "yuvarlatılmış köşe (Bézier) yok" ve
+# "index out of bounds: the len is 0" hatalarının tek kaynağı buydu; büyük
+# JPEG taşıyan PDF'ler (NUL içerdikleri için) sağlam kalıyordu, bu yüzden
+# arıza seçici görünüyordu.
+#
+# Aynı dönüşüm LF varsayan ayrıştırıcıları da düşürüyordu: version_consistency
+# Cargo.lock içinde `name = "..."\nversion` arıyor, CRLF'de bulamıyor.
+#
+# Depo her platformda LF ile checkout edilir; ikili dosyalar hiç dokunulmaz.
+* text=auto eol=lf
+
+# Test fixture'ları ve ikili varlıklar: hiçbir koşulda dönüştürülmez.
+*.pdf   binary
+*.udf   binary
+*.doc   binary
+*.docx  binary
+*.tiff  binary
+*.tif   binary
+*.heic  binary
+*.jpg   binary
+*.jpeg  binary
+*.png   binary
+*.gif   binary
+*.ico   binary
+*.icns  binary
+*.zip   binary
+*.dmg   binary
+*.exe   binary
+*.dll   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary

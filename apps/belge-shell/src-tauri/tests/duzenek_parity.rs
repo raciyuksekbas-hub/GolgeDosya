@@ -507,6 +507,12 @@ fn a_failing_compression_is_reported_as_failed_not_as_success() {
 
 // ---------------------------------------------------------------- rasterleştirme
 
+// PDF -> gorsel yerel bir isletim sistemi renderer'ina dayanir ve bugun yalniz
+// macOS'ta uygulanmistir (bkz. `ekler_core::raster`). Parite de zaten macOS'taki
+// bagimsiz uygulamayla karsilastirmadir. Windows'taki DOGRU davranis
+// `crates/ekler-core/tests/raster_platform_contract.rs` icinde olculuyor:
+// orada bu giris temiz, kullaniciya gosterilebilir bir redde donuyor.
+#[cfg(target_os = "macos")]
 #[test]
 fn pdf_to_png_and_jpeg_produce_one_readable_file_per_page() {
     for (format, magic) in [
