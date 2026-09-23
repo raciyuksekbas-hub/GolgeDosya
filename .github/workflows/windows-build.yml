@@ -252,24 +252,28 @@ jobs:
           "- InstallLocation : $($key.InstallLocation)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           if ($key.DisplayVersion -ne "0.3.0") { throw "kurulu surum 0.3.0 degil: $($key.DisplayVersion)" }
 
-          $dir = $key.InstallLocation
-          if (-not (Test-Path $dir)) { throw "InstallLocation diskte yok: $dir" }
+          # Kayit defterindeki InstallLocation degeri TIRNAKLI saklanir
+          # ("C:\Users\...\GölgeDosya"). Tirnaklari birlikte gecirmek
+          # Test-Path'i dusurur; kurulum basariliyken adim bu yuzden dustu.
+          $dir = $key.InstallLocation.Trim('"').TrimEnd('\')
+          if (-not (Test-Path -LiteralPath $dir)) { throw "InstallLocation diskte yok: $dir" }
+          "- cozulen yol     : $dir" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           "### Kurulu dizin" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
-          Get-ChildItem $dir -Recurse -File | ForEach-Object {
+          Get-ChildItem -LiteralPath $dir -Recurse -File | ForEach-Object {
             "- $($_.FullName.Substring($dir.Length).TrimStart('\')) — $($_.Length) bayt"
           } | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
 
           # § Bildirim dosyaları GERÇEK kurulu yolda olmalı; depoda olması yetmez.
           $missing = @()
           foreach ($n in @("LICENSE", "THIRD_PARTY_NOTICES.md")) {
-            $hit = Get-ChildItem $dir -Recurse -File -Filter $n -ErrorAction SilentlyContinue | Select-Object -First 1
+            $hit = Get-ChildItem -LiteralPath $dir -Recurse -File -Filter $n -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($hit) { "bildirim bulundu: $($hit.FullName) ($($hit.Length) bayt)" }
             else { $missing += $n }
           }
           if ($missing) { throw "kurulu uygulamada bildirim dosyasi eksik: $($missing -join ', ')" }
 
           # Kurulu exe native acilis smoke
-          $exe = Get-ChildItem $dir -Filter "*.exe" -File | Where-Object { $_.Name -notmatch "uninstall" } | Select-Object -First 1
+          $exe = Get-ChildItem -LiteralPath $dir -Filter "*.exe" -File | Where-Object { $_.Name -notmatch "uninstall" } | Select-Object -First 1
           $iv = (Get-Item $exe.FullName).VersionInfo
           "kurulu exe: $($exe.Name)  ProductName=$($iv.ProductName)  FileVersion=$($iv.FileVersion)"
           $p = Start-Process -FilePath $exe.FullName -PassThru
@@ -288,8 +292,8 @@ jobs:
           $u = Start-Process -FilePath $exePath -ArgumentList "/S" -PassThru -Wait
           Start-Sleep -Seconds 8
           "kaldirici cikis kodu: $($u.ExitCode)"
-          if (Test-Path $dir) {
-            $left = Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue
+          if (Test-Path -LiteralPath $dir) {
+            $left = Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue
             if ($left) { "UYARI: kaldirmadan sonra kalan dosya: $($left.Count)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
             else { "kaldirma temiz (dizin bos)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
           } else { "kaldirma temiz (dizin silindi)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
