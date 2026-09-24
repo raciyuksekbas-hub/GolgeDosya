@@ -718,6 +718,57 @@ fn publication_never_overwrites_an_existing_file() {
     );
 }
 
+/// §55 / saha maddesi 38: kaydetme, Windows'un GERÇEK yollarında da çalışır.
+///
+/// Türkçe harfli kullanıcı adı, boşluk, kesme işareti, parantez, uzun tire ve
+/// Windows'un eski 260 karakterlik sınırını aşan bir klasör; kaynak da aynı
+/// türden bir yolda. Çıktı doğru, kaynak bayt bayt aynı, aynı ada ikinci kayıt
+/// üzerine yazmaz. Windows CI bu testi yerel olarak koşar (Kapı 4 ve 5).
+#[test]
+fn publication_handles_real_world_windows_paths() {
+    let root = out_dir();
+    let home = root
+        .path()
+        .join("Çağrı Şahin")
+        .join("Müvekkil'in Dosyası (2026)");
+    let mut deep = home.clone();
+    while deep.as_os_str().len() < 300 {
+        deep = deep.join("Ayrıntılı alt klasör adı");
+    }
+    std::fs::create_dir_all(&deep).unwrap();
+    assert!(deep.as_os_str().len() > 260);
+
+    let made = make_pdf(3);
+    let src = home.join("Dilekçe eki — sözleşme (imzasız).pdf");
+    std::fs::copy(made.path(), &src).unwrap();
+    let before = sha256(&src);
+
+    let out = deep.join("Seçilen sayfalar — Çağrı'nın kopyası.pdf");
+    let outcome = run(
+        &[&src],
+        ToolOperation::Select { pages: vec![1, 3] },
+        &out,
+        false,
+    );
+    assert!(
+        matches!(outcome, ToolOutcome::Published { .. }),
+        "{outcome:?}"
+    );
+    let m = measure(&out);
+    assert_eq!(m.pages, 2);
+    assert_eq!(m.order, vec![1, 3]);
+    assert_eq!(sha256(&src), before, "kaynak değişti");
+
+    let again = tauri::async_runtime::block_on(duzenek_run_pdf_tool(
+        vec![src.display().to_string()],
+        ToolOperation::Select { pages: vec![2] },
+        out.display().to_string(),
+        false,
+    ));
+    assert!(again.is_err(), "var olan çıktının üstüne yazıldı");
+    assert_eq!(measure(&out).pages, 2, "ilk çıktı bozuldu");
+}
+
 #[test]
 fn publication_refuses_to_write_over_its_own_source() {
     let src = make_pdf(2);
