@@ -658,6 +658,14 @@ button.file-row:hover { background: var(--surface-hover); }
    şeridinde sekiz mavi kare, ekrandaki en yüksek kontrastlı öğe oluyordu. */
 input[type="checkbox"] { accent-color: var(--checkbox-accent); }
 
+/* Açılır listenin penceresini Chromium kendisi çizer ve arka planı seçicinin
+   (yarı saydam) arka planından alır. Seçenekler kendi opak yüzeyini taşır:
+   color-scheme desteklemeyen bir çalışma ortamında da okunur kalır. */
+option {
+  background-color: var(--surface-raised);
+  color: var(--text-primary);
+}
+
 select,
 input[type="text"],
 input[type="number"],

@@ -520,6 +520,7 @@ export function AnnexWorkspace({ project, onProject, prepared, onPrepared, onNew
                     <label className="ekler-name">
                       <span className="sr-only">{`Ek-${exhibit.order} başlığı`}</span>
                       <input
+                        type="text"
                         value={exhibit.name}
                         placeholder="Başlık"
                         onChange={(event) => setProject((p) => renameExhibit(p, exhibit.id, event.target.value))}

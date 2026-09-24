@@ -447,7 +447,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         : kind === 'crop'
         ? <label>Her kenardan kırpılacak mesafe (mm)<input type="number" min={0} value={margin} onChange={e => setMargin(Number(e.target.value))}/></label>
         : kind === 'watermark'
-        ? <label>Filigran (en fazla 60 karakter)<input maxLength={60} value={text} onChange={e => setText(e.target.value)}/></label>
+        ? <label>Filigran (en fazla 60 karakter)<input type="text" maxLength={60} value={text} onChange={e => setText(e.target.value)}/></label>
         : kind === 'raster'
         ? <label>Görsel biçimi (150 DPI)<select value={imageFormat} onChange={e => setImageFormat(e.target.value === 'jpg' ? 'jpg' : 'png')}><option value="png">PNG</option><option value="jpg">JPG</option></select></label>
         : kind === 'number'

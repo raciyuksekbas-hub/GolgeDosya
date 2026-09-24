@@ -4,7 +4,7 @@ import { PreferencesSheet } from "./shell/Settings";
 import { featureForRoute, firstAvailableRoute, resolveRoute } from "./shell/routes";
 import type { FeatureState, PrefTab, Settings } from "./shell/types";
 import * as api from "./shell/api";
-import { applyPreferences } from "./shared-ui/theme";
+import { applyPreferences, syncWindowTheme } from "./shared-ui/theme";
 import { logFailure, safeMessage } from "./shared-ui/failure";
 import { DocumentSurface } from "./features/DocumentSurface";
 import { ConvertWorkspace } from "./modules/tavzih/ConvertWorkspace";
@@ -74,6 +74,11 @@ export function App() {
     if (!settings) return;
     return applyPreferences(settings);
   }, [settings]);
+
+  const theme = settings?.theme;
+  useEffect(() => {
+    if (theme) void syncWindowTheme(theme);
+  }, [theme]);
 
   const active = featureForRoute(route, features);
 

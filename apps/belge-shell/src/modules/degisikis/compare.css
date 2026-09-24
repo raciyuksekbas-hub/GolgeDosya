@@ -368,7 +368,7 @@
   align-items: baseline;
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
   background: var(--warning-quiet);
   color: var(--warning);
   font-size: 12px;

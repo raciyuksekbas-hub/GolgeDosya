@@ -26,6 +26,12 @@
  */
 
 :root {
+  /* Tarayıcının kendi çizdiği parçalar (açılır liste penceresi, kaydırma
+     çubukları, onay kutusu, yer tutucu) temayı yalnız buradan öğrenir.
+     data-theme tek başına yetmiyordu: Windows'ta (WebView2) koyu temada
+     açılır listeler AÇIK bir pencerede, neredeyse beyaz yazıyla açılıyordu
+     (1.00:1) ve kaydırma çubukları açık gri kalıyordu. */
+  color-scheme: light;
   --text-scale: 1;
 
   /* --------------------------------------------------------------- Yüzeyler
@@ -154,6 +160,7 @@
    beyaz yerine yumuşak açık gri metin. Belge yüzeyi beyaz kalır ve chrome'dan
    net ayrılır. */
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --surface-app: #1c1c1e;
   --surface-sidebar: #202022;
   --surface-workspace: #18181a;

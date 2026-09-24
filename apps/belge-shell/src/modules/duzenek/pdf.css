@@ -80,7 +80,7 @@
   justify-content: center;
   min-height: 96px;
   padding: 8px;
-  border: 1px dashed var(--border);
+  border: 1px dashed var(--border-strong);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-size: 11px;

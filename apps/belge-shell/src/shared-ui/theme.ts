@@ -9,7 +9,24 @@
  * temayı localStorage'da tutması, bundle kimliği değişince sessizce
  * kaybolmasına yol açıyordu; birleşik uygulama bu hatayı tekrarlamaz.
  */
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Settings } from "../shell/types";
+
+/**
+ * Yerel pencere çerçevesinin teması.
+ *
+ * Windows'ta başlık çubuğunu işletim sistemi çizer ve temayı web içeriğinden
+ * öğrenmez: açık bir Windows'ta "Koyu" seçilince koyu uygulamanın üstünde açık
+ * bir başlık çubuğu kalıyordu. "Sistem" seçiliyken çerçeve sistemi izler.
+ * Tauri dışında (testler, statik çizim) sessizce hiçbir şey yapmaz.
+ */
+export async function syncWindowTheme(theme: Settings["theme"]): Promise<void> {
+  try {
+    await getCurrentWindow().setTheme(theme === "dark" ? "dark" : theme === "light" ? "light" : null);
+  } catch {
+    // Pencere yok (tarayıcı, test) ya da izin yok: içerik teması yine uygulanır.
+  }
+}
 
 type Tri = "system" | "on" | "off";
 
