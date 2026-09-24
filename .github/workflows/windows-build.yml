@@ -304,6 +304,36 @@ jobs:
             else { "kaldirma temiz (dizin bos)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
           } else { "kaldirma temiz (dizin silindi)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
 
+      # § Kapı 6 — GERÇEK pencere. Smoke'lar yalnız sürecin canlı kaldığını
+      # ölçer; burada paketlenmiş uygulama WebView2 uzaktan hata ayıklama ucuyla
+      # açılır, sayfa CDP ile okunur ve Windows'a GERÇEK klavye/fare girdisi
+      # verilir. Saha maddeleri: tarayıcı menüsü ve F5/Ctrl+R (32, 38, 26, 39),
+      # Klasörde Göster (13), PDF önizleme akışları (2–3), ekran görüntüleri
+      # (açık/koyu × üç boyut). Her iddianın kendi kontrolü vardır; kontrol
+      # düşerse iddia geçmiş sayılmaz. Ayrıntı: apps/belge-shell/qa/windows/.
+      - name: 'Kapı 6 — gerçek pencere (WebView2 + gerçek girdi)'
+        id: gate_field
+        continue-on-error: true
+        working-directory: apps/belge-shell
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $exe = (Resolve-Path ../../out/GolgeDosya_0.3.0_x64.exe).Path
+          node qa/windows/saha-e2e.mjs --exe $exe --out ../../saha-kanit
+          $code = $LASTEXITCODE
+          if (Test-Path ../../saha-kanit/sonuc.md) {
+            Get-Content ../../saha-kanit/sonuc.md -Encoding UTF8 | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          }
+          if ($code -ne 0) { throw "Kapı 6: düşen iddia var (çıkış $code)" }
+
+      - name: Saha kanıtı (ekran görüntüleri ve ölçümler)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GolgeDosya-windows-saha-kanit
+          path: saha-kanit/
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: SHA-256 ve SHA256SUMS
         run: |
           [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -342,6 +372,7 @@ jobs:
             'sürüm metadata'               = '${{ steps.meta.outcome }}'
             'portable açılış smoke'        = '${{ steps.smoke_portable.outcome }}'
             'installer kur/çalıştır/kaldır'= '${{ steps.smoke_installer.outcome }}'
+            'gerçek pencere (Kapı 6)'      = '${{ steps.gate_field.outcome }}'
           }
           "### Kapılar" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           $bad = @()
