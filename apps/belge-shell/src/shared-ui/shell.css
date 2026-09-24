@@ -786,10 +786,15 @@ textarea {
 .finding-message { max-width: var(--measure); margin: 0; }
 .finding-why { max-width: var(--measure); margin: 2px 0 0; color: var(--text-secondary); font-size: var(--text-meta); }
 
+/* Belge metni boşluklarıyla birlikte gösterilir: "çok boşluk" bulgusu, iki ve
+   yedi boşluğu aynı dar şeride daraltan HTML'de görünmüyordu (madde 35).
+   break-spaces, satır sonuna düşen boşluk dizisini de görünür tutar.
+   (6c7d73b'de pre-wrap vardı; 0faa58e/4ad2428 kaybettirdi.) */
 .finding-excerpt {
   max-width: var(--measure);
   padding: var(--space-2) var(--space-3);
   margin: 0;
+  white-space: break-spaces;
   color: var(--text-secondary);
   background: var(--surface-sunken);
   border-radius: var(--radius-sm);
@@ -801,6 +806,8 @@ textarea {
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
 }
+/* Görünür kılınmış boşluk işaretleri metin değildir: kopyalanmaz. */
+.finding-excerpt mark[data-visible-ws] { user-select: none; -webkit-user-select: none; }
 
 .finding-fix { display: flex; gap: var(--space-2); align-items: flex-start; max-width: var(--measure); font-size: var(--text-meta); }
 .finding-fix code {
