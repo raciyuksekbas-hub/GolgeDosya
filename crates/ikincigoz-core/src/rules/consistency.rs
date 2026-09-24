@@ -315,99 +315,188 @@ fn amount_formats(ctx: &Context<'_>) -> Vec<Finding> {
 /// `İstanbul`/`Istanbul` and `sözleşme`/`sozlesme` are the common shapes, and
 /// both are caused by a keyboard, not by a decision. Requiring the ASCII-folded
 /// forms to match keeps this from becoming an open-ended spell checker.
+///
+/// GölgeDosya field item 36 ("terim tutarsız olduğunda seçenekli düzeltme
+/// öneremez mi?"): the rule only reported, and its choice of reference form was
+/// "most frequent, ties by byte order" — on a tie or a partial-diacritic
+/// majority it pointed AT the correct spelling and said "daha sık geçiyor".
+/// Now:
+///  * the reference is the form with the most Turkish letters, then the most
+///    frequent; a true tie has no reference and no fix;
+///  * every occurrence of another form is a finding at its own span;
+///  * a fix ("“sözleşme” olarak değiştirilir") is attached only when the
+///    variant is a pure diacritic-fold of the reference AND differs in ç/ğ/ö/ş/ü.
+///    A difference in ı/i alone can be two words (`sınır`/`sinir`): reported,
+///    never fixed. Fixes are applied only when the user ticks them, to a copy.
 fn term_spellings(ctx: &Context<'_>) -> Vec<Finding> {
     let b = builder("CONSISTENCY_TERM_SPELLING");
     let mut out = Vec::new();
-    let mut groups: SpellingIndex = HashMap::new();
 
+    // 1) Every candidate token, in document order.
+    let mut seen: Vec<(String, String, Occurrence)> = Vec::new();
     for block in &ctx.document.blocks {
         if block.kind == BlockKind::TableCell {
             continue;
         }
+        let bi = block.source_location.block_index;
         let chars: Vec<char> = block.text.chars().collect();
         for token in crate::text::tokenize(&block.text) {
-            if token.text.chars().count() < 5 || token.text.chars().any(|c| c.is_ascii_digit()) {
+            let len = token.text.chars().count();
+            if len < 5 || token.text.chars().any(|c| c.is_ascii_digit()) {
                 continue;
             }
             if in_dotted_path(&chars, &token) {
                 continue;
             }
-            let lower = tr_lower(&token.text);
-            let folded = ascii_fold(&lower);
-            if folded == lower {
-                // No Turkish-specific letters at all; nothing to compare.
+            // A quotation reproduces someone else's text; it is not ours to fix.
+            if ctx
+                .zones()
+                .range_is_verbatim(bi, token.start, token.start + len)
+            {
                 continue;
             }
-            let entry = groups.entry(folded).or_default().entry(lower).or_insert((
-                0,
-                block.id.clone(),
-                block.source_location.block_index,
-                token.start,
+            let lower = tr_lower(&token.text);
+            let folded = ascii_fold(&lower);
+            seen.push((
+                folded,
+                lower,
+                Occurrence {
+                    block_id: block.id.clone(),
+                    block_index: bi,
+                    start: token.start,
+                    len,
+                    original: token.text.to_string(),
+                },
             ));
-            entry.0 += 1;
-        }
-        // Also record the fully-folded spellings, so a word typed without
-        // diacritics is compared against the properly spelled one.
-        for token in crate::text::tokenize(&block.text) {
-            if token.text.chars().count() < 5 || token.text.chars().any(|c| c.is_ascii_digit()) {
-                continue;
-            }
-            if in_dotted_path(&chars, &token) {
-                continue;
-            }
-            let lower = tr_lower(&token.text);
-            let folded = ascii_fold(&lower);
-            if folded != lower {
-                continue;
-            }
-            if let Some(g) = groups.get_mut(&folded) {
-                let entry = g.entry(lower).or_insert((
-                    0,
-                    block.id.clone(),
-                    block.source_location.block_index,
-                    token.start,
-                ));
-                entry.0 += 1;
-            }
         }
     }
 
-    for (_folded, variants) in groups {
+    // 2) Group by folded spelling. Only a word that is written WITH Turkish
+    //    letters somewhere can be misspelled without them; a word that never
+    //    has any is not compared. Collecting first makes this independent of
+    //    which spelling comes first in the document.
+    let mut groups: HashMap<String, BTreeMap<String, Vec<Occurrence>>> = HashMap::new();
+    let has_turkish: BTreeSet<&String> = seen
+        .iter()
+        .filter(|(folded, lower, _)| folded != lower)
+        .map(|(folded, _, _)| folded)
+        .collect();
+    for (folded, lower, occ) in &seen {
+        if has_turkish.contains(folded) {
+            groups
+                .entry(folded.clone())
+                .or_default()
+                .entry(lower.clone())
+                .or_default()
+                .push(occ.clone());
+        }
+    }
+
+    // 3) Reference form, findings, fixes.
+    let mut keys: Vec<&String> = groups.keys().collect();
+    keys.sort();
+    for key in keys {
+        let variants = &groups[key];
         if variants.len() < 2 {
             continue;
         }
-        let mut ordered: Vec<(&String, &SpellingSite)> = variants.iter().collect();
-        ordered.sort_by_key(|(_, v)| std::cmp::Reverse(v.0));
-        let dominant = ordered[0].0.clone();
-        let names: Vec<String> = ordered
+        let mut ranked: Vec<(&String, &Vec<Occurrence>)> = variants.iter().collect();
+        ranked.sort_by(|a, b| {
+            turkish_letters(b.0)
+                .cmp(&turkish_letters(a.0))
+                .then(b.1.len().cmp(&a.1.len()))
+        });
+        let reference = ranked[0].0.clone();
+        let tie = turkish_letters(ranked[1].0) == turkish_letters(&reference)
+            && ranked[1].1.len() == ranked[0].1.len();
+        let names: Vec<String> = ranked
             .iter()
-            .map(|(k, _)| format!("\u{201C}{k}\u{201D}"))
+            .map(|(k, v)| format!("\u{201C}{k}\u{201D} ({})", v.len()))
             .collect();
-        for (form, (_count, block_id, bi, start)) in ordered.into_iter().skip(1) {
-            let mut f = b.at(
-                block_id,
-                SourceLocation::span(*bi, *start, start + form.chars().count()),
-                0.6,
-                format!(
-                    "Aynı kelime belgede farklı yazılmış: {}.",
-                    names.join(" / ")
-                ),
-                format!(
-                    "\u{201C}{dominant}\u{201D} biçimi belgede daha sık geçiyor. Fark yalnızca \
-                     Türkçe karakterlerde olduğu için klavyeden kaynaklanmış olabilir."
-                ),
-            );
-            f.context = None;
-            out.push(f);
+        for (form, occurrences) in ranked.iter().skip(1) {
+            let fixable = !tie && diacritic_fix_applies(form, &reference);
+            for occ in occurrences.iter() {
+                let explanation = if tie {
+                    "Yazımlar eşit sayıda geçiyor ve hangisinin doğru olduğu belgeden \
+                     anlaşılamıyor. Fark yalnızca Türkçe karakterlerde."
+                        .to_string()
+                } else if fixable {
+                    format!(
+                        "\u{201C}{reference}\u{201D} Türkçe karakterleriyle yazılmış biçimdir. \
+                         Fark yalnızca Türkçe karakterlerde olduğu için klavyeden kaynaklanmış olabilir."
+                    )
+                } else {
+                    "Fark yalnızca ı/i gibi harflerde; bunlar iki ayrı kelime de olabilir \
+                     (ör. \u{201C}sınır\u{201D} / \u{201C}sinir\u{201D}). Kontrol edin."
+                        .to_string()
+                };
+                let mut f = b.at(
+                    &occ.block_id,
+                    SourceLocation::span(occ.block_index, occ.start, occ.start + occ.len),
+                    0.6,
+                    format!(
+                        "Aynı kelime belgede farklı yazılmış: {}.",
+                        names.join(" / ")
+                    ),
+                    explanation,
+                );
+                f.context = None;
+                if fixable {
+                    let replacement = super::ortho::carry_case(&occ.original, &reference);
+                    f.fix = Some(crate::finding::Fix {
+                        block_id: occ.block_id.clone(),
+                        char_start: occ.start,
+                        char_end: occ.start + occ.len,
+                        original: occ.original.clone(),
+                        replacement,
+                        description: format!("\u{201C}{reference}\u{201D} olarak değiştirilir"),
+                    });
+                }
+                out.push(f);
+            }
         }
     }
     out
 }
 
-/// Where a spelling was seen: occurrence count plus its first site.
-type SpellingSite = (usize, String, usize, usize);
-/// folded spelling -> actual spelling -> site.
-type SpellingIndex = HashMap<String, BTreeMap<String, SpellingSite>>;
+/// Where one spelling was seen.
+#[derive(Clone)]
+struct Occurrence {
+    block_id: String,
+    block_index: usize,
+    start: usize,
+    len: usize,
+    original: String,
+}
+
+/// Letters a Turkish keyboard adds; the form that has them was typed on purpose.
+fn turkish_letters(s: &str) -> usize {
+    s.chars().filter(|c| "çğıöşüâîû".contains(*c)).count()
+}
+
+/// Can `variant` safely become `reference`? Only when every differing letter is
+/// the reference's diacritic folded away, and at least one of them is ç/ğ/ö/ş/ü.
+/// ı/i (and â/a, î/i, û/u) alone can separate two real words.
+fn diacritic_fix_applies(variant: &str, reference: &str) -> bool {
+    let v: Vec<char> = variant.chars().collect();
+    let r: Vec<char> = reference.chars().collect();
+    if v.len() != r.len() {
+        return false;
+    }
+    let mut decisive = false;
+    for (a, b) in v.iter().zip(&r) {
+        if a == b {
+            continue;
+        }
+        if ascii_fold(&b.to_string()) != a.to_string() {
+            return false;
+        }
+        if "çğöşü".contains(*b) {
+            decisive = true;
+        }
+    }
+    decisive
+}
 
 /// Is this token a component of a domain name, an e-mail address or a path?
 ///
@@ -575,6 +664,101 @@ mod tests {
         let t = of(&f, TERM);
         assert_eq!(t.len(), 1, "{:?}", t);
         assert!(t[0].message.contains("sozlesme"));
+    }
+
+    fn span(f: &crate::finding::Finding) -> (String, usize, usize) {
+        (
+            f.block_id.clone(),
+            f.location.char_start.unwrap(),
+            f.location.char_end.unwrap(),
+        )
+    }
+
+    #[test]
+    fn the_misspelling_is_flagged_and_offered_the_correct_form() {
+        // Tie in frequency: the old rule flagged the CORRECT "sözleşme" (p0)
+        // and said it was "more frequent".
+        let f = lint(&[
+            "Taraflar arasındaki sözleşme feshedilmiştir.",
+            "Ancak sozlesme hükümleri uygulanmamıştır.",
+        ]);
+        let t = of(&f, TERM);
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(span(&t[0]), ("p1".into(), 6, 14));
+        let fix = t[0].fix.as_ref().expect("düzeltme önerisi");
+        assert_eq!(
+            (fix.original.as_str(), fix.replacement.as_str()),
+            ("sozlesme", "sözleşme")
+        );
+        assert!(!t[0].explanation.contains("daha sık"));
+    }
+
+    #[test]
+    fn a_partial_diacritic_majority_does_not_win_over_the_correct_form() {
+        let f = lint(&[
+            "Taraflar arasındaki sözleşme feshedilmiştir.",
+            "Ancak sözlesme hükümleri uygulanmamıştır.",
+            "Bu sözlesme de ayrıca geçersizdir.",
+        ]);
+        let t = of(&f, TERM);
+        assert!(t.iter().all(|x| x.block_id != "p0"), "{t:?}");
+        assert_eq!(t.len(), 2);
+        assert!(t
+            .iter()
+            .all(|x| x.fix.as_ref().unwrap().replacement == "sözleşme"));
+    }
+
+    #[test]
+    fn every_occurrence_gets_its_own_finding_and_keeps_its_case() {
+        let f = lint(&[
+            "Taraflar arasındaki sözleşme feshedilmiştir.",
+            "Sozlesme hükümleri uygulanmamıştır.",
+            "Ayrıca sozlesme ekleri eksiktir.",
+            "SOZLESME başlıklı belge de sunulmuştur.",
+        ]);
+        let t = of(&f, TERM);
+        let replacements: Vec<&str> = t
+            .iter()
+            .map(|x| x.fix.as_ref().unwrap().replacement.as_str())
+            .collect();
+        assert_eq!(replacements, ["Sözleşme", "sözleşme", "SÖZLEŞME"]);
+    }
+
+    #[test]
+    fn a_true_tie_has_no_reference_and_no_fix() {
+        let f = lint(&[
+            "Taraflar arasındaki sözlesme feshedilmiştir.",
+            "Ancak sozleşme hükümleri uygulanmamıştır.",
+        ]);
+        let t = of(&f, TERM);
+        assert_eq!(t.len(), 1);
+        assert!(t[0].fix.is_none());
+        assert!(t[0].explanation.contains("anlaşılamıyor"));
+        assert!(!t[0].explanation.contains("daha sık"));
+    }
+
+    #[test]
+    fn i_and_dotless_i_alone_are_never_fixed() {
+        // "sınır" ve "sinir" iki ayrı kelime: "sinir hastalığı" düzeltilmemeli.
+        let f = lint(&[
+            "Parselin sınır çizgisi belirlenmiştir.",
+            "Komşu sınır tespit edilmiştir.",
+            "Davacının sinir hastalığı raporla sabittir.",
+        ]);
+        assert!(of(&f, TERM).iter().all(|x| x.fix.is_none()));
+    }
+
+    #[test]
+    fn the_order_of_spellings_in_the_document_does_not_matter() {
+        // Eskiden harfsiz yazım, doğru yazımdan ÖNCE geçerse hiç kaydedilmiyordu.
+        let f = lint(&[
+            "Ancak sozlesme hükümleri uygulanmamıştır.",
+            "Taraflar arasındaki sözleşme feshedilmiştir.",
+            "Üçüncü sözleşme henüz imzalanmamıştır.",
+        ]);
+        let t = of(&f, TERM);
+        assert_eq!(t.len(), 1);
+        assert_eq!(span(&t[0]), ("p0".into(), 6, 14));
     }
 
     #[test]

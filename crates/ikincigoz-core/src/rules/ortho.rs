@@ -213,7 +213,7 @@ fn user_corrections(ctx: &Context<'_>) -> Vec<Finding> {
 }
 
 /// Apply the source token's capitalisation to a replacement.
-fn carry_case(source: &str, replacement: &str) -> String {
+pub(crate) fn carry_case(source: &str, replacement: &str) -> String {
     if source.chars().any(|c| c.is_alphabetic()) && tr_upper(source) == source {
         return tr_upper(replacement);
     }
