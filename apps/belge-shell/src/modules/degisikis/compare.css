@@ -72,25 +72,26 @@
   --accent-chrome-line: var(--border-strong);
 
   /* -- Fark renkleri ----------------------------------------------------- */
-  /* Renk TEK taşıyıcı değildir: ChangeRail her farkı ayrıca +/− /değişti
-     işaretiyle ve metin etiketiyle gösterir. Renk yalnız tarama hızını
-     artırır. */
+  /* Renk TEK taşıyıcı değildir: tür adı (Eklenen / Silinen / Değiştirilen)
+     listede, ayrıntıda ve rayın erişilebilir adında yazılıdır; ekleme ve
+     silme işareti DOLU, değiştirme BOŞ halkadır. Renk yalnız tarama hızını
+     artırır. Dinlenen işaretler -line token'larıyla zemine karşı ≥ 3:1. */
   --diff-added: var(--success);
   --diff-added-text: var(--success);
   --diff-added-wash: var(--success-quiet);
   --diff-added-line: var(--success);
-  --diff-added-rest: var(--success-quiet);
+  --diff-added-rest: var(--success-rest);
   --diff-added-focus: var(--success-quiet);
 
   --diff-removed: var(--danger);
   --diff-removed-text: var(--danger);
   --diff-removed-wash: var(--danger-quiet);
   --diff-removed-line: var(--danger);
-  --diff-removed-rest: var(--danger-quiet);
+  --diff-removed-rest: var(--danger-rest);
   --diff-removed-focus: var(--danger-quiet);
 
   --diff-modified: var(--review);
-  --diff-modified-rest: var(--review-quiet);
+  --diff-modified-rest: var(--review-rest);
   --diff-modified-wash: var(--review-quiet);
 
   --danger-text: var(--danger);
@@ -170,7 +171,13 @@
 
 .row-gutter { padding-top: 3px; color: var(--text-muted); font-family: var(--font-mono); font-size: 9px; text-align: center; user-select: none; }
 .row-content { min-width: 0; }
-.row-.document-row.block-heading .row-body { color: var(--text-primary); font-size: 13px; font-weight: 700; letter-spacing: .005em; }
+/* Uzun kesintisiz dizgiler (adres, dosya yolu, bağlantı) paneli taşırıyor ve
+   yatay kaydırma çubuğu açıyordu: bağımsız Değişikİş'teki kırma kuralı
+   taşımada bozulmuştu (aşağıdaki seçici ".row-" diye kırpılmıştı). Boşluklar
+   KORUNMAZ (pre-wrap değil): motor boşlukları zaten normalleştirir ve parça
+   ayraçları çoğaltılmış boşluk olarak görünürdü. */
+.row-body { min-width: 0; overflow-wrap: anywhere; }
+.document-row.block-heading .row-body { color: var(--text-primary); font-size: 13px; font-weight: 700; letter-spacing: .005em; }
 .document-row.block-article .row-body { font-weight: 550; }
 .document-row.block-table .row-content { padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); background: var(--surface-inset); font-size: 11px; }
 .document-row.block-list .row-body::before { margin-right: 8px; color: var(--text-faint); content: "•"; }
@@ -218,6 +225,8 @@
 .rail-node i { display: none; width: 5px; height: 5px; border-radius: 50%; background: var(--diff-modified-rest); }
 .rail-node.added .rail-node-index { color: var(--diff-added-text); }
 .rail-node.removed .rail-node-index { color: var(--diff-removed-text); }
+/* Değiştirilen de kendi rengini taşır (madde 24): eskiden gri kalıyordu. */
+.rail-node.modified .rail-node-index { color: var(--diff-modified); }
 
 .rail-node:hover .rail-node-index { background: var(--surface-hover); }
 .rail-node.is-active { z-index: 3; }
@@ -246,7 +255,8 @@
 .compare-root .summary-legend .legend-count { flex: none; font-variant-numeric: tabular-nums; }
 .compare-root .summary-legend .added i { background: var(--diff-added); }
 .compare-root .summary-legend .removed i { background: var(--diff-removed); }
-.compare-root .summary-legend .modified i { background: var(--diff-modified); }
+/* Değiştirme BOŞ işaret: belgedeki halkayla aynı; tür renkten bağımsız da ayrışır. */
+.compare-root .summary-legend .modified i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--diff-modified); }
 .compare-root .legend-label { flex: 1; color: var(--text-secondary); }
 .compare-root .legend-count { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 
@@ -259,8 +269,6 @@
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-3) var(--space-3) 10px;
-  overflow: auto;
-  max-height: 40vh;
   background: var(--surface-hover);
   border-left: 2px solid var(--diff-modified);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
@@ -272,7 +280,16 @@
 .compare-root .inspector-detail header .change-location { margin-left: auto; }
 .compare-root .detail-block { display: grid; gap: 2px; }
 .compare-root .detail-block > span { color: var(--text-muted); font-size: var(--text-meta); }
-.compare-root .detail-block p { margin: 0; color: var(--text-primary); }
+/* Paneli kaydıran tek yer panelin kendisidir (madde 20): ayrıntı kutusu
+   ikinci bir kaydırıcı değil. Uzun metin kısaltılır; tamamı belgede. */
+.compare-root .detail-block p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 12;
+}
 .compare-root .detail-block.removed p { color: var(--diff-removed-text); }
 .compare-root .detail-block.added p { color: var(--diff-added-text); }
 .compare-root .detail-note { display: grid; gap: 2px; }
@@ -310,13 +327,15 @@
 .compare-root .change-row.is-active { background: var(--surface-selected); }
 .compare-root .change-row.added { border-left-color: var(--diff-added); }
 .compare-root .change-row.removed { border-left-color: var(--diff-removed); }
+/* Değiştirilen satırın yan rengi yoktu (madde 24): kenar saydam kalıyordu. */
+.compare-root .change-row.modified { border-left-color: var(--diff-modified); }
 .compare-root .change-row-top { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
 .compare-root .change-no { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .compare-root .change-type { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); font-size: var(--text-meta); }
 .compare-root .change-type i { width: 6px; height: 6px; border-radius: 2px; background: var(--text-muted); }
 .compare-root .change-row.added .change-type i { background: var(--diff-added); }
 .compare-root .change-row.removed .change-type i { background: var(--diff-removed); }
-.compare-root .change-row.modified .change-type i { background: var(--diff-modified); }
+.compare-root .change-row.modified .change-type i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--diff-modified); }
 .compare-root .change-location { margin-left: auto; color: var(--text-secondary); font-size: var(--text-meta); }
 .compare-root .change-summary { display: grid; gap: 1px; color: var(--text-secondary); font-size: var(--text-meta); }
 .compare-root .change-summary-more { color: var(--text-muted); }
@@ -331,7 +350,7 @@
 
 /* Alçak pencerede seçili fark kutusu kısalır; liste yerini korur. */
 @media (max-height: 760px) {
-  .compare-root .inspector-detail { max-height: 30vh; }
+  .compare-root .detail-block p { -webkit-line-clamp: 6; }
 }
 
 /* Not: Buradaki eski "kabuk token'larına bağlama" bloğu kaldırıldı. Artık

@@ -81,6 +81,13 @@
   --review-quiet: rgb(44 90 134 / 9%);
   --success: #2b6446;
   --success-quiet: rgb(43 100 70 / 9%);
+  /* Dinlenen işaretler (ör. Karşılaştır'da farkın yanı): renkli bir çizgi
+     bilgi taşır ve zemine karşı en az 3:1 olmalı (WCAG 1.4.11). -quiet
+     yıkamaları bu iş için 1.13:1'di — görünmüyordu. Seçili işaret tam renktir;
+     dinlenen onun altında kalır. */
+  --success-rest: rgb(43 100 70 / 70%);
+  --danger-rest: rgb(168 50 42 / 68%);
+  --review-rest: rgb(44 90 134 / 68%);
 
   --focus: #0a84ff;
 
@@ -198,6 +205,9 @@
   --review-quiet: rgb(134 180 222 / 13%);
   --success: #7dc09b;
   --success-quiet: rgb(125 192 155 / 13%);
+  --success-rest: rgb(125 192 155 / 58%);
+  --danger-rest: rgb(240 138 128 / 60%);
+  --review-rest: rgb(134 180 222 / 58%);
 
   --focus: #4a9eff;
 }

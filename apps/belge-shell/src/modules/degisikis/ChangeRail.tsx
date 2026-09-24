@@ -21,6 +21,20 @@ const KIND_LABEL: Record<ComparisonChange["kind"], string> = {
  * yapılır; kaydırma sırasında yeniden render tetiklenmez ve iş rAF ile bir kare
  * başına tek sefere indirgenir.
  */
+/**
+ * Düğümün rayda durabileceği en alt/üst nokta.
+ *
+ * Düğüm 20 px yüksekliğinde ve merkezinden konumlanır. Görünür alanın dışındaki
+ * farklar rayın ucuna iğnelenirken merkez TAM uca konuyordu: düğümün yarısı
+ * (10 px) rayın altına taşıyor ve kabuğun kaydırıcısını büyütüyordu. Bütün
+ * Karşılaştır görünümü, sağ panelin yanında ikinci bir dış kaydırma çubuğu
+ * kazanıyordu (madde 20).
+ */
+export function clampRailY(y: number, trackHeight: number, half = 10): number {
+  if (trackHeight <= half * 2) return trackHeight / 2;
+  return Math.min(trackHeight - half, Math.max(half, y));
+}
+
 export function ChangeRail({ changes, selectedIndex, onSelect, onMove, onSwap, canSwap, paneRef, rowRefs, syncToken }: {
   changes: ComparisonChange[];
   selectedIndex: number;
@@ -62,7 +76,7 @@ export function ChangeRail({ changes, selectedIndex, onSelect, onMove, onSwap, c
     }
     for (const [node, y, offscreen] of placements) {
       node.classList.toggle("is-offscreen", offscreen);
-      node.style.transform = `translate(-50%, -50%) translateY(${Math.min(trackHeight, Math.max(0, y)).toFixed(1)}px)`;
+      node.style.transform = `translate(-50%, -50%) translateY(${clampRailY(y, trackHeight).toFixed(1)}px)`;
     }
   }, [changes, paneRef, rowRefs]);
 
