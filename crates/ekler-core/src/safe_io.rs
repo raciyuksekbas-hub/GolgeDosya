@@ -80,13 +80,34 @@ fn starts_like_pdf(file: &mut std::fs::File) -> std::io::Result<bool> {
     Ok(read == head.len() && &head == b"%PDF-")
 }
 
+/// Hazırlık klasörü ve yayın hedefi, klasörün kanonik yolu üzerinden.
+///
+/// Windows'ta `canonicalize` `\\?\` önekli (uzun yol) biçimi döner. `tempfile`
+/// yayında yolu Win32'ye (`SetFileAttributesW`, `MoveFileExW`) öneksiz verir;
+/// 260 karakteri aşan bir klasörde (saha: iç içe dava klasörleri) yayın
+/// "os error 3" ile düşüyordu. Kanonik klasör aynı yerdir: hazırlık yine
+/// hedefin dosya sisteminde kalır, mesajlarda kullanıcının yolu görünür.
+fn staging_target(destination: &Path) -> Result<(PathBuf, PathBuf)> {
+    let parent = destination
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let dir = parent.canonicalize().map_err(|e| io(parent, e))?;
+    let name = destination
+        .file_name()
+        .ok_or_else(|| EklerError::ValidationFailed("Geçersiz hedef".into()))?;
+    let target = dir.join(name);
+    Ok((dir, target))
+}
+
 fn persist_new<F>(destination: &Path, sources: &[PathBuf], write: F, payload: Payload) -> Result<()>
 where
     F: FnOnce(&mut std::fs::File) -> Result<()>,
 {
     ensure_new_destination(destination, sources)?;
-    let parent = destination.parent().unwrap_or(Path::new("."));
-    let mut staged = tempfile::NamedTempFile::new_in(parent).map_err(|e| io(parent, e))?;
+    let (dir, target) = staging_target(destination)?;
+    let parent = destination.parent().unwrap_or(destination);
+    let mut staged = tempfile::NamedTempFile::new_in(&dir).map_err(|e| io(parent, e))?;
     write(staged.as_file_mut())?;
     staged
         .as_file_mut()
@@ -107,7 +128,7 @@ where
         ));
     }
     staged
-        .persist_noclobber(destination)
+        .persist_noclobber(&target)
         .map_err(|e| io(destination, e.error))?;
     Ok(())
 }

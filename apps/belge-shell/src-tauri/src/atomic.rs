@@ -11,17 +11,37 @@
 //! yalnız üzerine yazan yolları atomikleştirir.
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Hazırlık klasörü (oluşturulur) ve yayın hedefi, klasörün kanonik yolu
+/// üzerinden. Windows'ta `canonicalize` `\\?\` önekli (uzun yol) biçimi döner;
+/// `tempfile` yayında yolu Win32'ye öneksiz verdiği için 260 karakteri aşan
+/// bir klasörde yayın "os error 3" ile düşüyordu. Kanonik klasör aynı yerdir.
+/// Kanonik yol alınamayan birimlerde (bazı RAM diskleri) eski davranış sürer.
+fn staging_target(destination: &Path) -> std::io::Result<(PathBuf, PathBuf)> {
+    let parent = destination
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let name = destination.file_name().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "hedefin dosya adı yok")
+    })?;
+    let dir = parent
+        .canonicalize()
+        .unwrap_or_else(|_| parent.to_path_buf());
+    let target = dir.join(name);
+    Ok((dir, target))
+}
 
 pub fn write(destination: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let parent = destination.parent().unwrap_or(Path::new("."));
-    std::fs::create_dir_all(parent)?;
-    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
+    let (dir, target) = staging_target(destination)?;
+    let mut staged = tempfile::NamedTempFile::new_in(&dir)?;
     staged.as_file_mut().write_all(bytes)?;
     staged.as_file_mut().flush()?;
     staged.as_file().sync_all()?;
     // persist (noclobber DEĞİL): hedef varsa atomik olarak değiştirilir.
-    staged.persist(destination).map_err(|e| e.error).map(|_| ())
+    staged.persist(&target).map_err(|e| e.error).map(|_| ())
 }
 
 /// No-clobber + atomik yazım. Var olan bir dosyanın üzerine **asla** yazmaz;
@@ -47,14 +67,13 @@ pub fn write_new(destination: &Path, bytes: &[u8]) -> std::io::Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e),
     }
-    let parent = destination.parent().unwrap_or(Path::new("."));
-    std::fs::create_dir_all(parent)?;
-    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
+    let (dir, target) = staging_target(destination)?;
+    let mut staged = tempfile::NamedTempFile::new_in(&dir)?;
     staged.as_file_mut().write_all(bytes)?;
     staged.as_file_mut().flush()?;
     staged.as_file().sync_all()?;
     staged
-        .persist_noclobber(destination)
+        .persist_noclobber(&target)
         .map_err(|e| e.error)
         .map(|_| ())
 }
@@ -189,6 +208,36 @@ mod tests {
             .filter(|n| n != "cikti.udf")
             .collect();
         assert!(leftovers.is_empty(), "geçici dosya kaldı: {leftovers:?}");
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// §55: Windows'un eski 260 karakterlik sınırını aşan klasörde de yazar.
+    /// Windows'ta `tempfile`'ın yayını yolu Win32'ye öneksiz veriyordu ve bu
+    /// test "os error 3" ile düşüyordu.
+    #[test]
+    fn writes_beyond_the_windows_path_limit() {
+        let d = tmp();
+        let mut deep = d.join("Çağrı Şahin").join("Müvekkil'in Dosyası (2026)");
+        while deep.as_os_str().len() < 300 {
+            deep = deep.join("Ayrıntılı alt klasör adı");
+        }
+        let f = deep.join("Dilekçe — Çağrı'nın düzeltilmiş kopyası.docx");
+        write_new(&f, b"ilk").unwrap();
+        assert_eq!(
+            write_new(&f, b"ikinci").unwrap_err().kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
+        write(&f, b"yeni").unwrap();
+        assert_eq!(std::fs::read(&f).unwrap(), b"yeni");
+        assert_eq!(
+            write_new_unique(&deep, "Dilekçe — Çağrı'nın düzeltilmiş kopyası.docx", b"x").unwrap(),
+            "Dilekçe — Çağrı'nın düzeltilmiş kopyası (2).docx"
+        );
+        assert_eq!(
+            std::fs::read_dir(&deep).unwrap().count(),
+            2,
+            "geçici dosya kaldı"
+        );
         std::fs::remove_dir_all(&d).ok();
     }
 

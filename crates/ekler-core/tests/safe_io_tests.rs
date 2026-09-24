@@ -41,6 +41,31 @@ fn failed_writer_leaves_no_final_file() {
     .is_err());
     assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 0);
 }
+/// §55: Windows'un eski 260 karakterlik sınırını aşan klasörde yayın.
+/// Windows'ta `tempfile`'ın yayını yolu Win32'ye öneksiz veriyordu ve bu
+/// test "os error 3" ile düşüyordu; diğer sistemlerde davranışı sabitler.
+#[test]
+fn publication_works_beyond_the_windows_path_limit() {
+    let d = tempfile::tempdir().unwrap();
+    let mut deep = d
+        .path()
+        .join("Çağrı Şahin")
+        .join("Müvekkil'in Dosyası (2026)");
+    while deep.as_os_str().len() < 300 {
+        deep = deep.join("Ayrıntılı alt klasör adı");
+    }
+    std::fs::create_dir_all(&deep).unwrap();
+    let dest = deep.join("Ek listesi — Çağrı'nın kopyası.txt");
+    write_new_bytes(&dest, &[], b"ek listesi").unwrap();
+    assert_eq!(std::fs::read(&dest).unwrap(), b"ek listesi");
+    assert!(write_new_bytes(&dest, &[], b"ikinci").is_err());
+    assert_eq!(std::fs::read(&dest).unwrap(), b"ek listesi");
+    assert_eq!(
+        std::fs::read_dir(&deep).unwrap().count(),
+        1,
+        "geçici dosya kaldı"
+    );
+}
 #[test]
 fn package_commit_collision_preserves_both_directories() {
     let d = tempfile::tempdir().unwrap();
