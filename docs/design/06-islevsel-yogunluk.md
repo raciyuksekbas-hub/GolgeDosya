@@ -446,7 +446,7 @@ buyurmuyor; ne yapılacağı açıklamada, nasıl başlanacağı düğmede.
 | Düzenle | PDF çalışma alanı | Sayfaları sıralayın, döndürün, çıkarın ya da yeni bir kopyaya aktarın. |
 | Dönüştür | Word ve UYAP arasında | DOCX ve UDF biçimleri arasında dönüştürün; kaynak belgeniz olduğu gibi kalır. |
 | Karşılaştır | İki sürüm arasındaki farklar | İki belge seçin; eklenen, silinen ve değişen bölümler yan yana gösterilir. |
-| Denetle | Göndermeden önce son okuma | Bir DOCX veya UDF açın; yazım, noktalama ve tutarlılık bulgularını inceleyin. |
+| Denetle | Göndermeden önce son okuma | Boşluk, noktalama, tekrar, numaralandırma ve tutarlılık sorunlarını tek listede görün. (Genel yazım denetimi vaat edilmez: bkz. docs/audit/2026-09-24-denetle-olcum.md) |
 
 **Kompozisyon tek blok.** Başlık · açıklama · eylem · yardımcı satır aynı sol
 kenarı paylaşır, aralarındaki boşluk artan ağırlıkta açılır (12 → 20), eylem

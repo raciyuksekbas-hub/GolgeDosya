@@ -136,7 +136,12 @@ export const MODES: Record<FeatureState["key"], Mode> = {
     label: "Denetle",
     emptyTitle: "Göndermeden önce son okuma",
     extensions: ["docx", "udf"],
-    hint: "Yazım, noktalama ve tutarlılık bulgularını tek listede görün.",
+    // Saha (madde 37): "Yazım" ile başlıyordu; motor genel yazım denetimi
+    // YAPMAZ (ortho.rs: bilinçli olarak yalnız birkaç bitişik/ayrı yazım
+    // kuralı). Avukat "yazım"ı imla denetimi olarak okuyor ve "çok az hata
+    // buluyor" sonucuna varıyordu. Metin, motorun gerçekten yaptığını söyler.
+    // Ölçüm: docs/audit/2026-09-24-denetle-olcum.md
+    hint: "Boşluk, noktalama, tekrar, numaralandırma ve tutarlılık sorunlarını tek listede görün.",
     openLabel: "Belge Aç",
     recentTitle: "Son belgeler",
     pickerLabel: "Word veya UYAP belgesi",
