@@ -270,6 +270,29 @@ fn multiple_spaces(
         return out;
     }
 
+    // Characters that come from structure, not from typed text: a soft line
+    // break (`<w:br/>`) becomes a synthetic space run with no container. In
+    // Word the user sees a LINE BREAK there, not two spaces; its "fix" cannot
+    // be written back either (Unaddressable), and because write-back is
+    // all-or-nothing, one such finding made "Kopyaya Uygula" fail for every
+    // selected fix.
+    //
+    // "No container" means synthetic only in a paragraph whose typed text IS
+    // addressed (a parsed DOCX). A document built without addresses keeps the
+    // rule exactly as before.
+    let addressed = block.runs.iter().any(|r| r.container_path.is_some());
+    let mut synthetic = vec![false; chars.len()];
+    for run in block
+        .runs
+        .iter()
+        .filter(|r| addressed && r.container_path.is_none())
+    {
+        let end = (run.char_start + run.text.chars().count()).min(chars.len());
+        for flag in synthetic.iter_mut().take(end).skip(run.char_start) {
+            *flag = true;
+        }
+    }
+
     let mut i = 0usize;
     while i < chars.len() {
         if chars[i] != ' ' {
@@ -283,6 +306,11 @@ fn multiple_spaces(
         // Leading spaces are indentation, and trailing spaces are invisible
         // slack at the end of a line. Neither is a word-spacing mistake.
         if start == 0 || i >= chars.len() || i - start < 2 {
+            continue;
+        }
+        // A run that contains a line break is the end of a visual line: the
+        // same slack as a trailing space.
+        if synthetic[start..i].iter().any(|s| *s) {
             continue;
         }
         // A space run touching a tab is part of a layout gesture.
