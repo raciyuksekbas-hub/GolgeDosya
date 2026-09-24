@@ -551,6 +551,21 @@ async function annexFolder() {
   native("close-explorer");
 }
 
+/**
+ * Temayı kullanıcının yaptığı gibi seçer: kayıtlı ayar + yeniden açılış.
+ * Yalnız `data-theme` yazmak yetmez: uygulama ayarlar her değiştiğinde
+ * (belge açınca son belgeler güncellenir) KAYITLI temayı yeniden uygular ve
+ * yerel pencere çerçevesini de kayıtlı temadan boyar.
+ */
+async function setTheme(theme) {
+  const current = await invoke("get_settings");
+  await invoke("save_settings", { next: { ...current, theme } });
+  await cdp.send("Page.reload");
+  await cdp.until("document.readyState === 'complete' && !!document.querySelector('.sidebar-nav')");
+  await sleep(1200);
+  return cdp.eval(`document.documentElement.dataset.theme`);
+}
+
 /** Ekran görüntüleri: açık/koyu × üç boyut × her kip; yerleşim ölçüleri. */
 async function screenshots() {
   const labels = await cdp.eval(`[...document.querySelectorAll('.sidebar-nav .sidebar-item')].map((b) => b.textContent.trim())`);
@@ -563,7 +578,8 @@ async function screenshots() {
     const geom = size.w ? native("move", { X: 40, Y: 40, Width: size.w, Height: size.h }) : native("maximize");
     observe("47", `pencere ${size.name}`, geom);
     for (const theme of ["light", "dark"]) {
-      await cdp.eval(`document.documentElement.dataset.theme = ${JSON.stringify(theme)}`);
+      const applied = await setTheme(theme);
+      if (applied !== theme) observe("46", `tema uygulanamadı (${size.name})`, { istenen: theme, uygulanan: applied });
       for (const label of labels) {
         await mode(label);
         await closeDocument();
@@ -581,10 +597,13 @@ async function screenshots() {
   observe("1", "Kenar çubuğu başı (CSS px)", head);
   check("1", "Windows'ta macOS trafik ışığı bandı yok; işaret bardaki satırda",
     head.platform === "windows" && (head.band?.h ?? 0) === 0 && head.mark && head.mark.top < 40, head);
-  await cdp.eval(`document.documentElement.dataset.theme = 'dark'`);
+  const appliedDark = await setTheme("dark");
   const scheme = await cdp.eval(`getComputedStyle(document.documentElement).colorScheme`);
-  check("8", "Koyu temada tarayıcı parçaları (açılır liste, kaydırma çubuğu) koyu", /dark/.test(scheme), { colorScheme: scheme });
-  await cdp.eval(`document.documentElement.dataset.theme = 'light'`);
+  check("8", "Koyu temada tarayıcı parçaları (açılır liste, kaydırma çubuğu) koyu",
+    appliedDark === "dark" && /dark/.test(scheme), { tema: appliedDark, colorScheme: scheme });
+  const frame = native("darkframe");
+  check("8", "Koyu tema seçiliyken yerel pencere çerçevesi (başlık çubuğu) koyu", frame.dark === true, frame);
+  await setTheme("light");
 
   // Yüklü durumlar: Karşılaştır, Denetle.
   await invoke("remember_documents", { paths: [F.hatali, F.temiz] });
@@ -592,7 +611,8 @@ async function screenshots() {
   await cdp.until("document.readyState === 'complete' && !!document.querySelector('.sidebar-nav')");
   await sleep(800);
   for (const theme of ["light", "dark"]) {
-    await cdp.eval(`document.documentElement.dataset.theme = ${JSON.stringify(theme)}`);
+    const applied = await setTheme(theme);
+    if (applied !== theme) observe("46", "tema uygulanamadı (yüklü)", { istenen: theme, uygulanan: applied });
     await mode("Karşılaştır");
     await closeDocument();
     await clickText(".file-row", "temiz");
@@ -626,11 +646,13 @@ async function screenshots() {
       check("28/33", "Karşılaştır: 'Eş zamanlı kaydır' anahtarı, 'Değişiklikleri Kopyala' ve seçilebilir metin",
         layout.toggle && layout.copy && layout.userSelect === "text", layout);
     }
+    observe("46", `Karşılaştır yüklüyken tema (${theme})`, await cdp.eval(`document.documentElement.dataset.theme`));
     shot(`karsilastir-yuklu-${theme}`);
     await mode("Denetle");
     await closeDocument();
     await clickText(".file-row", "hatal");
     await sleep(4000);
+    observe("46", `Denetle yüklüyken tema (${theme})`, await cdp.eval(`document.documentElement.dataset.theme`));
     shot(`denetle-yuklu-${theme}`);
   }
 }
