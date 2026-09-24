@@ -38,6 +38,38 @@ impl Default for StampConfig {
 use lopdf::content::{Content, Operation};
 use lopdf::{dictionary, Dictionary, Document as LopdfDoc, Object, Stream};
 
+/// Helvetica-Bold (base-14) glif genişlikleri, em'in binde biri, WinAnsi
+/// 32..=126. Damga metni bu yazı tipiyle ve bu kodlamayla yazılır.
+const HELVETICA_BOLD_WIDTHS: [u16; 95] = [
+    278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278,
+    278, // ' '..'/'
+    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, // '0'..'9'
+    333, 333, 584, 584, 584, 611, 975, // ':'..'@'
+    722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667,
+    611, 722, 667, 944, 667, 667, 611, // 'A'..'Z'
+    333, 278, 333, 584, 556, 333, // '['..'`'
+    556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556,
+    333, 611, 556, 778, 556, 556, 500, // 'a'..'z'
+    389, 280, 389, 584, // '{'..'~'
+];
+
+/// Metnin Helvetica-Bold ile basılı genişliği (pt). ASCII dışındaki bir harf
+/// ortalama bir harf genişliğiyle sayılır.
+fn helvetica_bold_width(text: &str, font_size: f32) -> f32 {
+    let units: u32 = text
+        .chars()
+        .map(|c| {
+            let code = c as u32;
+            if (32..=126).contains(&code) {
+                u32::from(HELVETICA_BOLD_WIDTHS[(code - 32) as usize])
+            } else {
+                556
+            }
+        })
+        .sum();
+    units as f32 * font_size / 1000.0
+}
+
 pub fn apply_stamp_to_document(
     doc: &mut LopdfDoc,
     exhibit_order: usize,
@@ -173,10 +205,17 @@ fn apply_stamp_to_page(
     } else {
         (x1 - x0, y1 - y0)
     };
-    let badge_w = if brand_form.is_some() {
-        BRAND_MARK_WIDTH * scale
-    } else {
-        (stamp_text.chars().count() as f32 * config.font_size * 0.65 + 16.0).max(40.0)
+    // Rozet metni ÖLÇÜLÜR (saha maddesi 5: "kutunun ortasında olsa daha iyi
+    // olabilir"). Genişlik harf sayısı × 0,65 diye tahmin ediliyor, metin sol
+    // kenardan 8 pt'ye sabitleniyordu: "Ek-1 / 1. Sayfa" kutusunda sağda 38 pt,
+    // solda 8 pt boşluk kalıyordu. Artık kutu metnin gerçek genişliği + 8 pt
+    // iç boşluk, metin kutunun ortasında. Marka işareti bu yoldan geçmez.
+    let text_w = brand_form
+        .is_none()
+        .then(|| helvetica_bold_width(stamp_text, config.font_size));
+    let badge_w = match text_w {
+        None => BRAND_MARK_WIDTH * scale,
+        Some(w) => (w + 16.0).max(40.0),
     };
     let badge_h = (config.font_size + 10.0) * scale;
     // Sığmazlık denetimi SAYFA DEĞİŞTİRİLMEDEN önce yapılır: sığmıyorsa sayfaya
@@ -278,7 +317,7 @@ fn apply_stamp_to_page(
         .map_err(pdf_error)?
         .set("Resources", resources);
 
-    let (badge_x, badge_y, text_x, text_y) = match config.position {
+    let (badge_x, badge_y, mut text_x, text_y) = match config.position {
         StampPosition::TopRight => {
             let x = page_w - margin - badge_w;
             let y = page_h - margin - badge_h;
@@ -300,6 +339,10 @@ fn apply_stamp_to_page(
             (x, y, x + 8.0, y + 6.0)
         }
     };
+
+    if let Some(w) = text_w {
+        text_x = badge_x + (badge_w - w) / 2.0;
+    }
 
     let mut ops = vec![
         Operation::new("q", vec![]),
