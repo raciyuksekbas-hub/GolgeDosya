@@ -235,9 +235,10 @@ test("kısayollar bağlı ve keşfedilebilir", () => {
 
   const surface = readFileSync("src/features/DocumentSurface.tsx", "utf8");
   // Birincil eylemin adı kipe göre değişir (PDF Aç / Belge Aç / İlk Belgeyi Aç).
-  assert.match(surface, /title=\{`\$\{mode\.openLabel\} {2}⌘O`\}/, "açma eylemi ⌘O'yu göstermeli");
+  // Kısayol simgesi platforma göre: macOS'ta ⌘O, Windows'ta Ctrl+O.
+  assert.match(surface, /title=\{`\$\{mode\.openLabel\} {2}\$\{shortcutLabel\("O"\)\}`\}/, "açma eylemi kısayolunu göstermeli");
   const sidebar = readFileSync("src/shell/Sidebar.tsx", "utf8");
-  assert.match(sidebar, /title="Ayarlar {2}⌘,"/, "Ayarlar ⌘,'i göstermeli");
+  assert.match(sidebar, /title=\{`Ayarlar {2}\$\{shortcutLabel\(","\)\}`\}/, "Ayarlar kısayolunu göstermeli");
 
   // Metin girişindeyken kısayol çalışmamalı.
   const hook = readFileSync("src/shared-ui/useShortcuts.ts", "utf8");

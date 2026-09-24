@@ -13,6 +13,7 @@ import {
   type ContextOutcome,
 } from "../shell/modes";
 import { relativeTime } from "./relativeTime";
+import { shortcutLabel } from "../shell/platform";
 
 interface Props {
   feature: FeatureState;
@@ -239,7 +240,7 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
           </>
         ) : (
           <div className="welcome-action">
-            <Button variant="primary" onClick={() => void browse(0)} title={`${mode.openLabel}  ⌘O`}>
+            <Button variant="primary" onClick={() => void browse(0)} title={`${mode.openLabel}  ${shortcutLabel("O")}`}>
               {mode.openLabel}
             </Button>
             <span className="welcome-hint">veya buraya sürükleyin</span>

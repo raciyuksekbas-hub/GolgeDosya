@@ -26,7 +26,7 @@
   background: var(--surface-app);
 }
 
-.shell[data-fullscreen="true"] { --titlebar-h: 10px; }
+:root[data-titlebar="overlay"] .shell[data-fullscreen="true"] { --titlebar-h: 10px; }
 
 /* ---------------------------------------------------------------- Sidebar */
 
@@ -45,6 +45,14 @@
   gap: var(--space-2);
   align-items: center;
   padding: var(--titlebar-h) 8px var(--space-4);
+}
+
+/* Bant yokken (Windows) ürün satırı yardımcı barın yüksekliğini alır: işaret
+   ve ad bardaki metinle aynı eksende durur, üstte boş şerit kalmaz. */
+:root[data-titlebar="native"] .sidebar-head {
+  min-height: var(--toolbar-h);
+  padding: 0 8px;
+  margin-bottom: var(--space-2);
 }
 
 .sidebar-mark { flex: none; }

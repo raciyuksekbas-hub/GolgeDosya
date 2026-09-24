@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import { installBrowserSurfaceGuard } from "./shared-ui/browserSurface";
+import { applyPlatform } from "./shell/platform";
 import "./shared-ui/tokens.css";
 import "./shared-ui/shell.css";
 
@@ -15,6 +16,9 @@ if (import.meta.env.DEV) {
   // menüsü açılmaz. Geliştirmede açık kalır: "İncele" oradan gelir.
   installBrowserSurfaceGuard();
 }
+
+// İlk çizimden ÖNCE: başlık bandı ve kısayol simgesi platforma göre.
+applyPlatform(document.documentElement);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

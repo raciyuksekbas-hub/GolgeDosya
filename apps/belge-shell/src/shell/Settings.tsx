@@ -5,6 +5,7 @@ import { AppMark } from "./icons";
 import { announce } from "../shared-ui/Announcer";
 import { Button, Field, Status } from "../shared-ui/primitives";
 import { OutputFolderField } from "../modules/tavzih/OutputFolderField";
+import { shortcutLabel } from "./platform";
 
 interface Props {
   settings: Settings;
@@ -70,7 +71,7 @@ function FeedbackPane() {
     } catch {
       area.current?.select();
       setState("manual");
-      announce("Metin seçildi. Kopyalamak için ⌘C kullanın.");
+      announce(`Metin seçildi. Kopyalamak için ${shortcutLabel("C")} kullanın.`);
     }
   }, [text]);
 
@@ -103,7 +104,7 @@ function FeedbackPane() {
           {state === "copied"
             ? "Kopyalandı. Kendi kanalınızdan iletebilirsiniz."
             : state === "manual"
-              ? "Metin seçildi; ⌘C ile kopyalayın."
+              ? `Metin seçildi; ${shortcutLabel("C")} ile kopyalayın.`
               : "Bu sürümde uygulama içinden gönderim yoktur."}
         </span>
       </div>

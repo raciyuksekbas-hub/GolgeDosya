@@ -362,7 +362,7 @@ for (const [name, body] of Object.entries(mod)) {
       `qa/shots/${name}-${theme}.html`,
       // lang="tr" ZORUNLU: CSS `text-transform: uppercase` yerel ayara duyarlıdır.
       // Türkçe olmadan "Erişilebilirlik" → "ERISILEBILIRLIK" olur (noktasız I).
-      `<!doctype html><html lang="tr" data-theme="${theme}"><head><meta charset="utf-8">` +
+      `<!doctype html><html lang="tr" data-theme="${theme}" data-titlebar="overlay" data-platform="mac"><head><meta charset="utf-8">` +
         `<style>${compare}\n${pdf}\n${tokens}\n${shell}</style></head>` +
         `<body><div style="height:100vh">${body}</div></body></html>`,
     );

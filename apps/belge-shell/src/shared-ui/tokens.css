@@ -141,8 +141,9 @@
   --inspector-w: 300px;
   --inspector-inset: 12px;
   --toolbar-h: calc(46px * var(--text-scale));
-  /* Trafik ışıklarının bandı — eski 52 px'lik boş şerit değil. */
-  --titlebar-h: 40px;
+  /* Trafik ışıklarının bandı YALNIZ macOS'ta (aşağıdaki overlay kuralı).
+     Windows başlık çubuğunu kendisi çizer; orada bant boş bir şeritti. */
+  --titlebar-h: 0px;
   --row-h: calc(31px * var(--text-scale));
   --control-h: calc(28px * var(--text-scale));
   /* Okuma genişlikleri: liste 680, akış 420, boş durum 360. */
@@ -161,6 +162,9 @@
   /* Okunabilir ölçü — uzun açıklama metni bu genişliği aşmaz. */
   --measure: 62ch;
 }
+
+/* macOS: pencere başlığı içeriğin üstüne biner (titleBarStyle Overlay). */
+:root[data-titlebar="overlay"] { --titlebar-h: 40px; }
 
 /* ------------------------------------------------------------------- Sumi
    Gerçek siyah değil, çok koyu sumi. Yüzeyler arasında yalnız hafif ton farkı;

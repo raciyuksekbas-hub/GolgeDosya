@@ -12,6 +12,7 @@ import {
 } from "./icons";
 import { announce } from "../shared-ui/Announcer";
 import { MODES } from "./modes";
+import { shortcutLabel } from "./platform";
 
 const ICONS = {
   duzenek: IconEdit,
@@ -80,7 +81,7 @@ export function Sidebar({ features, current, onNavigate, onOpenSettings }: Props
       {/* Ürün yüzeyleri: gizli değil, kiplerin altında kendi grubunda. Üçü de
           tercihler penceresini kendi sekmesinde açar. */}
       <div className="sidebar-footer">
-        <button type="button" className="sidebar-item" onClick={() => onOpenSettings("genel")} title="Ayarlar  ⌘,">
+        <button type="button" className="sidebar-item" onClick={() => onOpenSettings("genel")} title={`Ayarlar  ${shortcutLabel(",")}`}>
           <IconSettings className="sidebar-icon" />
           <span>Ayarlar</span>
         </button>
