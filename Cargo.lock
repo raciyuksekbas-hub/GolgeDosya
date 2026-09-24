@@ -257,6 +257,8 @@ dependencies = [
  "tauri-plugin-opener",
  "tavzih-core",
  "tempfile",
+ "webview2-com",
+ "windows",
 ]
 
 [[package]]

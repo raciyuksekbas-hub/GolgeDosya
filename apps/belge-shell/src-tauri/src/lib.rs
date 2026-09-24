@@ -5,6 +5,7 @@
 //! belge motoru henüz taşınmadı. Yeni özellik yazılmaz.
 
 pub mod atomic;
+pub mod browser_surface;
 pub mod features;
 
 /// Modül motorları. Her biri yalnız kendi cargo feature'ı açıkken derlenir.
@@ -141,7 +142,22 @@ fn migrate_legacy_settings() -> Result<legacy::MigrationReport, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // Windows: F5 / Ctrl+R / Ctrl+S tarayıcının değil uygulamanın
+            // tuşlarıdır; bkz. browser_surface.rs.
+            #[cfg(windows)]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    browser_surface::install(&window);
+                }
+            }
+            #[cfg(not(windows))]
+            let _ = app;
+            Ok(())
+        });
 
     #[cfg(feature = "feature_tavzih")]
     let builder = builder

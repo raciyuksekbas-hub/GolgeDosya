@@ -45,6 +45,13 @@ ikincigoz-core = { workspace = true, optional = true }
 ekler-core = { workspace = true, optional = true }
 lopdf = { version = "0.34", optional = true }
 
+# Windows: WebView2'nin tarayıcı kısayollarını (F5, Ctrl+R, Ctrl+S) süzmek için
+# (bkz. src/browser_surface.rs). İkisi de Tauri'nin kendi bağımlılık ağacında
+# zaten bulunan sürümlerdir; yeni bir kod gelmez, yalnız doğrudan kullanılır.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+
 [features]
 default = ["custom-protocol", "feature_tavzih", "feature_ikincigoz", "feature_degisikis", "feature_duzenek"]
 custom-protocol = ["tauri/custom-protocol"]

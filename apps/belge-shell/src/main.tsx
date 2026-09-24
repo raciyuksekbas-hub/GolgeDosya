@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
+import { installBrowserSurfaceGuard } from "./shared-ui/browserSurface";
 import "./shared-ui/tokens.css";
 import "./shared-ui/shell.css";
 
@@ -9,6 +10,10 @@ import "./shared-ui/shell.css";
 if (import.meta.env.DEV) {
   const { installDevMock } = await import("./devMock");
   installDevMock();
+} else {
+  // Paketlenmiş uygulamada tarayıcının "Yenile / Farklı kaydet / Paylaş"
+  // menüsü açılmaz. Geliştirmede açık kalır: "İncele" oradan gelir.
+  installBrowserSurfaceGuard();
 }
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
