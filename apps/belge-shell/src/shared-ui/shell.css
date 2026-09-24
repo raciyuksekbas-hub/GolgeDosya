@@ -55,6 +55,24 @@
   margin-bottom: var(--space-2);
 }
 
+/* Ürün işareti düğme olduğunda görünüm değişmez; yalnız üzerine gelince ve
+   odakta yüzey alır. */
+.sidebar-home {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  color: inherit;
+  font: inherit;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.sidebar-home:hover { background: var(--surface-hover); }
+
 .sidebar-mark { flex: none; }
 
 .sidebar-brand {

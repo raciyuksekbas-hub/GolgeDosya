@@ -231,11 +231,31 @@ export function PreviewPlaceholder({ state, detail, onOpenAnother, forImages = f
     return <EmptyState title="Belge önizlemesi" note="PDF seçtiğinizde sayfaları burada göreceksiniz." />;
 }
 
-export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths: string[]) => void }> = ({ paths: initialPaths, onOpenDocument }) => {
+/**
+ * Kaydedilmemiş düzenleme var mı? (§54)
+ *
+ * Sayfa sırası ya da döndürme, kaynağa değil yeni bir kopyaya uygulanır. Bu
+ * düzen bir kopyaya kaydedilene dek yalnız bellektedir; kip değiştirmek, Kapat
+ * ya da pencereyi kapatmak onu uyarısız siliyordu. Kaydedilen düzenin imzası
+ * tutulur: aynı düzen kaydedildiyse kaybolacak bir şey yoktur.
+ */
+export function editSignature(order: { key: string }[], rotations: Record<string, number>, reordered: boolean): string {
+    const turned = Object.entries(rotations).filter(([, d]) => d % 360 !== 0).sort(([a], [b]) => a.localeCompare(b));
+    if (!reordered && turned.length === 0) return '';
+    return JSON.stringify([reordered ? order.map(p => p.key) : [], turned]);
+}
+
+export function hasUnsavedEdits(signature: string, saved: string): boolean {
+    return signature !== '' && signature !== saved;
+}
+
+export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths: string[]) => void; onDirtyChange?: (dirty: boolean) => void }> = ({ paths: initialPaths, onOpenDocument, onDirtyChange }) => {
     const [kind, setKind] = useState<Kind>('merge'), [sources, setSources] = useState<SourceFile[]>([]), [order, setOrder] = useState<Page[]>([]), [selected, setSelected] = useState<string[]>([]), [current, setCurrent] = useState(''), [zoom, setZoom] = useState<PreviewMode>('fit-page');
     const [rotations, setRotations] = useState<Record<string, number>>({});
     // Araç değiştirirken neyin kaybolacağını söyleyebilmek için: sıra elle değişti mi?
     const [reordered, setReordered] = useState(false);
+    // Son başarılı kaydın düzen imzası (bkz. editSignature).
+    const [savedSignature, setSavedSignature] = useState('');
     // "Sayfa yok" ile "belge açılamadı" aynı şey değildir: araç paneli yalnız
     // açık bir belge oturumunda çizilir, sayfa şeridi ise gerçekten sayfa varken.
     const [docState, setDocState] = useState<DocumentState>(initialPaths?.length ? 'loading' : 'none');
@@ -333,6 +353,10 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     useEffect(() => { if (opened) void load(opened.split('\u0000')); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [opened]);
     const shiftPage = (index: number, delta: number) => { const next = [...order]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; setOrder(next); setReordered(true); };
     const moveSource = (index: number) => { const next = [...sources]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; setSources(next); build(next); };
+    const signature = editSignature(order, rotations, reordered);
+    const dirty = hasUnsavedEdits(signature, savedSignature);
+    useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+    useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
     const toggle = (key: string) => setSelected(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
     const selectedPages = order.filter(p => selected.includes(p.key)).map(p => p.page);
     const active = order.find(p => p.key === current) || order[0];
@@ -390,6 +414,8 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             const size = receipt.sources[0].size_bytes, before = sources.reduce((n, s) => n + s.size_bytes, 0);
             setStatus(`PDF kaydedildi ve yeniden açılarak doğrulandı: ${outputPath}\n${receipt.sources[0].page_count} sayfa · ${(size / 1024).toFixed(1)} KB` + (kind === 'compress' ? `\n${(before / 1024).toFixed(1)} KB → ${(size / 1024).toFixed(1)} KB · %${((1 - size / before) * 100).toFixed(1)} küçültüldü.\n${metrics}` : ''));
             setStatusTone('success');
+            // Bu düzen artık bir kopyada: kip değiştirmek bir şey kaybettirmez.
+            setSavedSignature(signature);
         }
         catch (e) {
             // Kaydetme yolu da açma yolu gibi: motorun cümlesi log'da kalır,

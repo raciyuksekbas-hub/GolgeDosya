@@ -27,6 +27,8 @@ interface Props {
   current: string;
   onNavigate: (route: string) => void;
   onOpenSettings: (tab: PrefTab) => void;
+  /** Başlangıç yüzeyine dönüş (madde 29). Verilmezse işaret düğme değildir. */
+  onHome?: () => void;
 }
 
 /**
@@ -44,12 +46,25 @@ interface Props {
  * türünü zaten taşıyor. İkisi aynı ekranda yan yana durunca aynı bilgi iki kez
  * yazılmış oluyordu — gerçek pencerede görüldü.
  */
-export function Sidebar({ features, current, onNavigate, onOpenSettings }: Props) {
+export function Sidebar({ features, current, onNavigate, onOpenSettings, onHome }: Props) {
   return (
     <aside className="sidebar" data-tauri-drag-region>
       <div className="sidebar-head" data-tauri-drag-region>
-        <AppMark className="sidebar-mark" />
-        <span className="sidebar-brand" title="GölgeDosya">GölgeDosya</span>
+        {onHome ? (
+          // Ürün işareti, açık belgeden kipin başlangıç yüzeyine (son belgeler)
+          // döner. Kaydedilmemiş iş varsa kabuk önce sorar (§54). Düğme
+          // sürükleme bölgesini bozmaz: Tauri tıklanabilir öğeleri dışarıda
+          // bırakır, başlığın kendi boşluğu sürüklemeye devam eder.
+          <button type="button" className="sidebar-home" onClick={onHome} aria-label="Başlangıç — son belgeler">
+            <AppMark className="sidebar-mark" />
+            <span className="sidebar-brand">GölgeDosya</span>
+          </button>
+        ) : (
+          <>
+            <AppMark className="sidebar-mark" />
+            <span className="sidebar-brand" title="GölgeDosya">GölgeDosya</span>
+          </>
+        )}
       </div>
 
       <nav className="sidebar-nav" aria-label="Çalışma kipleri">

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Layout } from "./shell/Layout";
 import { PreferencesSheet } from "./shell/Settings";
 import { featureForRoute, firstAvailableRoute, resolveRoute } from "./shell/routes";
@@ -15,6 +16,9 @@ import { AnnexWorkspace, emptyProject } from "./modules/duzenek/ekler/AnnexWorks
 import type { PreparedAnnex, Project as AnnexProject } from "./modules/duzenek/ekler/types";
 import { MODES, carryContext, fileNameOf, visibleRecents, type ContextOutcome } from "./shell/modes";
 import { Button, Status } from "./shared-ui/primitives";
+import { ConfirmSheet } from "./shared-ui/ConfirmSheet";
+import { leaveCopy, leaveLoses, type LeaveAction } from "./shell/leaveGuard";
+import { discardsWork } from "./modules/duzenek/ekler/annexState";
 import { announce } from "./shared-ui/Announcer";
 import { useShortcuts } from "./shared-ui/useShortcuts";
 
@@ -82,7 +86,56 @@ export function App() {
 
   const active = featureForRoute(route, features);
 
-  const navigate = useCallback(
+  /** Ayar yazımı başarısız olursa kullanıcı bunu BİLMELİ. */
+  const [settingsError, setSettingsError] = useState("");
+  /** Karşılaştır'ın bildirdiği yürürlükteki Temel/Değişik sırası. */
+  const [comparePair, setComparePair] = useState<string[] | null>(null);
+  /**
+   * Dilekçe ekleri oturumu.
+   *
+   * Kabukta durur ki kip değiştirmek kullanıcının kurduğu ek yapısını
+   * silmesin; çalışma alanı sökülüp yeniden kurulduğunda oturum yerinde kalır.
+   */
+  const [annexProject, setAnnexProject] = useState<AnnexProject>(emptyProject);
+  /** Son hazırlanan ek paketi — sonuç yüzeyi de kip değişince kaybolmamalı. */
+  const [annexPrepared, setAnnexPrepared] = useState<PreparedAnnex | null>(null);
+  /**
+   * Kaydedilmemiş çalışma (§54). Çalışma alanları kendi durumlarını bildirir;
+   * kaybettiren her eylem (kip değiştirmek, Kapat, ürün işareti, belge
+   * değiştirmek, pencereyi kapatmak) önce buraya sorar.
+   */
+  const [dirty, setDirty] = useState<Partial<Record<string, boolean>>>({});
+  const [pending, setPending] = useState<{ title: string; body: string; confirm: string; run: () => void } | null>(null);
+  const markDuzenekDirty = useCallback(
+    (value: boolean) => setDirty((d) => (d.duzenek === value ? d : { ...d, duzenek: value })),
+    [],
+  );
+
+  const work = {
+    mode: active?.key ?? null,
+    dirty,
+    annexUnsaved: discardsWork(annexProject, annexPrepared),
+  };
+  const workRef = useRef(work);
+  workRef.current = work;
+
+  /** Eylem kaydedilmemiş çalışmayı silecekse önce sorar; silmeyecekse hemen yapar. */
+  const guard = useCallback((action: LeaveAction, run: () => void, target?: string) => {
+    if (!leaveLoses(action, workRef.current, target)) {
+      run();
+      return;
+    }
+    setPending({
+      ...leaveCopy(action),
+      run: () => {
+        // Onaylanan eylem çalışma alanını söker; bildirim sökülmeden önce silinir.
+        setDirty((d) => ({ ...d, [workRef.current.mode ?? ""]: false }));
+        run();
+      },
+    });
+  }, []);
+
+  const navigateNow = useCallback(
     (next: string) =>
       setRoute((current) => {
         const resolved = resolveRoute(next, features) || current;
@@ -97,19 +150,15 @@ export function App() {
     [features, documents],
   );
 
-  /** Ayar yazımı başarısız olursa kullanıcı bunu BİLMELİ. */
-  const [settingsError, setSettingsError] = useState("");
-  /** Karşılaştır'ın bildirdiği yürürlükteki Temel/Değişik sırası. */
-  const [comparePair, setComparePair] = useState<string[] | null>(null);
-  /**
-   * Dilekçe ekleri oturumu.
-   *
-   * Kabukta durur ki kip değiştirmek kullanıcının kurduğu ek yapısını
-   * silmesin; çalışma alanı sökülüp yeniden kurulduğunda oturum yerinde kalır.
-   */
-  const [annexProject, setAnnexProject] = useState<AnnexProject>(emptyProject);
-  /** Son hazırlanan ek paketi — sonuç yüzeyi de kip değişince kaybolmamalı. */
-  const [annexPrepared, setAnnexPrepared] = useState<PreparedAnnex | null>(null);
+  const navigate = useCallback(
+    (next: string) => {
+      const resolved = resolveRoute(next, features);
+      const target = features.find((f) => f.route === resolved)?.key;
+      guard("navigate", () => navigateNow(next), target);
+    },
+    [features, guard, navigateNow],
+  );
+
   /**
    * Yeni Ekler işlemi: belgeler, ekler, başlıklar, atamalar ve sonuç bırakılır.
    * Tercihler (tema, erişilebilirlik, son belgeler, Dönüştür'ün çıktı klasörü)
@@ -166,7 +215,41 @@ export function App() {
     announce("Belge kapatıldı.");
   }, []);
 
-  const forgetDocuments = useCallback(async () => {
+  /** Bardaki "Kapat" ve ürün işareti: kaydedilmemiş iş varsa önce sorar. */
+  const requestClose = useCallback((action: LeaveAction = "close") => guard(action, closeDocuments), [guard, closeDocuments]);
+
+  /** Düzenle'nin içinden başka bir belge açmak, açık düzenlemeyi siler. */
+  const replaceDocuments = useCallback(
+    (paths: string[]) => guard("replace", () => void openDocuments(paths)),
+    [guard, openDocuments],
+  );
+
+  // Pencereyi kapatmak bütün oturumu siler. Windows'ta yerel başlık
+  // çubuğundaki simgeye çift tıklamak bile pencereyi kapatır.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const win = getCurrentWindow();
+        const off = await win.onCloseRequested((event) => {
+          if (!leaveLoses("window", workRef.current)) return;
+          event.preventDefault();
+          setPending({ ...leaveCopy("window"), run: () => void win.destroy() });
+        });
+        if (cancelled) off();
+        else unlisten = off;
+      } catch {
+        // Tauri dışında (tarayıcı, test): pencere olayı yok.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  const forgetDocumentsNow = useCallback(async () => {
     setSettingsError("");
     try {
       setSettings(await api.forgetDocuments());
@@ -182,6 +265,16 @@ export function App() {
       announce(message);
     }
   }, []);
+
+  /** Listeyi temizlemek geri alınamaz: her seferinde sorulur (§54). */
+  const forgetDocuments = useCallback(() => {
+    setPending({
+      title: "Son belgeler listesi temizlensin mi?",
+      body: "Bütün kiplerdeki son belgeler listesi temizlenir. Belgeleriniz silinmez. Bu işlem geri alınamaz.",
+      confirm: "Listeyi Temizle",
+      run: () => void forgetDocumentsNow(),
+    });
+  }, [forgetDocumentsNow]);
 
   /** Bu kip, açık belgelerle şu an çalışabiliyor mu? */
   const usable = useMemo(() => {
@@ -251,6 +344,9 @@ export function App() {
         current={route}
         onNavigate={navigate}
         onOpenSettings={setPrefsTab}
+        // Ürün işareti: kipin başlangıç yüzeyine (son belgeler) döner. Yalnız
+        // dönülecek bir yer varken düğmedir; Ekler'de anlamı yoktur (madde 29).
+        onHome={documents.length > 0 && active && active.key !== "ekler" ? () => requestClose("home") : undefined}
       >
         <div className="surface">
           <Status tone="error">Uygulama başlatılamadı. Lütfen yeniden açmayı deneyin.</Status>
@@ -283,7 +379,7 @@ export function App() {
           // kipin belgesini kapatıyor, Ekler'e hiçbir şey yapmıyordu ve
           // kullanıcıya sahte bir çıkış gibi görünüyordu (madde 19).
           documents.length > 0 && active?.key !== "ekler" ? (
-            <Button variant="quiet" onClick={closeDocuments}>
+            <Button variant="quiet" onClick={() => requestClose()}>
               Kapat
             </Button>
           ) : null
@@ -309,7 +405,7 @@ export function App() {
           ) : usable && active.key === "duzenek" ? (
             // Açılamayan belgeden kurtulma yolu kabuktan geçer: bardaki ad, son
             // kullanılanlar ve çalışma alanı aynı belgeyi göstersin.
-            <PdfWorkspace paths={carried} onOpenDocument={openDocuments} />
+            <PdfWorkspace paths={carried} onOpenDocument={replaceDocuments} onDirtyChange={markDuzenekDirty} />
           ) : (
             <DocumentSurface
               feature={active}
@@ -333,6 +429,20 @@ export function App() {
           onForget={forgetDocuments}
           onClose={() => setPrefsTab(null)}
         />
+      ) : null}
+      {pending ? (
+        <ConfirmSheet
+          title={pending.title}
+          confirmLabel={pending.confirm}
+          onCancel={() => setPending(null)}
+          onConfirm={() => {
+            const run = pending.run;
+            setPending(null);
+            run();
+          }}
+        >
+          {pending.body}
+        </ConfirmSheet>
       ) : null}
     </>
   );

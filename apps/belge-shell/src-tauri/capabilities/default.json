@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Kabuğun kendi yüzeyi. Yalnız pencere ve belge açma. Modül izinleri feature-*.json dosyalarında yaşar ve modülüyle birlikte gelir gider.",
+  "description": "Kabuğun kendi yüzeyi. Yalnız pencere ve belge açma; kaydedilmemiş çalışma varken pencere kapanışı önce sorulur (destroy). Modül izinleri feature-*.json dosyalarında yaşar ve modülüyle birlikte gelir gider.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-set-theme",
+    "core:window:allow-destroy",
     "dialog:allow-open"
   ]
 }

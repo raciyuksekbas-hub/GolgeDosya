@@ -12,6 +12,8 @@ interface Props {
   current: string;
   onNavigate: (route: string) => void;
   onOpenSettings: (tab: PrefTab) => void;
+  /** Ürün işaretine tıklamak: kipin başlangıç yüzeyi. Yoksa işaret düğme değildir. */
+  onHome?: () => void;
   /** Yardımcı barın sol ucu: belge bağlamı. Belge yokken boş ve sakin. */
   context?: ReactNode;
   /** Kabuğun kendi eylemleri (Kapat, Belge Aç). Kip eylemleri portalla gelir. */
@@ -37,6 +39,7 @@ export function Layout({
   current,
   onNavigate,
   onOpenSettings,
+  onHome,
   context,
   actions,
   children,
@@ -93,6 +96,7 @@ export function Layout({
           current={current}
           onNavigate={onNavigate}
           onOpenSettings={onOpenSettings}
+          onHome={onHome}
         />
         <section className="content">
           {/* Başlık çubuğu bandı: trafik ışıklarının satırı pencerenin
