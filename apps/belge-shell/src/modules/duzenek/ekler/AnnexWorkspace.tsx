@@ -19,6 +19,7 @@ import { Button, Status } from "../../../shared-ui/primitives";
 import { announce } from "../../../shared-ui/Announcer";
 import { logFailure, safeMessage } from "../../../shared-ui/failure";
 import { ToolbarActions } from "../../../shell/chrome";
+import { fileNameOf } from "../../../shell/modes";
 import {
   assignSource, assignmentLabel, autoDistribute, createExhibit, exhibitPageCount,
   exhibitsListText, moveExhibit, nameFromFile, removeExhibit, renameExhibit,
@@ -130,7 +131,7 @@ export function AnnexWorkspace({ project, onProject }: {
         `${added} belge eklendi.`,
         duplicates ? `${duplicates} belge zaten listedeydi, tekrar eklenmedi.` : "",
         failed
-          ? `${failed} dosya okunamadı: ${result.errors.map((e) => e.path.split("/").pop()).join(", ")}`
+          ? `${failed} dosya okunamadı: ${result.errors.map((e) => fileNameOf(e.path)).join(", ")}`
           : "",
       ].filter(Boolean);
       say(notes.join(" "), failed ? "error" : "success");

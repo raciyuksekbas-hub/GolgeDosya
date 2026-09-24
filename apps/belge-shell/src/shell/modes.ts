@@ -140,13 +140,21 @@ export const MODES: Record<FeatureState["key"], Mode> = {
 };
 
 export function extensionOf(path: string): string {
-  const name = path.split("/").pop() ?? path;
+  const name = fileNameOf(path);
   const dot = name.lastIndexOf(".");
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
 }
 
+/**
+ * Yolun son parçası — her iki ayraçla.
+ *
+ * Yalnız `/` ile bölünüyordu. Windows yolları `\` kullanır: son belgeler
+ * listesi, bardaki belge adı ve hata mesajları kullanıcının adını taşıyan TAM
+ * yolu gösteriyordu (`C:\Users\Çağrı Şahin\…`). Sondaki ayraç (klasör yolu)
+ * boş parça üretmez.
+ */
 export function fileNameOf(path: string): string {
-  return path.split("/").pop() || path;
+  return path.split(/[\\/]/).filter(Boolean).pop() || path;
 }
 
 /** Bu kip, açık olan belgelerle çalışabilir mi? */

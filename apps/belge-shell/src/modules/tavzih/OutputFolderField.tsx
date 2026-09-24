@@ -4,6 +4,7 @@ import * as api from "./api";
 import type { OutputFolder } from "./types";
 import { Button, Status } from "../../shared-ui/primitives";
 import { logFailure, safeMessage } from "../../shared-ui/failure";
+import { fileNameOf } from "../../shell/modes";
 
 /**
  * Çıktı klasörü satırı — saf sunum.
@@ -24,7 +25,7 @@ export function OutputFolderRow({
   onChoose: () => void;
   onReset: () => void;
 }) {
-  const name = folder.path.split("/").filter(Boolean).pop() ?? folder.path;
+  const name = fileNameOf(folder.path);
   return (
     <>
       <div className="field">

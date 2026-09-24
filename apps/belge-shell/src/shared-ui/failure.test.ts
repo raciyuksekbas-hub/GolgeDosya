@@ -152,3 +152,37 @@ describe("hata kaydı", () => {
     expect(redact("Sayfa sayısı uyuşmuyor")).toBe("Sayfa sayısı uyuşmuyor");
   });
 });
+
+describe("Windows yolları (§55)", () => {
+  const raw =
+    "Dosya okunamadı veya erişilemedi: C:\\Users\\Çağrı Şahin\\Belgeler\\Müvekkil'in Dosyası\\dilekçe.pdf: Sistem belirtilen dosyayı bulamıyor. (os error 2)";
+
+  it("kayıt satırı kullanıcı adını ve belge adını taşımaz", () => {
+    const line = redact(raw);
+    expect(line).not.toMatch(/Çağrı|Şahin|Müvekkil|dilekçe/);
+    expect(line).toContain("‹yol›");
+    // Yoldan sonraki neden okunur kalır.
+    expect(line).toContain("Sistem belirtilen dosyayı bulamıyor");
+  });
+
+  it("UNC yolu da redakte edilir", () => {
+    expect(redact("Yazılamadı: \\\\sunucu\\Hukuk\\Çağrı Şahin\\dava.pdf: erişim reddedildi")).not.toMatch(
+      /Çağrı|Hukuk|dava\.pdf/,
+    );
+  });
+
+  it("ham Windows yolu kullanıcıya gösterilmez; yedek cümle gider", () => {
+    expect(safeMessage(raw, "Belge açılamadı.")).toBe("Belge açılamadı.");
+    expect(safeMessage("Bu klasöre yazılamıyor", "yedek")).toBe("Bu klasöre yazılamıyor");
+  });
+
+  it("üzerine yazma reddi 'yeniden deneyin' değil, 'farklı ad seçin' der (madde 38)", () => {
+    const text = describeSaveFailure(
+      "Doğrulama hatası (Validation Failed): Hedef zaten mevcut; üzerine yazılmaz: C:\\Users\\Çağrı Şahin\\x.pdf",
+    );
+    expect(text).toContain("zaten var");
+    expect(text).toContain("farklı bir ad");
+    expect(text).not.toContain("doğrulanamadı");
+    expect(text).not.toContain("C:\\");
+  });
+});

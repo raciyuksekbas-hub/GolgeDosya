@@ -92,6 +92,13 @@ export function redact(text: string): string {
   return (
     text
       // Yollar önce: içlerinde belge adı da var.
+      //
+      // Windows yolu (C:\… ya da \\sunucu\…) boşluk ve kesme işareti taşır:
+      // "C:\Users\Çağrı Şahin\Müvekkil'in Dosyası\…". Bu yüzden boşlukta
+      // değil, motorun yoldan sonra koyduğu ayraçta ("…pdf: neden", tırnak,
+      // " (os error …)", satır sonu) biter. Yalnız POSIX yolu tanınıyordu;
+      // Windows'ta kullanıcı adı ve belge adı ham hâliyle kayda düşüyordu.
+      .replace(/(?:\b[A-Za-z]:\\|\\\\[^\\\s]+\\)[^"`\r\n]*?(?=:\s|["`]|\s\(|\r|\n|$)/g, "‹yol›")
       .replace(/(?:~|\.{1,2})?\/[^\s"'`,;)\]]+/g, "‹yol›")
       // Motor belge adını tırnak içinde verir; boşluklu adlar da bütün gider.
       .replace(new RegExp(`'[^']*\\.(?:${DOC_EXT})'`, "gi"), "'‹belge›'")
@@ -137,7 +144,7 @@ export function logFailure(scope: string, raw: unknown): void {
  * kaybettirir. Bu yollarda metin olduğu gibi taşınır — ama yalnız temizse.
  */
 const TECHNICAL =
-  /(^|\s)\/[\w.\-/]+|os error|\bpanic\b|\bunwrap\b|\.rs\b|[a-z_]{2,}::[a-z_]{2,}|\bError\b|Failed\b|\bcommand\b|\bundefined\b|Validation/i;
+  /(^|\s)\/[\w.\-/]+|(^|[\s'"(])(?:[A-Za-z]:\\|\\\\)|os error|\bpanic\b|\bunwrap\b|\.rs\b|[a-z_]{2,}::[a-z_]{2,}|\bError\b|Failed\b|\bcommand\b|\bundefined\b|Validation/i;
 
 /**
  * Motorun kendi kullanıcı cümlesini taşıyan yollar için güvenli geçiş.
@@ -207,6 +214,14 @@ const SAVE_CATEGORIES: { match: RegExp; detail: string }[] = [
   {
     match: /no space|disk full|yeterli (disk )?alan/i,
     detail: "Diskte yeterli yer yok. Yer açıp yeniden deneyin.",
+  },
+  {
+    // Motor var olan dosyanın üzerine yazmaz. Windows'un kaydetme penceresi
+    // önce "değiştirilsin mi?" diye sorar; kullanıcı "evet" deyince motor
+    // yine reddeder. Bu, "doğrulanamadı; yeniden deneyin" diye söylenince
+    // kullanıcı aynı adla yeniden deneyip aynı yere çarpıyordu (madde 38).
+    match: /zaten mevcut|üzerine yazılmaz|already exists/i,
+    detail: "Bu adla bir dosya zaten var. GölgeDosya var olan bir dosyanın üzerine yazmaz; farklı bir ad seçin.",
   },
   {
     match: /doğrulama hatası|validation failed/i,

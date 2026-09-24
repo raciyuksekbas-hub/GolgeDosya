@@ -12,11 +12,8 @@ import { announce } from "../../shared-ui/Announcer";
 import { logFailure } from "../../shared-ui/failure";
 import { Status } from "../../shared-ui/primitives";
 import { InspectorPanel, ToolbarStatus } from "../../shell/chrome";
+import { fileNameOf as baseName } from "../../shell/modes";
 import "./compare.css";
-
-function baseName(path: string): string {
-  return path.split("/").pop() || path;
-}
 
 /**
  * Yoldan `File` nesnesi üret.

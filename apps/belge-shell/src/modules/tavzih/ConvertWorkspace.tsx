@@ -7,6 +7,7 @@ import { announce } from "../../shared-ui/Announcer";
 import { Button, Status } from "../../shared-ui/primitives";
 import { ToolbarStatus } from "../../shell/chrome";
 import { logFailure, safeMessage } from "../../shared-ui/failure";
+import { fileNameOf } from "../../shell/modes";
 
 type Phase = "idle" | "confirm" | "running" | "done";
 
@@ -86,7 +87,7 @@ export function FlowDestination({ folder, onChoose, onReset }: {
   onChoose?: () => void;
   onReset?: () => void;
 }) {
-  const name = folder.path.split("/").filter(Boolean).pop() ?? folder.path;
+  const name = fileNameOf(folder.path);
   return (
     <div className="flow-dest">
       <p className="flow-label">Çıktı klasörü</p>
@@ -135,7 +136,7 @@ export function ConvertFlow({
   onResetFolder: () => void;
 }) {
   const source = selected[0];
-  const sourceName = source?.info?.name ?? source?.path.split("/").pop() ?? "—";
+  const sourceName = source?.info?.name ?? (source ? fileNameOf(source.path) : "—");
   const to = formatParts(target);
   const usable = selected.filter((s) => s.info).length;
 
