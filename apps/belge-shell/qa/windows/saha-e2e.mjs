@@ -27,7 +27,7 @@ const arg = (name) => {
 };
 const EXE = resolve(arg("--exe") ?? "");
 const OUT = resolve(arg("--out") ?? "saha-kanit");
-const PORT = Number(arg("--port") ?? 9322);
+const BASE_PORT = Number(arg("--port") ?? 9322);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Unicode kullanıcı profili: Türkçe harf, boşluk, kesme işareti.
@@ -52,6 +52,7 @@ const observe = (id, title, detail) => record("observe", id, title, true, detail
 // ---------------------------------------------------------------- uygulama
 let app;
 let cdp;
+let launches = 0;
 
 function native(action, extra = {}) {
   const params = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", NATIVE, "-Action", action, "-ProcessId", String(app.pid)];
@@ -61,18 +62,59 @@ function native(action, extra = {}) {
   return JSON.parse(line);
 }
 
+/** Önceki adımlardan kalan uygulama ve WebView2 süreçleri. */
+function clearLeftovers() {
+  for (const image of ["belge-shell.exe", "GolgeDosya_0.3.0_x64.exe", "msedgewebview2.exe"]) {
+    try {
+      execFileSync("taskkill.exe", ["/F", "/T", "/IM", image], { stdio: "ignore" });
+    } catch {
+      // Süreç yok.
+    }
+  }
+}
+
+/** Uzaktan hata ayıklama ucu açılmadıysa neden: WebView2 süreçleri ve komut satırları. */
+function diagnose() {
+  try {
+    return execFileSync(
+      "powershell.exe",
+      ["-NoProfile", "-Command",
+        "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'msedgewebview2|belge-shell|GolgeDosya' } | ForEach-Object { \"$($_.ProcessId) $($_.Name) $($_.CommandLine)\" }; netstat -ano | Select-String 'LISTENING' | Select-String ':93'"],
+      { encoding: "utf8", timeout: 60_000 },
+    );
+  } catch (e) {
+    return String(e?.message ?? e);
+  }
+}
+
 async function launch() {
+  // WebView2, aynı kullanıcı verisi klasörünü kullanan ÇALIŞAN bir tarayıcı
+  // süreci varsa ona bağlanır ve bizim argümanlarımızı (uzaktan hata ayıklama
+  // ucu) YOK SAYAR. Önceki smoke adımları uygulamayı zorla kapattığı için artık
+  // süreçler kalabiliyor. Her açılış: temiz süreç, kendi veri klasörü, kendi uç.
+  launches++;
+  const port = BASE_PORT + launches;
+  const userData = join(ROOT, `webview2-${launches}`);
+  mkdirSync(userData, { recursive: true });
+  clearLeftovers();
+  await sleep(1000);
   app = spawn(EXE, [], {
     env: {
       ...process.env,
       APPDATA,
       USERPROFILE: HOME,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT} --remote-allow-origins=*`,
+      WEBVIEW2_USER_DATA_FOLDER: userData,
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-allow-origins=*`,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
   app.stderr.on("data", (d) => process.stderr.write(`[uygulama] ${d}`));
-  cdp = await attach(PORT);
+  try {
+    cdp = await attach(port);
+  } catch (e) {
+    observe("teşhis", "WebView2 süreçleri", diagnose());
+    throw e;
+  }
   await cdp.until("document.readyState === 'complete' && !!document.querySelector('.sidebar-nav')", { timeoutMs: 60_000, what: "kabuk hazır" });
   await sleep(800);
 }
@@ -393,6 +435,45 @@ async function reveal() {
   native("close-explorer");
 }
 
+/** Madde 10 / §43-A: Ekler paketi hazırlanır, "Klasörü Aç" paketin KENDİSİNİ açar. */
+async function annexFolder() {
+  const scanned = await invoke("duzenek_scan_source_files", { paths: [F.vektor, F.taranmis] });
+  const [a, b] = scanned.sources;
+  const project = {
+    version: "1.0.0", name: "Dilekçe Ekleri", created_at: "", updated_at: "",
+    sources: scanned.sources,
+    exhibits: [
+      { id: "ek-1", order: 1, name: "Sözleşme", sources: [{ source_id: a.id }] },
+      { id: "ek-2", order: 2, name: "Banka Dekontu", sources: [{ source_id: b.id }] },
+    ],
+    target_size_bytes: 9_961_472,
+    stamp_config: { enabled: true, position: "top_right", font_size: 10, margin_pt: 20, show_badge: true },
+  };
+  const outputDir = join(DOCS, "GölgeDosya");
+  mkdirSync(outputDir, { recursive: true });
+  const result = await invoke("ekler_prepare_package", { project, outputDir })
+    .catch((e) => ({ error: String(e?.message ?? JSON.stringify(e)) }));
+  check("10", "Ekler paketi Unicode profilde hazırlandı", typeof result?.package_dir === "string", {
+    package_dir: result?.package_dir, outputs: result?.outputs?.length, error: result?.error,
+  });
+  if (typeof result?.package_dir !== "string") return;
+  native("close-explorer");
+  await sleep(1000);
+  const opened = await invoke("ekler_open_package_folder", { path: result.package_dir })
+    .then(() => "ok").catch((e) => String(e?.message ?? JSON.stringify(e)));
+  let windows = [];
+  for (let i = 0; i < 20; i++) {
+    await sleep(500);
+    windows = native("explorer").windows;
+    if (windows.length) break;
+  }
+  const norm = (p) => (p ?? "").toLocaleLowerCase("tr-TR").replace(/\\+$/, "");
+  check("10", "Klasörü Aç paketin kendisini açar (üst klasörü değil)",
+    windows.some((w) => norm(w.path) === norm(result.package_dir)), { beklenen: result.package_dir, acilan: windows, komut: opened });
+  native("screen", { Path: join(SHOTS, "ekler-klasoru-ac.png") });
+  native("close-explorer");
+}
+
 /** Ekran görüntüleri: açık/koyu × üç boyut × her kip; yerleşim ölçüleri. */
 async function screenshots() {
   const labels = await cdp.eval(`[...document.querySelectorAll('.sidebar-nav .sidebar-item')].map((b) => b.textContent.trim())`);
@@ -421,6 +502,12 @@ async function screenshots() {
     return { mark: box('.sidebar-mark'), brand: box('.sidebar-brand'), head: box('.sidebar-head'), band: box('.titlebar-band'), nav: box('.sidebar-nav'), platform: document.documentElement.dataset.platform ?? null };
   })()`);
   observe("1", "Kenar çubuğu başı (CSS px)", head);
+  check("1", "Windows'ta macOS trafik ışığı bandı yok; işaret bardaki satırda",
+    head.platform === "windows" && (head.band?.h ?? 0) === 0 && head.mark && head.mark.top < 40, head);
+  await cdp.eval(`document.documentElement.dataset.theme = 'dark'`);
+  const scheme = await cdp.eval(`getComputedStyle(document.documentElement).colorScheme`);
+  check("8", "Koyu temada tarayıcı parçaları (açılır liste, kaydırma çubuğu) koyu", /dark/.test(scheme), { colorScheme: scheme });
+  await cdp.eval(`document.documentElement.dataset.theme = 'light'`);
 
   // Yüklü durumlar: Karşılaştır, Denetle.
   await invoke("remember_documents", { paths: [F.hatali, F.temiz] });
@@ -439,6 +526,29 @@ async function screenshots() {
       const s = getComputedStyle(e); return /(auto|scroll)/.test(s.overflowY) && e.scrollHeight > e.clientHeight + 1 && e.clientHeight > 0;
     }).map((e) => e.tagName.toLowerCase() + '.' + String(e.className).split(' ').join('.'))`);
     observe("20", `Karşılaştır kaydırma sahipleri (${theme})`, scroll);
+    const layout = await cdp.eval(`(() => {
+      const body = document.querySelector('.content-body');
+      const insp = document.querySelector('.inspector-body');
+      const nested = insp ? [...insp.querySelectorAll('*')].filter((e) => {
+        const s = getComputedStyle(e); return /(auto|scroll)/.test(s.overflowY) && e.scrollHeight > e.clientHeight + 1;
+      }).length : 0;
+      const wide = [...document.querySelectorAll('.document-scroll')].filter((e) => e.scrollWidth > e.clientWidth + 1).length;
+      const row = document.querySelector('.row-body');
+      return {
+        loaded: !!document.querySelector('.compare-root'),
+        outer: body ? [body.scrollHeight, body.clientHeight] : null,
+        nested, wide,
+        userSelect: row ? getComputedStyle(row).userSelect : null,
+        toggle: !!document.querySelector('.toolbar-switch input[role="switch"]'),
+        copy: [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Değişiklikleri Kopyala'),
+      };
+    })()`);
+    if (theme === "light") {
+      check("20", "Karşılaştır: dış kaydırma yok, panel içinde ikinci kaydırıcı yok, yatay taşma yok",
+        layout.loaded && layout.outer && layout.outer[0] <= layout.outer[1] + 1 && layout.nested === 0 && layout.wide === 0, layout);
+      check("28/33", "Karşılaştır: 'Eş zamanlı kaydır' anahtarı, 'Değişiklikleri Kopyala' ve seçilebilir metin",
+        layout.toggle && layout.copy && layout.userSelect === "text", layout);
+    }
     shot(`karsilastir-yuklu-${theme}`);
     await mode("Denetle");
     await closeDocument();
@@ -458,6 +568,7 @@ async function main() {
     ["önizleme", previews],
     ["tarayıcı yüzeyi", browserSurface],
     ["klasörde göster", reveal],
+    ["ekler klasörü", annexFolder],
     ["ekran görüntüleri", screenshots],
   ];
   for (const [name, step] of steps) {
