@@ -4,11 +4,16 @@
 # pencere görüntüsü (yerel başlık çubuğu dahil), tarayıcının kendi sağ tık
 # menüsü (UI Automation) ve Gezgin'in hangi klasörü açtığı (Shell.Application).
 # Her çağrı tek iş yapar ve stdout'a tek satır JSON yazar.
+#
+# PowerShell değişken adlarında büyük/küçük harf ayırmaz: `[int]$H` diye bir
+# parametre, gövdedeki `$h = <pencere tanıtıcısı>` atamasını tamsayıya çevirip
+# yüksekliğe yazıyordu (32728 px'lik pencere); `[int]$W` de `foreach ($w in
+# <Gezgin pencereleri>)` döngüsünü düşürüyordu. Parametre adları bu yüzden uzun.
 param(
   [Parameter(Mandatory)][string]$Action,
   [int]$ProcessId,
   [string]$Keys,
-  [int]$X, [int]$Y, [int]$W, [int]$H,
+  [int]$X, [int]$Y, [int]$Width, [int]$Height,
   [string]$Path
 )
 $ErrorActionPreference = 'Stop'
@@ -76,7 +81,7 @@ switch ($Action) {
   'focus' { $h = Get-Hwnd; Out-Json @{ foreground = (Focus $h) } }
   'move' {
     $h = Get-Hwnd; [void][GdU32]::ShowWindow($h, 9); Start-Sleep -Milliseconds 200
-    [void][GdU32]::MoveWindow($h, $X, $Y, $W, $H, $true); Start-Sleep -Milliseconds 600
+    [void][GdU32]::MoveWindow($h, $X, $Y, $Width, $Height, $true); Start-Sleep -Milliseconds 600
     Out-Json @{ client = (Get-Client $h) }
   }
   'maximize' { $h = Get-Hwnd; [void][GdU32]::ShowWindow($h, 3); Start-Sleep -Milliseconds 800; Out-Json @{ zoomed = [GdU32]::IsZoomed($h); client = (Get-Client $h) } }
@@ -106,8 +111,8 @@ switch ($Action) {
     Out-Json @{ foreground = $fg }
   }
   'shot' {
-    # Pencerenin tamamı (yerel başlık çubuğu dahil). -W/-H verilirse ekrandan o dikdörtgen.
-    if ($W -gt 0) { $rx = $X; $ry = $Y; $rw = $W; $rh = $H }
+    # Pencerenin tamamı (yerel başlık çubuğu dahil). -Width/-Height verilirse ekrandan o dikdörtgen.
+    if ($Width -gt 0) { $rx = $X; $ry = $Y; $rw = $Width; $rh = $Height }
     else { $h = Get-Hwnd; $r = New-Object GdU32+RECT; [void][GdU32]::GetWindowRect($h, [ref]$r); $rx = $r.L; $ry = $r.T; $rw = $r.R - $r.L; $rh = $r.B - $r.T }
     $bmp = New-Object System.Drawing.Bitmap $rw, $rh
     $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -201,6 +206,43 @@ public static class GdDiff {
 "@
     $pair = $Path.Split('|')
     Out-Json @{ changed = [GdDiff]::Count($pair[0], $pair[1]) }
+  }
+  'resolution' {
+    # Barındırılan runner'ın ekranı 1024x768: 1280x800'lük pencere ekrana
+    # sığmaz, ekran görüntüsü kırpılır. Birincil ekranı -Width x -Height'a
+    # almayı DENER; sonucu (önce/sonra) raporlar, başarısızlığı gizlemez.
+    Add-Type -TypeDefinition @"
+using System; using System.Runtime.InteropServices;
+public static class GdDisp {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public struct DEVMODE {
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+    public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+    public int dmFields, dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+    public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+    public short dmLogPixels;
+    public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+    public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+  }
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool EnumDisplaySettings(string dev, int mode, ref DEVMODE dm);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int ChangeDisplaySettings(ref DEVMODE dm, int flags);
+  public static int[] Current() {
+    var dm = new DEVMODE(); dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+    EnumDisplaySettings(null, -1, ref dm); return new[] { dm.dmPelsWidth, dm.dmPelsHeight };
+  }
+  public static int Set(int w, int h) {
+    var dm = new DEVMODE(); dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+    if (!EnumDisplaySettings(null, -1, ref dm)) return -100;
+    dm.dmPelsWidth = w; dm.dmPelsHeight = h; dm.dmFields = 0x80000 | 0x100000;
+    return ChangeDisplaySettings(ref dm, 0);
+  }
+}
+"@
+    $before = [GdDisp]::Current()
+    $code = [GdDisp]::Set($Width, $Height); Start-Sleep -Milliseconds 1500
+    $after = [GdDisp]::Current()
+    Out-Json @{ before = $before; after = $after; result = $code }
   }
   default { throw "bilinmeyen eylem: $Action" }
 }

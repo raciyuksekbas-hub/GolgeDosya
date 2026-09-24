@@ -343,6 +343,14 @@ jobs:
           if (Test-Path ../../saha-kanit/sonuc.md) {
             Get-Content ../../saha-kanit/sonuc.md -Encoding UTF8 | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           }
+          # Harness'ten bağımsız: HKLM'e yazılan hata ayıklama ilkesi kalmamalı.
+          $key = 'HKLM:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+          $left = @(if (Test-Path $key) { (Get-ItemProperty $key).PSObject.Properties.Name | Where-Object { $_ -like 'GolgeDosya*' } })
+          $line = "- WebView2 hata ayıklama ilkesi iş sonunda: $(if ($left.Count) { 'KALDI: ' + ($left -join ', ') } else { 'yok' })"
+          $line | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          New-Item -ItemType Directory -Force -Path ../../saha-kanit | Out-Null
+          $line | Out-File -Append -Encoding utf8 ../../saha-kanit/ilke-temizlik.txt
+          if ($left.Count) { throw "Kapı 6: hata ayıklama ilkesi silinmedi" }
           if ($code -ne 0) { throw "Kapı 6: düşen iddia var (çıkış $code)" }
 
       - name: Saha kanıtı (ekran görüntüleri ve ölçümler)
