@@ -50,7 +50,20 @@ lopdf = { version = "0.34", optional = true }
 # zaten bulunan sürümlerdir; yeni bir kod gelmez, yalnız doğrudan kullanılır.
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"
-windows = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_UI_Shell",
+] }
+
+# macOS: panodaki dosya URL'leri ve metin (saha maddesi 21). Tauri'nin
+# bağımlılık ağacında zaten bulunan sürümler; yalnız özellikleri açılır.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSArray"] }
 
 [features]
 default = ["custom-protocol", "feature_tavzih", "feature_ikincigoz", "feature_degisikis", "feature_duzenek"]

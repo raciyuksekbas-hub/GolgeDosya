@@ -9,3 +9,5 @@ export const rememberDocuments = (paths: string[]) =>
   invoke<Settings>("remember_documents", { paths });
 export const forgetDocuments = () => invoke<Settings>("forget_documents");
 export const migrateLegacySettings = () => invoke<MigrationReport>("migrate_legacy_settings");
+/** Panodaki belgeler: kopyalanan dosyalar ya da yapıştırılan yol (yalnız var olanlar). */
+export const pastedDocumentPaths = () => invoke<string[]>("pasted_document_paths");

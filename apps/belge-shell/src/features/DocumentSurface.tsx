@@ -13,7 +13,8 @@ import {
   type ContextOutcome,
 } from "../shell/modes";
 import { relativeTime } from "./relativeTime";
-import { shortcutLabel } from "../shell/platform";
+import { platform, shortcutLabel, type Platform } from "../shell/platform";
+import { pastedDocumentPaths } from "../shell/api";
 
 interface Props {
   feature: FeatureState;
@@ -45,6 +46,15 @@ const RECENT_ROWS = 10;
  * Sürükle-bırak hedefi tüm yüzeydir; kesikli çerçeve yalnız sürükleme
  * sırasında belirir.
  */
+/** Yapıştırma kısayolu: macOS'ta ⌘V, diğerlerinde Ctrl+V; başka değiştirici yok. */
+export function isPasteChord(
+  e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "altKey">,
+  on: Platform,
+): boolean {
+  if (e.key.toLowerCase() !== "v" || e.shiftKey || e.altKey) return false;
+  return on === "mac" ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+}
+
 export function DocumentSurface({ feature, recents, outcome, openRequest, onDocuments, onForget }: Props) {
   const mode = MODES[feature.key];
   const [over, setOver] = useState(false);
@@ -88,6 +98,41 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
     },
     [mode.needs, onDocuments],
   );
+
+  /**
+   * Yapıştır (Ctrl+V / ⌘V) — saha maddesi 21.
+   *
+   * Yalnız bu yüzeyde (belge açık değilken) ve bir metin alanında ya da açık
+   * bir pencerede değilken: yanlış yere belge yüklenmez. Gezgin'de/Finder'da
+   * kopyalanan dosya WebView'e YOLSUZ gelir; pano yerelden okunur (bkz.
+   * src-tauri/src/clipboard.rs). Tür süzgeci ve iki belgelik kip kuralı
+   * sürükle-bırakla aynıdır (`accept`).
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!isPasteChord(event, platform())) return;
+      const target = event.target as Element | null;
+      if (target?.closest?.("input, textarea, select, [contenteditable]")) return;
+      if (document.querySelector(".sheet-backdrop")) return;
+      event.preventDefault();
+      void (async () => {
+        try {
+          const paths = await pastedDocumentPaths();
+          if (paths.length === 0) {
+            const message = "Panoda açılabilecek bir belge yok. Dosyayı kopyalayıp yeniden yapıştırın.";
+            setRefused(message);
+            announce(message);
+            return;
+          }
+          accept(paths);
+        } catch {
+          setRefused("Pano okunamadı. Belgeyi seçerek ya da sürükleyerek açın.");
+        }
+      })();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [accept]);
 
   // Native sürükle-bırak. HTML5 drop olayı Tauri'de dosya yolunu vermez.
   useEffect(() => {
@@ -236,14 +281,14 @@ export function DocumentSurface({ feature, recents, outcome, openRequest, onDocu
               A'dan sonra B) ama YALNIZ tek yuvalı dalda söyleniyordu: iki
               yuvalı boş durumda ipucu hiç çizilmiyordu, yetenek keşfedilemez
               kalıyordu. Canlı pencerede görüldü. */}
-          <span className="welcome-hint">veya belgeleri buraya sürükleyin</span>
+          <span className="welcome-hint">veya belgeleri buraya sürükleyin ya da {shortcutLabel("V")} ile yapıştırın</span>
           </>
         ) : (
           <div className="welcome-action">
             <Button variant="primary" onClick={() => void browse(0)} title={`${mode.openLabel}  ${shortcutLabel("O")}`}>
               {mode.openLabel}
             </Button>
-            <span className="welcome-hint">veya buraya sürükleyin</span>
+            <span className="welcome-hint">veya buraya sürükleyin ya da {shortcutLabel("V")} ile yapıştırın</span>
           </div>
         )}
 

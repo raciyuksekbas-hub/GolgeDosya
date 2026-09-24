@@ -6,6 +6,7 @@
 
 pub mod atomic;
 pub mod browser_surface;
+pub mod clipboard;
 pub mod features;
 
 /// Modül motorları. Her biri yalnız kendi cargo feature'ı açıkken derlenir.
@@ -245,7 +246,8 @@ pub fn run() {
                 save_settings,
                 remember_documents,
                 forget_documents,
-                migrate_legacy_settings
+                migrate_legacy_settings,
+                clipboard::pasted_document_paths
                 $(, $extra)*
             ]
         };

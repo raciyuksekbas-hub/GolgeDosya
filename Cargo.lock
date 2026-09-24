@@ -247,6 +247,8 @@ dependencies = [
  "ekler-core",
  "ikincigoz-core",
  "lopdf",
+ "objc2-app-kit",
+ "objc2-foundation",
  "process-bridge",
  "serde",
  "serde_json",

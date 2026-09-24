@@ -406,6 +406,33 @@ async function browserSurface() {
     { ...page, nokta: spot, olayEngellendi: prevented });
 }
 
+/** Madde 21: Gezgin'de kopyalanan dosya Ctrl+V ile belge yüzeyinde açılır. */
+async function paste() {
+  await mode("Düzenle");
+  await closeDocument();
+  native("clip-file", { Path: F.vektor });
+  const spot = await cdp.eval(`(() => {
+    const bad = 'button,a,input,textarea,select,label,[role=button],[tabindex],img,canvas,svg';
+    for (let y = Math.round(innerHeight * 0.85); y > innerHeight * 0.3; y -= 23)
+      for (let x = Math.round(innerWidth * 0.55); x < innerWidth * 0.95; x += 31) {
+        const el = document.elementFromPoint(x, y);
+        if (el && !el.closest(bad)) return { x: Math.round(x * devicePixelRatio), y: Math.round(y * devicePixelRatio) };
+      }
+    return null;
+  })()`);
+  if (spot) native("click", { X: spot.x, Y: spot.y });
+  native("key", { Keys: "CTRL+V" });
+  let opened = false;
+  try {
+    await cdp.until(`!!document.querySelector('.thumbnail-list img, .pdf-page-viewport img')`, { timeoutMs: 30_000 });
+    opened = true;
+  } catch { /* aşağıda ölçülür */ }
+  const chip = await cdp.eval(`[...document.querySelectorAll('.doc-chip-name')].map((e) => e.textContent)`);
+  check("21", "Gezgin'de kopyalanan PDF, Düzenle'de Ctrl+V ile açılır", opened && chip.some((c) => c.includes("vektör.pdf")), { acildi: opened, bar: chip });
+  shot("yapistir");
+  await closeDocument();
+}
+
 /** Madde 13: Klasörde Göster, çıktı klasörünün KENDİSİNİ açmalı. */
 async function reveal() {
   await invoke("tavzih_accept_terms");
@@ -567,6 +594,7 @@ async function main() {
     ["ortam", environment],
     ["önizleme", previews],
     ["tarayıcı yüzeyi", browserSurface],
+    ["yapıştır", paste],
     ["klasörde göster", reveal],
     ["ekler klasörü", annexFolder],
     ["ekran görüntüleri", screenshots],
