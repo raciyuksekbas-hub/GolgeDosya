@@ -140,7 +140,10 @@ jobs:
       # ---------- § Üretim derlemesi ----------
       - name: Tauri üretim derlemesi (NSIS + portable)
         working-directory: apps/belge-shell
-        run: npm run tauri build -- --target x86_64-pc-windows-msvc --bundles nsis --verbose
+        run: |
+          # Günlük dosyaya da yazılır: kurulumun dil tabloları aşağıda ölçülür.
+          npm run tauri build -- --target x86_64-pc-windows-msvc --bundles nsis --verbose 2>&1 | Tee-Object -FilePath ../../tauri-build.log
+          if ($LASTEXITCODE -ne 0) { throw "tauri build $LASTEXITCODE ile bitti" }
 
       - name: Çıktıları topla
         run: |
@@ -189,6 +192,13 @@ jobs:
           foreach ($field in @($pv.FileVersion, $pv.ProductVersion)) {
             if ($field -notmatch "^0\.3\.0") { "✗ surum 0.3.0 ile baslamiyor: $field"; $ok = $false }
           }
+          # Kurulum dili (saha maddesi 4): Türkçe Windows'ta Türkçe, başka her
+          # dilde İngilizce. makensis dil tablolarını sayar: yalnız İngilizce
+          # derlenmişken "1 language table" diyordu.
+          $tables = Select-String -Path tauri-build.log -Pattern 'Install:.*?(\d+) language table' | Select-Object -First 1
+          $count = if ($tables) { [int]$tables.Matches[0].Groups[1].Value } else { 0 }
+          "- kurulum dil tablosu : $count (beklenen 2: English + Turkish)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          if ($count -ne 2) { "✗ kurulum dil tablosu 2 değil: $count"; $ok = $false }
           if (-not $ok) { throw "surum metadata dogrulamasi basarisiz" }
 
       # § WebView2 durumu.
