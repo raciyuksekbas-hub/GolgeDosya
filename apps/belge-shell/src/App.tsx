@@ -401,7 +401,7 @@ export function App() {
           ) : usable && active.key === "ikincigoz" ? (
             <ReviewWorkspace path={carried[0]} />
           ) : usable && active.key === "degisikis" ? (
-            <CompareWorkspace paths={carried} onPairChange={setComparePair} />
+            <CompareWorkspace paths={carried} onPairChange={setComparePair} onReplaceDocuments={openDocuments} />
           ) : usable && active.key === "duzenek" ? (
             // Açılamayan belgeden kurtulma yolu kabuktan geçer: bardaki ad, son
             // kullanılanlar ve çalışma alanı aynı belgeyi göstersin.

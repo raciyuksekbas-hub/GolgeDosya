@@ -10,6 +10,7 @@ import { dirname, resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { PaneHeader, SIDE_CAPS } from "./DocumentPane";
+import { replacedPair } from "./CompareWorkspace";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(here, "CompareWorkspace.tsx"), "utf8");
@@ -33,37 +34,40 @@ describe("her iki taraf da değiştirilebilir", () => {
   });
 
   it("temel ve değişik ayrı ayrı değiştirilir", () => {
-    expect(source).toContain("void replaceSide(0, f)");
-    expect(source).toContain("void replaceSide(1, f)");
+    expect(source).toContain("onReplace={() => void replaceSide(0)}");
+    expect(source).toContain("onReplace={() => void replaceSide(1)}");
+  });
+
+  it("başlıkta gizli tarayıcı dosya girdisi yok: yolsuz dosya alınmaz", () => {
+    const html = renderToStaticMarkup(<PaneHeader doc={doc} side="revised" onReplace={() => undefined} />);
+    expect(html).not.toContain('type="file"');
   });
 });
 
-describe("§34 — replace semantiği", () => {
+describe("§34 — değiştirme kabuğun belge akışından geçer", () => {
+  // Saha denetimi: "Değiştir" gizli bir tarayıcı girdisinden yolsuz bir File
+  // alıyor, yol yerine dosya ADINI saklıyordu. Bardaki belge adları eskide
+  // kalıyor, son belgeler güncellenmiyor, başka kipe geçince ESKİ belge
+  // taşınıyordu.
   const body = source.slice(source.indexOf("const replaceSide"), source.indexOf("const scrollFrom"));
+  const app = readFileSync(resolve(here, "../../App.tsx"), "utf8");
 
-  it("yalnız istenen taraf yeniden çıkarılır", () => {
-    expect(body).toContain("next[side] = { path: file.name, doc: extracted }");
-    // Diğer taraf kopyalanır, yeniden okunmaz.
-    expect(body).toContain("const next: [Loaded, Loaded] = [...current]");
-    expect(body).not.toContain("Promise.all");
+  it("yalnız istenen taraf değişir, diğeri aynı yol", () => {
+    const pair: [string, string] = ["C:\\Belgeler\\temel.docx", "C:\\Belgeler\\değişik.docx"];
+    expect(replacedPair(pair, 0, "C:\\Belgeler\\yeni.docx")).toEqual(["C:\\Belgeler\\yeni.docx", pair[1]]);
+    expect(replacedPair(pair, 1, "C:\\Belgeler\\yeni.docx")).toEqual([pair[0], "C:\\Belgeler\\yeni.docx"]);
   });
 
-  it("eski seçim temizlenir: ekranda eskimiş fark kalmaz", () => {
-    expect(body).toContain("setSelected(undefined)");
+  it("yerel seçici gerçek yolu verir; çift kabukta açılır (bar, son belgeler, kip taşıma)", () => {
+    expect(body).toContain("await open({");
+    expect(body).toContain("onReplaceDocuments?.(next)");
+    expect(body).not.toContain("file.name");
+    expect(app).toContain("onReplaceDocuments={openDocuments}");
   });
 
-  it("kabuk barı yeni sırayı öğrenir", () => {
-    expect(body).toContain("onPairChange?.(next.map((d) => d.path))");
-  });
-
-  it("değişiklik duyurulur", () => {
-    expect(body).toContain("sürüm ${file.name} ile değiştirildi");
-  });
-
-  it("okunamayan belge sessizce geçilmez", () => {
-    expect(body).toContain("catch");
-    expect(body).toContain("setFailure(message)");
-    expect(body).toContain('logFailure("degisikis replace side"');
+  it("seçici açılamazsa sessiz kalınmaz", () => {
+    expect(body).toContain('logFailure("degisikis replace picker"');
+    expect(body).toContain("Belge seçici açılamadı");
   });
 });
 

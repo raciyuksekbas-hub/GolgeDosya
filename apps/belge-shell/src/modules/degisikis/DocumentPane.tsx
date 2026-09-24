@@ -56,9 +56,9 @@ export function UploadZone({ side, loading, error, dropTarget, onFiles }: {
 export function PaneHeader({ doc, side, onReplace }: {
   doc?: LocalDocument;
   side: Side;
-  onReplace: (file: File) => void;
+  /** Kabuğun yerel belge seçicisiyle bu tarafı değiştirir (gerçek yol). */
+  onReplace: () => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   return (
     <header className="pane-header">
       <span className="pane-side">{SIDE_CAPS[side]}</span>
@@ -66,8 +66,7 @@ export function PaneHeader({ doc, side, onReplace }: {
         <>
           <span className="pane-file"><Icon name="file" size={13} /><strong title={doc.name}>{doc.name}</strong></span>
           <span className="pane-meta">{doc.extension.toLocaleUpperCase("tr-TR")} · {formatSize(doc.size)} · {doc.blocks.length} bölüm</span>
-          <input ref={inputRef} type="file" accept={DOCUMENT_FILE_ACCEPT} hidden onChange={(event) => event.target.files?.[0] && onReplace(event.target.files[0])} />
-          <button className="text-button" onClick={() => inputRef.current?.click()}>Değiştir</button>
+          <button className="text-button" onClick={onReplace}>Değiştir</button>
         </>
       ) : (
         <span className="pane-meta">Belge seçilmedi</span>

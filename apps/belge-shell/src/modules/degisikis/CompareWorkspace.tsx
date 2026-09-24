@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { compareDocuments } from "./core/compare";
 import { extractDocument, ExtractionError } from "./core/extractors";
 import type { LocalDocument } from "./core/types";
@@ -14,7 +15,7 @@ import { announce } from "../../shared-ui/Announcer";
 import { logFailure } from "../../shared-ui/failure";
 import { Button, Status } from "../../shared-ui/primitives";
 import { InspectorPanel, ToolbarActions, ToolbarStatus } from "../../shell/chrome";
-import { fileNameOf as baseName } from "../../shell/modes";
+import { MODES, fileNameOf as baseName } from "../../shell/modes";
 import "./compare.css";
 
 /**
@@ -112,7 +113,12 @@ export function CompareActions({ sync, onSync, canCopy, copyState, onCopy }: {
   );
 }
 
-export function CompareWorkspace({ paths, onPairChange }: {
+/** Çiftin bir tarafını yeni yolla değiştirir; diğer taraf aynen kalır. */
+export function replacedPair(pair: [string, string], side: 0 | 1, path: string): [string, string] {
+  return side === 0 ? [path, pair[1]] : [pair[0], path];
+}
+
+export function CompareWorkspace({ paths, onPairChange, onReplaceDocuments }: {
   paths: string[];
   /**
    * Yürürlükteki Temel/Değişik sırasını kabuğa bildirir.
@@ -124,6 +130,15 @@ export function CompareWorkspace({ paths, onPairChange }: {
    * kaybetmez.
    */
   onPairChange?: (paths: string[]) => void;
+  /**
+   * Bir tarafı değiştirmek, kabuğun belgelerini değiştirmektir.
+   *
+   * "Değiştir" eskiden gizli bir tarayıcı dosya girdisinden YOLSUZ bir `File`
+   * alıyordu: bardaki belge adları eski dosyada kalıyor, son belgeler
+   * güncellenmiyor ve başka bir kipe geçince ESKİ belge taşınıyordu. Artık
+   * yerel seçici gerçek yolu verir ve çift kabuğun belge akışından açılır.
+   */
+  onReplaceDocuments?: (paths: string[]) => void;
 }) {
   const [docs, setDocs] = useState<[Loaded, Loaded] | null>(null);
   const [busy, setBusy] = useState(true);
@@ -255,48 +270,31 @@ export function CompareWorkspace({ paths, onPairChange }: {
   // kullanıcının kaydırdığı panele eski konumu geri yazıyordu (madde 22).
   const paneSync = useRef(createPaneSync());
   /**
-   * Bir tarafı YERİNDE değiştir (§33–34).
-   *
-   * Karşılaştırma açıldıktan sonra iki kaynak kilitleniyordu: başka bir
-   * belge denemek için çalışma alanını kapatıp baştan başlamak gerekiyordu.
-   * Oysa `PaneHeader` ve `.pane-header` stilleri bu akış için zaten vardı —
-   * bileşen hiç çizilmiyordu.
-   *
-   * Yalnız istenen taraf değişir; diğer taraf yeniden çıkarılmaz. Eski diff
-   * durumu (seçili fark, süzgeç konumu) temizlenir ki ekranda eskimiş bir
-   * seçim kalmasın.
+   * Bir tarafı YERİNDE değiştir (§33–34). Yalnız istenen taraf değişir; diğer
+   * taraf aynı belgedir. Seçim ve süzgeç yeni karşılaştırmayla yeniden kurulur.
    */
   const replaceSide = useCallback(
-    async (side: 0 | 1, file: File) => {
-      setBusy(true);
-      setFailure(null);
+    async (side: 0 | 1) => {
+      if (!docs) return;
+      let picked: string | string[] | null;
       try {
-        const extracted = await extractDocument(file);
-        setDocs((current) => {
-          if (!current) return current;
-          const next: [Loaded, Loaded] = [...current] as [Loaded, Loaded];
-          next[side] = { path: file.name, doc: extracted };
-          onPairChange?.(next.map((d) => d.path));
-          return next;
+        picked = await open({
+          multiple: false,
+          directory: false,
+          filters: [{ name: MODES.degisikis.pickerLabel, extensions: MODES.degisikis.extensions }],
         });
-        // Eski seçim yeni belgede anlamsız; sayaç ve süzgeç yeniden kurulur.
-        setSelected(undefined);
-        announce(
-          `${side === 0 ? "Temel" : "Değişik"} sürüm ${file.name} ile değiştirildi. Karşılaştırma yenilendi.`,
-        );
       } catch (e) {
-        logFailure("degisikis replace side", e);
-        const message =
-          e instanceof ExtractionError
-            ? e.message
-            : "Belge okunamadı. Dosyanın bütünlüğünü kontrol edin.";
-        setFailure(message);
-        announce(message);
-      } finally {
-        setBusy(false);
+        logFailure("degisikis replace picker", e);
+        announce("Belge seçici açılamadı. Lütfen yeniden deneyin.");
+        return;
       }
+      if (typeof picked !== "string") return;
+      const next = replacedPair([docs[0].path, docs[1].path], side, picked);
+      announce(`${side === 0 ? "Temel" : "Değişik"} sürüm ${baseName(picked)} ile değiştiriliyor.`);
+      onPairChange?.(next);
+      onReplaceDocuments?.(next);
     },
-    [onPairChange],
+    [docs, onPairChange, onReplaceDocuments],
   );
 
   const scrollFrom = useCallback(
@@ -436,7 +434,7 @@ export function CompareWorkspace({ paths, onPairChange }: {
 
       <div className="compare-panes">
         <div className="pane">
-        <PaneHeader doc={docs[0].doc} side="base" onReplace={(f) => void replaceSide(0, f)} />
+        <PaneHeader doc={docs[0].doc} side="base" onReplace={() => void replaceSide(0)} />
         <DocumentPane
           side="base"
           doc={docs[0].doc}
@@ -468,7 +466,7 @@ export function CompareWorkspace({ paths, onPairChange }: {
           syncToken={signature}
         />
         <div className="pane">
-        <PaneHeader doc={docs[1].doc} side="revised" onReplace={(f) => void replaceSide(1, f)} />
+        <PaneHeader doc={docs[1].doc} side="revised" onReplace={() => void replaceSide(1)} />
         <DocumentPane
           side="revised"
           doc={docs[1].doc}
