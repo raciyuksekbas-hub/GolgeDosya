@@ -142,8 +142,18 @@ jobs:
         working-directory: apps/belge-shell
         run: |
           # Günlük dosyaya da yazılır: kurulumun dil tabloları aşağıda ölçülür.
-          npm run tauri build -- --target x86_64-pc-windows-msvc --bundles nsis --verbose 2>&1 | Tee-Object -FilePath ../../tauri-build.log
-          if ($LASTEXITCODE -ne 0) { throw "tauri build $LASTEXITCODE ile bitti" }
+          # NSIS araçları her koşuda GitHub sürüm varlıklarından indirilir; o
+          # indirmenin geçici HTTP 5xx hatası yeniden denenir (derleme önbellekte,
+          # ikinci deneme yalnız paketlemedir). Başka her hata ilk seferde düşer.
+          for ($try = 1; $try -le 3; $try++) {
+            npm run tauri build -- --target x86_64-pc-windows-msvc --bundles nsis --verbose 2>&1 | Tee-Object -FilePath ../../tauri-build.log
+            $code = $LASTEXITCODE
+            if ($code -eq 0) { break }
+            if (-not (Select-String -Path ../../tauri-build.log -Pattern 'failed to bundle project: `http status: 5\d\d`' -Quiet)) { break }
+            Write-Host "Paketleme aracı indirilemedi (HTTP 5xx), yeniden deneniyor: $try/3"
+            Start-Sleep -Seconds 30
+          }
+          if ($code -ne 0) { throw "tauri build $code ile bitti" }
 
       - name: Çıktıları topla
         run: |
