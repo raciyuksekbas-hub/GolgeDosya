@@ -8,10 +8,12 @@ import { DocumentPane, PaneHeader } from "./DocumentPane";
 import { ChangeRail } from "./ChangeRail";
 import { ChangeInspector } from "./ChangeInspector";
 import { useRowHeightSync } from "./useRowHeightSync";
+import { createPaneSync } from "./paneSync";
+import { copyChangesText } from "./uiLabels";
 import { announce } from "../../shared-ui/Announcer";
 import { logFailure } from "../../shared-ui/failure";
-import { Status } from "../../shared-ui/primitives";
-import { InspectorPanel, ToolbarStatus } from "../../shell/chrome";
+import { Button, Status } from "../../shared-ui/primitives";
+import { InspectorPanel, ToolbarActions, ToolbarStatus } from "../../shell/chrome";
 import { fileNameOf as baseName } from "../../shell/modes";
 import "./compare.css";
 
@@ -56,6 +58,60 @@ export function diffCounterLabel(total: number, visible: number, selectedIndex: 
   return `${Math.max(selectedIndex, 0) + 1} / ${visible} fark`;
 }
 
+/**
+ * "Eş zamanlı kaydır" seçimi oturum boyunca hatırlanır (kip değiştirip dönünce
+ * de), diske yazılmaz — bağımsız Değişikİş'te de böyleydi. Varsayılan açık.
+ */
+const session = { sync: true };
+
+/**
+ * Bütün değişiklikleri panoya yazar: bağımsız Değişikİş'in biçimi, süzgeçten
+ * bağımsız. Pano reddederse "failed" döner; sessiz kalınmaz.
+ */
+export async function copyAllChanges(
+  changes: Parameters<typeof copyChangesText>[0],
+  clipboard: Pick<Clipboard, "writeText">,
+): Promise<"done" | "failed"> {
+  try {
+    await clipboard.writeText(copyChangesText(changes));
+    return "done";
+  } catch (e) {
+    logFailure("degisikis copy changes", e);
+    return "failed";
+  }
+}
+
+/**
+ * Bardaki iki kontrol: eş zamanlı kaydırma anahtarı ve "Değişiklikleri
+ * Kopyala". İkisi de bağımsız Değişikİş'te vardı ve taşımada düştü (b9a5ca4;
+ * saha maddeleri 28 ve 33).
+ */
+export function CompareActions({ sync, onSync, canCopy, copyState, onCopy }: {
+  sync: boolean;
+  onSync: (next: boolean) => void;
+  canCopy: boolean;
+  copyState: "idle" | "done" | "failed";
+  onCopy: () => void;
+}) {
+  return (
+    <>
+      <label className="toolbar-switch">
+        <input type="checkbox" role="switch" checked={sync} onChange={(event) => onSync(event.target.checked)} />
+        Eş zamanlı kaydır
+      </label>
+      <Button
+        className="btn-sm"
+        variant="quiet"
+        disabled={!canCopy}
+        onClick={onCopy}
+        title="Bütün değişiklikleri düz metin olarak panoya kopyalar (süzgeçten bağımsız)"
+      >
+        {copyState === "done" ? "Kopyalandı" : copyState === "failed" ? "Kopyalanamadı" : "Değişiklikleri Kopyala"}
+      </Button>
+    </>
+  );
+}
+
 export function CompareWorkspace({ paths, onPairChange }: {
   paths: string[];
   /**
@@ -74,6 +130,8 @@ export function CompareWorkspace({ paths, onPairChange }: {
   const [failure, setFailure] = useState<string | null>(null);
   const [filter, setFilter] = useState<ChangeFilter>("all");
   const [selected, setSelected] = useState<string | undefined>(undefined);
+  const [sync, setSync] = useState(session.sync);
+  const [copyState, setCopyState] = useState<"idle" | "done" | "failed">("idle");
 
   const basePane = useRef<HTMLDivElement | null>(null);
   const revisedPane = useRef<HTMLDivElement | null>(null);
@@ -192,8 +250,10 @@ export function CompareWorkspace({ paths, onPairChange }: {
 
   useRowHeightSync(baseRows, revisedRows, basePane, revisedPane, signature);
 
-  // Eşzamanlı kaydırma: standalone davranışın aynısı.
-  const syncing = useRef(false);
+  // Eş zamanlı kaydırma: bağımsız Değişikİş'in satıra bağlı eşlemesi ve zaman
+  // damgalı yankı koruması (bkz. paneSync.ts). Taşımadaki yeniden yazım,
+  // kullanıcının kaydırdığı panele eski konumu geri yazıyordu (madde 22).
+  const paneSync = useRef(createPaneSync());
   /**
    * Bir tarafı YERİNDE değiştir (§33–34).
    *
@@ -239,17 +299,32 @@ export function CompareWorkspace({ paths, onPairChange }: {
     [onPairChange],
   );
 
-  const scrollFrom = useCallback((from: "base" | "revised") => {
-    if (syncing.current) return;
-    const src = from === "base" ? basePane.current : revisedPane.current;
-    const dst = from === "base" ? revisedPane.current : basePane.current;
-    if (!src || !dst) return;
-    syncing.current = true;
-    dst.scrollTop = src.scrollTop;
-    requestAnimationFrame(() => {
-      syncing.current = false;
-    });
+  const scrollFrom = useCallback(
+    (from: "base" | "revised") => {
+      if (!sync) return;
+      paneSync.current.follow(
+        from,
+        { base: basePane.current, revised: revisedPane.current },
+        { base: baseRows.current, revised: revisedRows.current },
+      );
+    },
+    [sync],
+  );
+
+  const changeSync = useCallback((next: boolean) => {
+    session.sync = next;
+    setSync(next);
+    announce(next ? "Eş zamanlı kaydırma açık." : "Eş zamanlı kaydırma kapalı; paneller ayrı kaydırılır.");
   }, []);
+
+  /** Bağımsız Değişikİş'in kopyası: BÜTÜN değişiklikler, düz metin, satır başına bir. */
+  const copyChanges = useCallback(async () => {
+    if (!comparison?.changes.length) return;
+    const result = await copyAllChanges(comparison.changes, navigator.clipboard);
+    setCopyState(result);
+    announce(result === "done" ? "Değişiklikler panoya kopyalandı." : "Panoya kopyalanamadı.");
+    window.setTimeout(() => setCopyState("idle"), 2000);
+  }, [comparison]);
 
   // Seçili fark GÖRÜNÜR ALANA getirilir.
   //
@@ -273,6 +348,8 @@ export function CompareWorkspace({ paths, onPairChange }: {
     const bottom = top + row.offsetHeight;
     if (top >= pane.scrollTop && bottom <= pane.scrollTop + view) return;
     const next = Math.max(0, top - view / 2 + row.offsetHeight / 2);
+    // İki panel de programca kaydırılıyor: yankıları izletilmez.
+    paneSync.current.quiet();
     pane.scrollTop = next;
     if (revisedPane.current) revisedPane.current.scrollTop = next;
   }, [selected, model]);
@@ -329,6 +406,15 @@ export function CompareWorkspace({ paths, onPairChange }: {
       {/* Fark sayacı barda, panelde değil: aynı sayı iki evde durmaz.
           Ray KONUMU, liste İÇERİĞİ gösterir; sayı ikisinin de üstünde. */}
       <ToolbarStatus>{diffCounterLabel(model.summary.total, visible.length, selectedIndex)}</ToolbarStatus>
+      <ToolbarActions>
+        <CompareActions
+          sync={sync}
+          onSync={changeSync}
+          canCopy={model.summary.total > 0}
+          copyState={copyState}
+          onCopy={() => void copyChanges()}
+        />
+      </ToolbarActions>
 
       <InspectorPanel title="Farklar" scope="compare-root">
         <ChangeInspector

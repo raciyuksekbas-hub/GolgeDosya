@@ -130,7 +130,10 @@ export function DocumentPane({ side, doc: _doc, rows, changes, selectedRows, pan
       role="region"
       aria-label={SIDE_LABEL[side]}
     >
-      <article className="paper">
+      {/* Belge metni SEÇİLEBİLİR: kabuk gövdede seçimi kapatır, belge gösteren
+          yüzey kendisi açar. Karşılaştır açmıyordu; Ctrl+C ve sağ tık "Kopyala"
+          hiçbir şey kopyalamıyordu (madde 33). Satır numaraları seçilmez. */}
+      <article className="paper selectable">
         {rows.map((row, index) => {
           const block = side === "base" ? row.base : row.revised;
           const fragments = side === "base" ? row.baseFragments : row.revisedFragments;

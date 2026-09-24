@@ -191,6 +191,18 @@
   align-items: center;
 }
 .toolbar-actions:empty { display: none; }
+/* Bardaki anahtar (ör. "Eş zamanlı kaydır"): gerçek onay kutusu, switch rolü.
+   Düğme değil ayar; metin ikincil tonda, tıklama alanı etiketin tamamı. */
+.toolbar-switch {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.toolbar-switch input { margin: 0; }
 
 .content-body {
   grid-row: 3;
