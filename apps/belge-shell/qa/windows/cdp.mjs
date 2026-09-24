@@ -1,8 +1,9 @@
 // Asgari Chrome DevTools Protocol istemcisi (Kapı 6).
 //
 // Bağımlılık yok: Node 22'nin yerleşik WebSocket ve fetch'i yeter. WebView2,
-// WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=N ile başlatılınca
-// sayfayı bu uçta sunar; Playwright'ın connectOverCDP'si de aynı ucu kullanır.
+// --remote-debugging-port=N ile başlatılınca (saha-e2e.mjs: HKLM ilkesi ya da
+// ortam değişkeni) sayfayı bu uçta sunar; Playwright'ın connectOverCDP'si de
+// aynı ucu kullanır.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function attach(port, { timeoutMs = 90_000 } = {}) {

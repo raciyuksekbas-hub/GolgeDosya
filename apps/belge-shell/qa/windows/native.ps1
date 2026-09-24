@@ -144,6 +144,11 @@ switch ($Action) {
     }
     Out-Json @{ windows = $wins }
   }
+  'clip-file' {
+    # Gezgin'de "Kopyala" ile aynı: panoya dosya listesi (CF_HDROP).
+    Set-Clipboard -LiteralPath $Path
+    Out-Json @{ clipboard = $Path }
+  }
   'close-explorer' {
     $shell = New-Object -ComObject Shell.Application
     foreach ($w in @($shell.Windows())) { try { $w.Quit() } catch { } }

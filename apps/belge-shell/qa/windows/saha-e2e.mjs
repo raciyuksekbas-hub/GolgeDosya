@@ -12,7 +12,7 @@
 // Kullanım (Windows):  node qa/windows/saha-e2e.mjs --exe <GolgeDosya.exe> --out <klasör>
 import { execFileSync, spawn } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { deflateSync } from "node:zlib";
 import { attach } from "./cdp.mjs";
@@ -79,12 +79,40 @@ function diagnose() {
     return execFileSync(
       "powershell.exe",
       ["-NoProfile", "-Command",
-        "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'msedgewebview2|belge-shell|GolgeDosya' } | ForEach-Object { \"$($_.ProcessId) $($_.Name) $($_.CommandLine)\" }; netstat -ano | Select-String 'LISTENING' | Select-String ':93'"],
+        `Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'msedgewebview2|belge-shell|GolgeDosya' } | ForEach-Object { "$($_.ProcessId) $($_.Name) $($_.CommandLine)" }; netstat -ano | Select-String 'LISTENING' | Select-String ':93'; reg query '${DEBUG_POLICY}' 2>$null`],
       { encoding: "utf8", timeout: 60_000 },
     );
   } catch (e) {
     return String(e?.message ?? e);
   }
+}
+
+// WebView2 150+ yönetici olarak çalışan bir uygulamada uzaktan hata ayıklama
+// ucunu ortam değişkeninden (ve HKCU'dan) ALMAZ; yalnız HKLM ilkesini ve
+// uygulamanın kendi API argümanlarını dinler. GitHub runner'ı yöneticidir.
+// İlke uygulama adına yazılır ve iş bitince silinir; yönetici olmayan bir
+// makinede yazılamaz, orada ortam değişkeni zaten yeter.
+const DEBUG_POLICY = "HKLM\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments";
+let debugPolicySet = false;
+
+function setDebugPolicy(args) {
+  try {
+    execFileSync("reg.exe", ["add", DEBUG_POLICY, "/v", basename(EXE), "/t", "REG_SZ", "/d", args, "/f"], { stdio: "ignore" });
+    debugPolicySet = true;
+  } catch {
+    debugPolicySet = false;
+  }
+  return debugPolicySet;
+}
+
+function clearDebugPolicy() {
+  if (!debugPolicySet) return;
+  try {
+    execFileSync("reg.exe", ["delete", DEBUG_POLICY, "/v", basename(EXE), "/f"], { stdio: "ignore" });
+  } catch {
+    // Zaten yok.
+  }
+  debugPolicySet = false;
 }
 
 async function launch() {
@@ -98,13 +126,16 @@ async function launch() {
   mkdirSync(userData, { recursive: true });
   clearLeftovers();
   await sleep(1000);
+  const debugArgs = `--remote-debugging-port=${port} --remote-allow-origins=*`;
+  const policy = setDebugPolicy(debugArgs);
+  if (launches === 1) observe("teşhis", "Hata ayıklama ucu kaynağı", policy ? "HKLM ilkesi + ortam değişkeni" : "yalnız ortam değişkeni");
   app = spawn(EXE, [], {
     env: {
       ...process.env,
       APPDATA,
       USERPROFILE: HOME,
       WEBVIEW2_USER_DATA_FOLDER: userData,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-allow-origins=*`,
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: debugArgs,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -406,6 +437,33 @@ async function browserSurface() {
     { ...page, nokta: spot, olayEngellendi: prevented });
 }
 
+/** Madde 21: Gezgin'de kopyalanan dosya Ctrl+V ile belge yüzeyinde açılır. */
+async function paste() {
+  await mode("Düzenle");
+  await closeDocument();
+  native("clip-file", { Path: F.vektor });
+  const spot = await cdp.eval(`(() => {
+    const bad = 'button,a,input,textarea,select,label,[role=button],[tabindex],img,canvas,svg';
+    for (let y = Math.round(innerHeight * 0.85); y > innerHeight * 0.3; y -= 23)
+      for (let x = Math.round(innerWidth * 0.55); x < innerWidth * 0.95; x += 31) {
+        const el = document.elementFromPoint(x, y);
+        if (el && !el.closest(bad)) return { x: Math.round(x * devicePixelRatio), y: Math.round(y * devicePixelRatio) };
+      }
+    return null;
+  })()`);
+  if (spot) native("click", { X: spot.x, Y: spot.y });
+  native("key", { Keys: "CTRL+V" });
+  let opened = false;
+  try {
+    await cdp.until(`!!document.querySelector('.thumbnail-list img, .pdf-page-viewport img')`, { timeoutMs: 30_000 });
+    opened = true;
+  } catch { /* aşağıda ölçülür */ }
+  const chip = await cdp.eval(`[...document.querySelectorAll('.doc-chip-name')].map((e) => e.textContent)`);
+  check("21", "Gezgin'de kopyalanan PDF, Düzenle'de Ctrl+V ile açılır", opened && chip.some((c) => c.includes("vektör.pdf")), { acildi: opened, bar: chip });
+  shot("yapistir");
+  await closeDocument();
+}
+
 /** Madde 13: Klasörde Göster, çıktı klasörünün KENDİSİNİ açmalı. */
 async function reveal() {
   await invoke("tavzih_accept_terms");
@@ -567,6 +625,7 @@ async function main() {
     ["ortam", environment],
     ["önizleme", previews],
     ["tarayıcı yüzeyi", browserSurface],
+    ["yapıştır", paste],
     ["klasörde göster", reveal],
     ["ekler klasörü", annexFolder],
     ["ekran görüntüleri", screenshots],
@@ -587,6 +646,7 @@ try {
   check("adım", "harness", false, String(e?.stack ?? e));
   await quit().catch(() => {});
 } finally {
+  clearDebugPolicy();
   writeFileSync(join(OUT, "sonuc.json"), JSON.stringify(results, null, 2), "utf8");
   const lines = ["# Kapı 6 — gerçek pencere", "", "| | madde | iddia | ayrıntı |", "|---|---|---|---|"];
   for (const r of results) {
