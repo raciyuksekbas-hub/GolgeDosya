@@ -92,14 +92,14 @@ describe("kullanım koşulları onayı", () => {
   });
 });
 
-describe("Finder'da Göster", () => {
-  // Yeniden üretim: çıktı klasörünü Finder'da elle sil, sonra düğmeye bas.
+describe("Klasörde Göster", () => {
+  // Yeniden üretim: çıktı klasörünü dosya yöneticisinde elle sil, sonra düğmeye bas.
   // `onReveal={() => api.revealOutputFolder()}` yüzen bir sözdü: Finder
   // açılmıyor, hiçbir şey söylenmiyordu.
   it("açılamayan klasör söylenir", () => {
     const reveal = body(convert, "onReveal={");
     expect(reveal).toContain("try {");
-    expect(reveal).toContain("await api.revealOutputFolder()");
+    expect(reveal).toContain("await api.revealOutputFolder(revealTargets(outcome))");
     expect(reveal).toContain("catch");
     expect(reveal).toContain("Çıktı klasörü açılamadı");
   });

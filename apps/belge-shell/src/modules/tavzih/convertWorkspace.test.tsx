@@ -61,7 +61,7 @@ const done = renderToStaticMarkup(
     to="UYAP (.udf)"
     folder={FOLDER}
     onReveal={noop}
-    onAgain={noop}
+    onNew={noop}
   />,
 );
 
@@ -110,9 +110,13 @@ describe("durum sözleşmesi", () => {
     expect(done).toContain("Çıktı");
     expect(done).toContain("Dönüştürülen Belgeler");
     // Tek baskın eylem; ikincisi sessiz.
-    expect(done).toMatch(/Finder(&#x27;|')da Göster/);
+    // Platformdan bağımsız ad (madde 12): Windows'ta "Finder" yoktur.
+    expect(done).toContain("Klasörde Göster");
+    expect(done).not.toContain("Finder");
     expect((done.match(/class="btn btn-primary"/g) ?? []).length).toBe(1);
-    expect(done).toContain("Yeniden Dönüştür");
+    // Madde 16: aynı belgeyi yeniden dönüştürmek değil, yeni bir işlem.
+    expect(done).toContain("Yeni Dönüştürme");
+    expect(done).not.toContain("Yeniden Dönüştür");
   });
 
   it("bar yönü taşır, düğmeyi değil", () => {

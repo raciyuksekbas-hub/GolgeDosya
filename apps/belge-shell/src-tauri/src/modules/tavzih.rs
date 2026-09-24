@@ -327,10 +327,59 @@ pub fn tavzih_set_output_folder(path: Option<String>) -> Result<OutputFolder, Ap
     Ok(tavzih_output_folder())
 }
 
-/// Çıktı klasörünü Finder'da göster. Klasör önce oluşturulur ki henüz
-/// kullanılmamış bir dizinde gösterme işlemi başarısız olmasın.
+/// "Klasörde Göster" neyi açacak?
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum RevealPlan {
+    /// Klasörün KENDİSİNİ aç.
+    OpenFolder(PathBuf),
+    /// Dosyaların bulunduğu klasörü aç ve onları seç.
+    SelectItems(Vec<PathBuf>),
+}
+
+/// Dönüştürmenin ürettiği dosya türleri; başka bir yol seçtirilmez.
+const OUTPUT_EXTENSIONS: [&str; 3] = ["udf", "docx", "zip"];
+
+/// Karar: dönüştürmenin ürettiği dosyalar hâlâ yerindeyse ve hepsi aynı
+/// klasördeyse o klasör açılır ve dosyalar seçilir. Aksi hâlde çıktı
+/// klasörünün KENDİSİ açılır.
+///
+/// Saha hatası (Windows, madde 13): klasör, "öğeyi üst klasöründe göster"
+/// API'sine veriliyordu. Bu API — Windows'ta SHOpenFolderAndSelectItems,
+/// macOS'ta activateFileViewerSelectingURLs — verilen öğenin ÜST klasörünü
+/// açar. Kullanıcı `Belgeler\GölgeDosya\Dönüştürülen Belgeler` yerine
+/// `Belgeler\GölgeDosya`yı görüyordu. Bir klasör bu yüzden hiçbir zaman o
+/// API'ye gitmez.
+///
+/// Ayrıca gösterilen yer, dönüştürmenin GERÇEKTEN yazdığı yerdir: tıklama
+/// anındaki ayar değil. Kullanıcı arada çıktı klasörünü değiştirmişse eski
+/// davranış yanlış klasörü açıyordu.
+pub(crate) fn reveal_plan(dir: &Path, outputs: &[String]) -> RevealPlan {
+    let files: Vec<PathBuf> = outputs.iter().map(PathBuf::from).collect();
+    let is_output = |f: &PathBuf| {
+        f.is_file()
+            && f.extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| OUTPUT_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+    };
+    let together = files.windows(2).all(|w| w[0].parent() == w[1].parent());
+    if !files.is_empty() && together && files.iter().all(is_output) {
+        RevealPlan::SelectItems(files)
+    } else {
+        RevealPlan::OpenFolder(dir.to_path_buf())
+    }
+}
+
+/// Çıktıyı klasöründe göster.
+///
+/// `outputs`: az önce üretilen dosyalar (tek belge, toplu işin arşivi ya da
+/// başarılı öğeler). Boşsa ya da dosyalar artık yoksa çıktı klasörü açılır;
+/// klasör önce oluşturulur ki henüz kullanılmamış bir dizinde gösterme işlemi
+/// başarısız olmasın.
 #[tauri::command]
-pub fn tavzih_reveal_output_folder(app: tauri::AppHandle) -> Result<(), AppError> {
+pub fn tavzih_reveal_output_folder(
+    app: tauri::AppHandle,
+    outputs: Option<Vec<String>>,
+) -> Result<(), AppError> {
     use tauri_plugin_opener::OpenerExt;
     let dir = effective_output_dir();
     std::fs::create_dir_all(&dir).map_err(|e| AppError {
@@ -338,7 +387,13 @@ pub fn tavzih_reveal_output_folder(app: tauri::AppHandle) -> Result<(), AppError
         message: "Klasör oluşturulamadı.".into(),
         detail: e.to_string(),
     })?;
-    app.opener().reveal_item_in_dir(&dir).map_err(|e| AppError {
+    let opened = match reveal_plan(&dir, &outputs.unwrap_or_default()) {
+        RevealPlan::SelectItems(files) => app.opener().reveal_items_in_dir(files),
+        // Yalnız arka ucun hesapladığı klasör açılır; arayüzden gelen bir yol
+        // hiçbir zaman "aç"a verilmez (dosya olsaydı uygulamasıyla açılırdı).
+        RevealPlan::OpenFolder(dir) => app.opener().open_path(dir.to_string_lossy(), None::<&str>),
+    };
+    opened.map_err(|e| AppError {
         code: "OPEN_FAILED".into(),
         message: "Klasör açılamadı.".into(),
         detail: e.to_string(),
@@ -348,6 +403,70 @@ pub fn tavzih_reveal_output_folder(app: tauri::AppHandle) -> Result<(), AppError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Unicode profil, boşluk, kesme işareti: sahadaki yolun biçimi.
+    fn output_tree() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root
+            .path()
+            .join("Çağrı Şahin")
+            .join("Documents")
+            .join("GölgeDosya")
+            .join("Dönüştürülen Belgeler");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("Müvekkil'in dilekçesi.udf");
+        std::fs::write(&file, b"PK").unwrap();
+        (root, dir, file)
+    }
+
+    #[test]
+    fn a_folder_is_opened_itself_never_handed_to_select_in_parent() {
+        // Madde 13: eski kod klasörü "üst klasörde seç" API'sine veriyordu.
+        let (_root, dir, _file) = output_tree();
+        assert_eq!(reveal_plan(&dir, &[]), RevealPlan::OpenFolder(dir.clone()));
+        // Klasör yolu "çıktı" diye gelse bile seçtirilmez; klasör açılır.
+        let as_output = [dir.display().to_string()];
+        assert_eq!(
+            reveal_plan(&dir, &as_output),
+            RevealPlan::OpenFolder(dir.clone())
+        );
+    }
+
+    #[test]
+    fn a_produced_file_opens_its_own_folder_with_the_file_selected() {
+        let (_root, dir, file) = output_tree();
+        let plan = reveal_plan(&dir, &[file.display().to_string()]);
+        assert_eq!(plan, RevealPlan::SelectItems(vec![file.clone()]));
+        // Açılacak klasör, dosyanın klasörü = çıktı klasörü; üstü değil.
+        assert_eq!(file.parent(), Some(dir.as_path()));
+    }
+
+    #[test]
+    fn missing_foreign_or_scattered_outputs_fall_back_to_the_output_folder() {
+        let (root, dir, file) = output_tree();
+        let gone = dir.join("silinmiş.udf");
+        assert_eq!(
+            reveal_plan(&dir, &[gone.display().to_string()]),
+            RevealPlan::OpenFolder(dir.clone())
+        );
+        // Dönüştürmenin üretmeyeceği bir tür seçtirilmez.
+        let other = dir.join("not.txt");
+        std::fs::write(&other, b"x").unwrap();
+        assert_eq!(
+            reveal_plan(&dir, &[other.display().to_string()]),
+            RevealPlan::OpenFolder(dir.clone())
+        );
+        // Farklı klasörlerdeki dosyalar tek pencerede seçilemez.
+        let elsewhere = root.path().join("başka.udf");
+        std::fs::write(&elsewhere, b"PK").unwrap();
+        assert_eq!(
+            reveal_plan(
+                &dir,
+                &[file.display().to_string(), elsewhere.display().to_string()]
+            ),
+            RevealPlan::OpenFolder(dir.clone())
+        );
+    }
 
     #[test]
     fn the_single_conversion_slot_refuses_a_second_claim() {

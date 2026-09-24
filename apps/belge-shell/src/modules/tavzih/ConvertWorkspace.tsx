@@ -22,6 +22,22 @@ function results(outcome: BatchResult | ConversionResult | null): ConversionResu
 }
 
 /**
+ * "Klasörde Göster"in seçeceği dosyalar: dönüştürmenin GERÇEKTEN ürettiği.
+ *
+ * Toplu iş tek arşiv yazdıysa arşiv (motor tekil çıktıları siler), yoksa
+ * başarılı öğelerin çıktıları. Hiç çıktı yoksa boş: arka uç o zaman çıktı
+ * klasörünün kendisini açar. Saha hatası (madde 13): eskiden klasör "üst
+ * klasörde seç" API'sine veriliyor, kullanıcı bir üst klasörü görüyordu.
+ */
+export function revealTargets(outcome: BatchResult | ConversionResult | null): string[] {
+  if (!outcome) return [];
+  if ("items" in outcome && outcome.is_zip) return outcome.output ? [outcome.output] : [];
+  return results(outcome)
+    .map((r) => r.output)
+    .filter((o): o is string => typeof o === "string" && o.length > 0);
+}
+
+/**
  * Motorun biçim etiketini iki parçaya ayırır: `Word (.docx)` → `Word` + `.docx`.
  *
  * Saf sunum. Motor sözleşmesi tek bir dize veriyor; akışın iki durağı bu
@@ -163,7 +179,7 @@ export function ConvertFlow({
  *
  * Kaynağın değişmediği her sonuçta açıkça yazılır; motor bunu hash'le kanıtlar.
  */
-export function ConvertDone({ items, from, to, folder, archiveName, onReveal, onAgain }: {
+export function ConvertDone({ items, from, to, folder, archiveName, onReveal, onNew }: {
   items: ConversionResult[];
   /** Kaynağın biçim etiketi — akışın sol durağı için. */
   from: string | null;
@@ -175,7 +191,10 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
    *  dosyaları arar. */
   archiveName?: string | null;
   onReveal: () => void;
-  onAgain: () => void;
+  /** Yeni bir dönüştürmeye başla: eski kaynak ve sonuç bırakılır, tercihler
+   *  (çıktı klasörü, onay) kalır. Eskiden buradaki "Yeniden Dönüştür" AYNI
+   *  belgeyi yeniden dönüştürüp sessizce "X (2).udf" üretiyordu. */
+  onNew: () => void;
 }) {
   const failed = items.filter((r) => r.status === "failure").length;
   const single = items.length === 1 ? items[0] : null;
@@ -258,11 +277,11 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
       <div className="flow-action">
         {folder ? (
           <Button variant="primary" onClick={onReveal}>
-            Finder&apos;da Göster
+            Klasörde Göster
           </Button>
         ) : null}
-        <Button variant="quiet" onClick={onAgain}>
-          Yeniden Dönüştür
+        <Button variant="quiet" onClick={onNew}>
+          Yeni Dönüştürme
         </Button>
       </div>
     </section>
@@ -281,7 +300,12 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
  * Durumlar birbirini dışlar: belge inceleniyor → akış → sonuç. Kip kendi sağ
  * panelini açmaz: bir klasör adı üçüncü bir kolonu hak etmiyordu.
  */
-export function ConvertWorkspace({ paths }: { paths: string[] }) {
+export function ConvertWorkspace({ paths, onNewConversion }: {
+  paths: string[];
+  /** Kabuğun belgeyi bırakması: çalışma alanı sökülür, Dönüştür'ün karşılama
+   *  yüzeyi (Belge Aç, sürükle-bırak, son belgeler) geri gelir. */
+  onNewConversion: () => void;
+}) {
   const [accepted, setAccepted] = useState<boolean | null>(null);
   const [acceptError, setAcceptError] = useState("");
   const [selected, setSelected] = useState<InspectOutcome[]>([]);
@@ -436,10 +460,10 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
               to={target}
               folder={folder}
               onReveal={async () => {
-                // Yüzen bir sözdü: klasör silinmiş ya da taşınmışsa Finder
-                // açılmıyor, kullanıcıya hiçbir şey söylenmiyordu.
+                // Yüzen bir sözdü: klasör silinmiş ya da taşınmışsa dosya
+                // yöneticisi açılmıyor, kullanıcıya hiçbir şey söylenmiyordu.
                 try {
-                  await api.revealOutputFolder();
+                  await api.revealOutputFolder(revealTargets(outcome));
                 } catch (e) {
                   logFailure("tavzih reveal output folder", e);
                   const message = safeMessage(
@@ -450,7 +474,7 @@ export function ConvertWorkspace({ paths }: { paths: string[] }) {
                   announce(message);
                 }
               }}
-              onAgain={() => setPhase("idle")}
+              onNew={onNewConversion}
             />
           ) : selected.length > 0 ? (
             <ConvertFlow

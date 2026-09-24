@@ -12,7 +12,12 @@ export const acceptTerms = () => invoke<void>("tavzih_accept_terms");
 export const outputFolder = () => invoke<OutputFolder>("tavzih_output_folder");
 export const setOutputFolder = (path: string | null) =>
   invoke<OutputFolder>("tavzih_set_output_folder", { path });
-export const revealOutputFolder = () => invoke<void>("tavzih_reveal_output_folder");
+/**
+ * Çıktıyı klasöründe gösterir. `outputs`: az önce üretilen dosyalar; boşsa
+ * çıktı klasörünün kendisi açılır (bkz. `revealTargets`).
+ */
+export const revealOutputFolder = (outputs: string[]) =>
+  invoke<void>("tavzih_reveal_output_folder", { outputs });
 
 /**
  * Yerel `YYYY-MM-DD_HHMM` damgası.

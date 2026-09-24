@@ -183,7 +183,7 @@ try {
         }, el('div', { className: 'surface convert' }, el('div', { className: 'convert-body' },
           el(ConvertDone, {
             from: 'Word (.docx)', to: 'UYAP (.udf)', folder: cnvFolder,
-            onReveal: noop, onAgain: noop,
+            onReveal: noop, onNew: noop,
             items: [{ source: '/a/x.docx', source_name: 'Baris_Dogan_itiraz_dilekcesi.docx',
               output_name: 'Baris_Dogan_itiraz_dilekcesi.udf', status: 'success', source_unchanged: true, warnings: [
                 { code: 'W1', severity: 'APPROXIMATION', title: 'Tablo hücre kenarlıkları yaklaşık aktarıldı', location: 's. 2' },

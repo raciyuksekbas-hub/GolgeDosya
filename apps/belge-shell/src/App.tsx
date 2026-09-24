@@ -275,7 +275,7 @@ export function App() {
           active.key === "ekler" ? (
             <AnnexWorkspace project={annexProject} onProject={setAnnexProject} />
           ) : usable && active.key === "tavzih" ? (
-            <ConvertWorkspace paths={carried} />
+            <ConvertWorkspace paths={carried} onNewConversion={closeDocuments} />
           ) : usable && active.key === "ikincigoz" ? (
             <ReviewWorkspace path={carried[0]} />
           ) : usable && active.key === "degisikis" ? (

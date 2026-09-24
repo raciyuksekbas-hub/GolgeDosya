@@ -47,7 +47,7 @@ const NOTICES: { license: string; packages: string }[] = [
  * Geri bildirim yüzeyi.
  *
  * Ürünün **ağ izni yoktur**, bildirilmiş bir iletişim uç noktası yoktur ve
- * `opener` izni yalnız Dönüştür'ün çıktı klasörünü Finder'da göstermesi
+ * `opener` izni yalnız Dönüştür'ün çıktıyı klasöründe göstermesi
  * içindir. Bu yüzden bir gönderme uç noktası uydurulmadı: ne sahte bir
  * "gönderildi" onayı, ne de hiçbir şey yapmayan bir düğme.
  *
