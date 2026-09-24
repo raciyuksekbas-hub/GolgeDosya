@@ -1,4 +1,5 @@
 import type { ComparisonChange, ComparisonSummary } from "./viewModels/comparisonViewModel";
+import { KIND_LABEL } from "./uiLabels";
 
 export type ReportFormat = "html" | "docx" | "markdown" | "json";
 /** Metin olarak üretilen biçimler; DOCX doğrudan bayt üretir. */
@@ -12,11 +13,6 @@ export interface ReportInput {
   changes: ComparisonChange[];
 }
 
-const KIND_LABEL: Record<ComparisonChange["kind"], string> = {
-  added: "Eklenen",
-  removed: "Silinen",
-  modified: "Değiştirilen",
-};
 
 export const REPORT_FORMAT_LABEL: Record<ReportFormat, string> = {
   html: "HTML raporu",

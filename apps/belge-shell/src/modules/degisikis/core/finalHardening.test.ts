@@ -160,7 +160,7 @@ describe("v0.3.0 öncesi son regression hardening", () => {
       makeBlocks([{ text: "İlk metin korunur." }, { text: "Yeni adsız paragraf." }], "revised"),
     );
 
-    expect(result.changes[0].location).toBe("Değiştirilen paragraf");
+    expect(result.changes[0].location).toBe("Değişiklik içeren paragraf");
   });
 
   it("Word run kaynaklı sentence whitespace farkı için boş card üretmez", () => {

@@ -2,6 +2,17 @@ import type { ComparisonRow, DocumentChange } from "./core/types";
 
 export type DocumentSide = "base" | "revised";
 
+/**
+ * Fark türlerinin TEK adı. Liste, ray, ekran okuyucu ve raporlar bunu kullanır;
+ * dört ayrı kopya vardı ve bir sözcük değişikliği dört yerde yapılmak
+ * zorundaydı.
+ */
+export const KIND_LABEL: Record<"added" | "removed" | "modified", string> = {
+  added: "Eklenen",
+  removed: "Silinen",
+  modified: "Değiştirilen",
+};
+
 export function changePositionLabel(selectedIndex: number, total: number): string {
   return selectedIndex >= 0 ? `Değişiklik ${selectedIndex + 1} / ${total}` : `${total} değişiklik`;
 }

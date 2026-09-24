@@ -3,12 +3,8 @@ import type { FilledRef, NullableRef } from "./reactCompat";
 import type { ComparisonChange } from "./viewModels/comparisonViewModel";
 import { Icon } from "./Icon";
 import { ROW_SYNC_EVENT } from "./useRowHeightSync";
+import { KIND_LABEL } from "./uiLabels";
 
-const KIND_LABEL: Record<ComparisonChange["kind"], string> = {
-  added: "Eklenen",
-  removed: "Silinen",
-  modified: "Değiştirilen",
-};
 
 /**
  * İki belge arasındaki merkezî fark rayı — logodaki karşılaştırma hattının

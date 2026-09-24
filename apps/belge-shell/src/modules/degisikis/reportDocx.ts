@@ -1,6 +1,7 @@
 import { strToU8, zipSync } from "fflate";
 import type { ComparisonChange } from "./viewModels/comparisonViewModel";
 import { formatTimestamp, type ReportInput } from "./report";
+import { KIND_LABEL } from "./uiLabels";
 
 /**
  * Word raporu doğrudan OOXML olarak üretilir ve mevcut `fflate` bağımlılığıyla
@@ -11,16 +12,13 @@ import { formatTimestamp, type ReportInput } from "./report";
  * Word'de açtığında normal bir belge gibi düzenleyebilsin.
  */
 
-const KIND_LABEL: Record<ComparisonChange["kind"], string> = {
-  added: "Eklenen",
-  removed: "Silinen",
-  modified: "Değiştirilen",
-};
 
+/** Ürünün kanonik fark paleti (açık tema: --success / --danger / --review).
+ *  Bağımsız uygulamanın petrol ve mercan tonları burada kalmıştı. */
 const KIND_COLOR: Record<ComparisonChange["kind"], string> = {
-  added: "2A7F8E",
-  removed: "E06A5C",
-  modified: "5A646E",
+  added: "2B6446",
+  removed: "A8322A",
+  modified: "2C5A86",
 };
 
 const INK = "111417";

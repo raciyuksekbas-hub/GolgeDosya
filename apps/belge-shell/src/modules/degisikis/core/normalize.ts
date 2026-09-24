@@ -119,7 +119,7 @@ export function makeBlocks(
         : section
           ? currentAppendixSection
           : currentAppendix
-            ? currentAppendixSection ?? `${currentAppendix} içindeki değiştirilen bölüm`
+            ? currentAppendixSection ?? `${currentAppendix} içindeki bölüm`
             : sourceClauseNumber
               ? `Madde ${sourceClauseNumber}`
               : classified.label;
@@ -158,8 +158,17 @@ export function makeBlocks(
     });
 }
 
+/**
+ * Farkın KONUMU — türü değil.
+ *
+ * Numarasız bir paragrafın yedek konumu "Değiştirilen paragraf" idi ve her
+ * türe uygulanıyordu: tek harflik bir düzeltme bütün paragrafı "değiştirilmiş"
+ * ilan ediyor, eklenen paragraf "Eklenen · Değiştirilen paragraf" diye iki
+ * zıt tür taşıyordu (saha maddesi 31). Konum artık türden bağımsız: paragraf
+ * bir değişiklik İÇERİR; ne tür olduğunu tür etiketi söyler.
+ */
 export function displayLocation(block: DocumentBlock | undefined, _fallbackIndex: number): string {
-  if (!block) return "Değiştirilen bölüm";
+  if (!block) return "Değişiklik içeren bölüm";
   if (block.location) return block.location;
   if (block.label) return block.label;
   if (block.kind === "table") return "Tablo satırı";
@@ -167,5 +176,5 @@ export function displayLocation(block: DocumentBlock | undefined, _fallbackIndex
     ? `${block.sourceListOrdinal}. numaralı bölüm`
     : "Liste öğesi";
   if (block.kind === "heading") return "Başlık";
-  return "Değiştirilen paragraf";
+  return "Değişiklik içeren paragraf";
 }

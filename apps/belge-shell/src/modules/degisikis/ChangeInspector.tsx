@@ -1,4 +1,5 @@
 import type { ChangeFilter, ComparisonChange, ComparisonSummary } from "./viewModels/comparisonViewModel";
+import { KIND_LABEL } from "./uiLabels";
 
 export const FILTER_LABELS: Record<ChangeFilter, string> = {
   all: "Tümü",
@@ -7,11 +8,6 @@ export const FILTER_LABELS: Record<ChangeFilter, string> = {
   modified: "Değiştirilen",
 };
 
-const KIND_LABEL: Record<ComparisonChange["kind"], string> = {
-  added: "Eklenen",
-  removed: "Silinen",
-  modified: "Değiştirilen",
-};
 
 function ChangeListRow({ change, active, onClick }: { change: ComparisonChange; active: boolean; onClick: () => void }) {
   return (
