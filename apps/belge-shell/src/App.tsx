@@ -12,7 +12,7 @@ import { ReviewWorkspace } from "./modules/ikincigoz/ReviewWorkspace";
 import { CompareWorkspace } from "./modules/degisikis/CompareWorkspace";
 import { PdfWorkspace } from "./modules/duzenek/PdfWorkspace";
 import { AnnexWorkspace, emptyProject } from "./modules/duzenek/ekler/AnnexWorkspace";
-import type { Project as AnnexProject } from "./modules/duzenek/ekler/types";
+import type { PreparedAnnex, Project as AnnexProject } from "./modules/duzenek/ekler/types";
 import { MODES, carryContext, fileNameOf, type ContextOutcome } from "./shell/modes";
 import { Button, Status } from "./shared-ui/primitives";
 import { announce } from "./shared-ui/Announcer";
@@ -103,6 +103,18 @@ export function App() {
    * silmesin; çalışma alanı sökülüp yeniden kurulduğunda oturum yerinde kalır.
    */
   const [annexProject, setAnnexProject] = useState<AnnexProject>(emptyProject);
+  /** Son hazırlanan ek paketi — sonuç yüzeyi de kip değişince kaybolmamalı. */
+  const [annexPrepared, setAnnexPrepared] = useState<PreparedAnnex | null>(null);
+  /**
+   * Yeni Ekler işlemi: belgeler, ekler, başlıklar, atamalar ve sonuç bırakılır.
+   * Tercihler (tema, erişilebilirlik, son belgeler, Dönüştür'ün çıktı klasörü)
+   * ayarlarda yaşar ve dokunulmaz; diğer kiplerin açık belgeleri de kalır.
+   */
+  const newAnnexOperation = useCallback(() => {
+    setAnnexProject(emptyProject());
+    setAnnexPrepared(null);
+    announce("Yeni Ekler işlemi. Belge ekleyerek başlayın.");
+  }, []);
 
   const saveSettings = useCallback(async (next: Settings) => {
     // İyimser güncelleme: arayüz anında tepki verir. Ama yazım başarısız
@@ -262,7 +274,10 @@ export function App() {
         context={barContext}
         actions={
           // Home'da bar boştur: tek birincil eylem boş durumdadır (§6, §22).
-          documents.length > 0 ? (
+          // Ekler kabuğun belgelerini kullanmaz: oradaki "Kapat" başka bir
+          // kipin belgesini kapatıyor, Ekler'e hiçbir şey yapmıyordu ve
+          // kullanıcıya sahte bir çıkış gibi görünüyordu (madde 19).
+          documents.length > 0 && active?.key !== "ekler" ? (
             <Button variant="quiet" onClick={closeDocuments}>
               Kapat
             </Button>
@@ -273,7 +288,13 @@ export function App() {
           // Ekler kendi belge seçicisiyle çalışır: kabuğun tek-belge akışına
           // girmez, bu yüzden `usable` kapısının ÖNÜNDE durur.
           active.key === "ekler" ? (
-            <AnnexWorkspace project={annexProject} onProject={setAnnexProject} />
+            <AnnexWorkspace
+              project={annexProject}
+              onProject={setAnnexProject}
+              prepared={annexPrepared}
+              onPrepared={setAnnexPrepared}
+              onNewOperation={newAnnexOperation}
+            />
           ) : usable && active.key === "tavzih" ? (
             <ConvertWorkspace paths={carried} onNewConversion={closeDocuments} />
           ) : usable && active.key === "ikincigoz" ? (

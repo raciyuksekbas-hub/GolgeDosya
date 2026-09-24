@@ -93,9 +93,14 @@ export const MODES: Record<FeatureState["key"], Mode> = {
   // açıldığında doğrudan çalışma alanı gelir.
   ekler: {
     label: "Ekler",
-    emptyTitle: "Dilekçe ekleri",
+    // Saha (madde 6): "Ekler'in ne yaptığını anlamam için çok fazla süre
+    // geçti." Bu metin tanımlıydı ama Ekler kabuğun karşılama yüzeyini
+    // kullanmadığı için HİÇ çizilmiyordu; ekranın amacı söylenmiyordu.
+    // Başlık işin sonucunu adlandırır (tasarım kuralı: başlık emir değil),
+    // ne yapılacağını açıklama söyler.
+    emptyTitle: "Dilekçe ekleri, tek pakette",
     extensions: ["pdf", "docx", "doc", "jpg", "jpeg", "png", "tif", "tiff"],
-    hint: "Belgeleri Ek-1, Ek-2 diye gruplayın; ekler listesini ve nihai paketi üretin.",
+    hint: "Belgeleri yükleyin, Ek-1, Ek-2… gruplarına ayırın ve düzenli bir çıktı klasörü hazırlayın.",
     openLabel: "Belge Ekle",
     recentTitle: "Son belgeler",
     pickerLabel: "Ek belgesi",

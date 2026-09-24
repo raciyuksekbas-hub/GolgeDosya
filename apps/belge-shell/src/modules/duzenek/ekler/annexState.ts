@@ -5,7 +5,7 @@
  * yalnız bitmiş `Project`'i plan/dışa aktarma anında alır. Semantik oradan
  * taşındı, mantık yeniden yazılmadı.
  */
-import type { AnnexSource, LogicalExhibit, Project } from "./types";
+import type { AnnexSource, LogicalExhibit, PreparedAnnex, Project } from "./types";
 
 /** Bir kaynağa atanmış ek — yoksa `undefined`. */
 export function assignmentOf(project: Project, sourceId: string): LogicalExhibit | undefined {
@@ -126,4 +126,46 @@ export function exhibitsListText(project: Project): string {
     (e) => `Ek-${e.order}: ${e.name} — ${exhibitPageCount(project, e)} sayfa`,
   );
   return `EKLER\n\n${lines.join("\n")}\n`;
+}
+
+/**
+ * Ekler işleminin yaşam döngüsü (§53):
+ *
+ *   empty     → hiç belge ve ek yok
+ *   working   → düzen kuruluyor; henüz hazırlanamaz (ek yok ya da boş ek var)
+ *   ready     → her ekte en az bir belge var; "Ekleri Hazırla ve Kaydet" açık
+ *   completed → bu düzen hazırlandı ve diske yazıldı
+ *
+ * `completed`, hazırlanan düzenle ŞİMDİKİ düzen aynı nesne olduğunda doğrudur.
+ * Düzen değişmeden yeni nesne üretilmez (bütün dönüşümler değişmezdir); bir
+ * değişiklik yapıldığında düzen yeniden `working`/`ready` olur ve paket bu
+ * değişikliği içermez.
+ *
+ * Saha (madde 19): "İşlemden sonra çıkış yapamıyorum. Yeni bir Ekler işlemine
+ * başlayamıyorum." Yaşam döngüsü yoktu: hazırlamadan sonra ekran, hazırlamadan
+ * önceki ekranın aynısıydı ve düzeni temizlemenin tek yolu her belgeyi ve eki
+ * tek tek silmekti.
+ */
+export type AnnexPhase = "empty" | "working" | "ready" | "completed";
+
+/** Hazırlamayı engelleyen boş ekler. Motor bunları reddeder ("Her Ek en az bir belge içermeli"). */
+export function emptyExhibits(project: Project): LogicalExhibit[] {
+  return project.exhibits.filter((e) => e.sources.length === 0);
+}
+
+export function annexPhase(project: Project, prepared: PreparedAnnex | null): AnnexPhase {
+  if (prepared && prepared.snapshot === project) return "completed";
+  if (project.sources.length === 0 && project.exhibits.length === 0) return "empty";
+  return project.exhibits.length > 0 && emptyExhibits(project).length === 0 ? "ready" : "working";
+}
+
+/**
+ * "Yeni Ekler İşlemi" bir şey kaybettirir mi?
+ *
+ * Tamamlanmış paket diskte duruyor; boş düzen zaten boş. Kaybolacak olan,
+ * kurulan ama hazırlanmamış (ya da hazırlandıktan sonra değiştirilmiş) düzendir.
+ */
+export function discardsWork(project: Project, prepared: PreparedAnnex | null): boolean {
+  const phase = annexPhase(project, prepared);
+  return phase === "working" || phase === "ready";
 }

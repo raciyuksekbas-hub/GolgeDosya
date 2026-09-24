@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "feature-duzenek",
-  "description": "Düzenle. Belge ve hedef klasör seçer, yeni PDF kaydeder. Opener izni yoktur. Dış süreçleri (LibreOffice, sips) process-bridge üzerinden çalıştırır: zaman aşımı ve ağ reddi orada uygulanır.",
+  "description": "Düzenle. Belge ve hedef klasör seçer, yeni PDF kaydeder. Arayüze opener izni verilmez; Ekler paketinin klasörü yalnız arka uçta (ekler_open_package_folder) doğrulanıp açılır. Dış süreçleri (LibreOffice, sips) process-bridge üzerinden çalıştırır: zaman aşımı ve ağ reddi orada uygulanır.",
   "windows": [
     "main"
   ],

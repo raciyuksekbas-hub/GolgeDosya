@@ -64,3 +64,24 @@ export interface Project {
   stamp_config: StampConfig;
   optimization?: string;
 }
+
+/** `ekler_core::PipelineResult` — burada yalnız arayüzün okuduğu alanlar. */
+export interface PreparedPackage {
+  outputs: { file_name: string; is_continuation: boolean }[];
+  exhibits_list_plain: string;
+  package_dir: string;
+  /**
+   * `ekler_core::ValidationReport`. Maddenin durumu `level`dedir
+   * (pass / warning / error) — `passed` diye bir alan YOKTUR.
+   */
+  validation_report: {
+    is_ready_for_uyap: boolean;
+    items: { title: string; level: "pass" | "warning" | "error" }[];
+  };
+}
+
+/** Tamamlanmış işlem: HANGİ düzen hazırlandı ve motor ne üretti. */
+export interface PreparedAnnex {
+  snapshot: Project;
+  result: PreparedPackage;
+}

@@ -14,6 +14,8 @@ pub mod modules {
     pub mod degisikis;
     #[cfg(feature = "feature_duzenek")]
     pub mod duzenek;
+    #[cfg(feature = "feature_duzenek")]
+    pub mod ekler;
     #[cfg(feature = "feature_ikincigoz")]
     pub mod ikincigoz;
     #[cfg(feature = "feature_tavzih")]
@@ -285,6 +287,8 @@ pub fn run() {
         modules::duzenek::duzenek_split_into_new_exhibit,
         modules::duzenek::duzenek_scan_source_files,
         modules::duzenek::duzenek_prepare_uyap,
+        modules::ekler::ekler_prepare_package,
+        modules::ekler::ekler_open_package_folder,
         modules::duzenek::duzenek_convert_office_pdf,
         modules::duzenek::duzenek_convert_udf_to_md,
         modules::duzenek::duzenek_pdf_to_images,
@@ -372,6 +376,8 @@ pub fn run() {
         modules::duzenek::duzenek_split_into_new_exhibit,
         modules::duzenek::duzenek_scan_source_files,
         modules::duzenek::duzenek_prepare_uyap,
+        modules::ekler::ekler_prepare_package,
+        modules::ekler::ekler_open_package_folder,
         modules::duzenek::duzenek_convert_office_pdf,
         modules::duzenek::duzenek_convert_udf_to_md,
         modules::duzenek::duzenek_pdf_to_images,

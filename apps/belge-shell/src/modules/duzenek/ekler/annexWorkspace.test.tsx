@@ -5,12 +5,27 @@ import { dirname, resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AnnexWorkspace, emptyProject } from "./AnnexWorkspace";
+import { assignSource, createExhibit } from "./annexState";
+import type { AnnexSource, Project } from "./types";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(here, "AnnexWorkspace.tsx"), "utf8");
-const html = renderToStaticMarkup(
-  <AnnexWorkspace project={emptyProject()} onProject={() => undefined} />,
+const noop = () => undefined;
+const render = (project: Project) =>
+  renderToStaticMarkup(
+    <AnnexWorkspace project={project} onProject={noop} prepared={null} onPrepared={noop} onNewOperation={noop} />,
+  );
+const doc = (id: string, name: string): AnnexSource => ({
+  id, path: `C:\\Users\\Çağrı Şahin\\Belgeler\\${name}`, file_name: name, page_count: 2,
+  is_signed: false, signed_policy: "create_derived_copy", is_approved_for_conversion: true,
+});
+const withDoc: Project = assignSource(
+  createExhibit({ ...emptyProject(), sources: [doc("src-a", "İş Sözleşmesi.pdf")] }, "", "ek-a"),
+  "src-a",
+  "ek-a",
 );
+const empty = render(emptyProject());
+const html = render(withDoc);
 const modes = readFileSync(resolve(here, "../../../shell/modes.ts"), "utf8");
 const matrix = readFileSync(
   resolve(here, "../../../../src-tauri/src/features.rs"),
@@ -26,7 +41,7 @@ describe("§11/§73 — ek yönetimi gerçekten var", () => {
 
   it("kabukta kendi kipi var", () => {
     expect(modes).toContain('label: "Ekler"');
-    expect(modes).toContain('emptyTitle: "Dilekçe ekleri"');
+    expect(modes).toContain('emptyTitle: "Dilekçe ekleri, tek pakette"');
   });
 });
 
@@ -36,9 +51,23 @@ describe("§14/§15 — iki yüzey", () => {
     expect(html).toContain("Dilekçe Ekleri");
   });
 
-  it("boş durum ne yapılacağını söyler", () => {
-    expect(html).toContain("Ek olarak kullanacağınız belgeleri ekleyin");
-    expect(html).toContain("Ek-2 — Banka Dekontları");
+  it("boş durum kipin görevini söyler ve ilk adımı birincil eylem yapar (madde 6)", () => {
+    // Başlık ve açıklama tanımlıydı ama HİÇ çizilmiyordu.
+    // Ortak EmptyState: bir başlık, bir cümle, bir eylem (§49).
+    expect(empty).toMatch(/<h1 class="empty-title">Dilekçe ekleri, tek pakette<\/h1>/);
+    expect(empty).toContain("Belgeleri yükleyin, Ek-1, Ek-2… gruplarına ayırın ve düzenli bir çıktı klasörü hazırlayın.");
+    // İlk birincil düğme ETKİN ve "Belge Ekle"dir; eskiden tek birincil
+    // düğme devre dışı "Ekleri Hazırla ve Kaydet" idi.
+    const primary = empty.match(/<button[^>]*class="btn btn-primary"[^>]*>([^<]*)<\/button>/);
+    expect(primary?.[1]).toBe("Belge Ekle");
+    expect(primary?.[0]).not.toContain("disabled");
+    expect(empty).not.toContain("Ekleri Hazırla ve Kaydet");
+  });
+
+  it("belge eklenince iki yüzey gelir; ek yokken sağ yüzey ne yapılacağını söyler", () => {
+    expect(html).not.toContain("empty-title");
+    const docOnly = render({ ...emptyProject(), sources: [doc("src-a", "a.pdf")] });
+    expect(docOnly).toContain("Ek-2 — Banka Dekontları");
   });
 });
 
@@ -76,13 +105,18 @@ describe("§17/§19/§20 — eylemler", () => {
 
   it("nihai iş motora gider ve kaynak korunur", () => {
     expect(html).toContain("Ekleri Hazırla ve Kaydet");
-    expect(source).toContain('file_name: string; is_continuation: boolean');
-    expect(source).toContain('"duzenek_prepare_uyap"');
+    // Motor çağrısı taşınan komutla aynı; yalnız ana iş parçacığı dışında.
+    expect(source).toContain('invoke<PreparedPackage>("ekler_prepare_package"');
     expect(html).toContain("kaynak belgeleriniz korunur");
   });
 
-  it("hiç ek yokken hazırlama kapalı", () => {
-    expect(source).toContain("const canPrepare = project.exhibits.some((e) => e.sources.length > 0)");
+  it("boş ek varken hazırlama kapalı ve sebebi yazılı", () => {
+    // Motor boş eki reddeder; düğme açıkken kullanıcı klasör seçtikten SONRA
+    // hata alıyordu.
+    const withEmpty = render(createExhibit(withDoc, "", "ek-b"));
+    expect(withEmpty).toContain("Ek-2 boş: her eke en az bir belge atayın ya da boş eki silin.");
+    expect(withEmpty).toMatch(/<button[^>]*disabled=""[^>]*>Ekleri Hazırla ve Kaydet<\/button>/);
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>Ekleri Hazırla ve Kaydet<\/button>/);
   });
 });
 
@@ -160,12 +194,15 @@ describe("oturum kip değişince kaybolmaz", () => {
   const app = readFileSync(resolve(here, "../../../App.tsx"), "utf8");
 
   it("çalışma alanı durumu dışarıdan alır", () => {
-    expect(source).toContain("export function AnnexWorkspace({ project, onProject }");
+    expect(source).toContain("export function AnnexWorkspace({ project, onProject, prepared, onPrepared, onNewOperation }");
     expect(source).not.toContain("const [project, setProject] = useState<Project>(emptyProject)");
   });
 
   it("oturum kabukta yaşar", () => {
     expect(app).toContain("const [annexProject, setAnnexProject] = useState<AnnexProject>(emptyProject)");
-    expect(app).toContain("<AnnexWorkspace project={annexProject} onProject={setAnnexProject} />");
+    expect(app).toContain("project={annexProject}");
+    expect(app).toContain("onProject={setAnnexProject}");
+    // Sonuç da kabukta: kip değiştirip dönünce "tamamlandı" yüzeyi yerinde.
+    expect(app).toContain("prepared={annexPrepared}");
   });
 });

@@ -12,20 +12,21 @@
  * YOL DEĞİLDİR. Her belgenin yanındaki seçim kutusu aynı işi klavyeyle ve
  * ekran okuyucuyla yapar (§66).
  */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { Button, Status } from "../../../shared-ui/primitives";
+import { Button, EmptyState, Status } from "../../../shared-ui/primitives";
+import { ConfirmSheet } from "../../../shared-ui/ConfirmSheet";
 import { announce } from "../../../shared-ui/Announcer";
 import { logFailure, safeMessage } from "../../../shared-ui/failure";
 import { ToolbarActions } from "../../../shell/chrome";
-import { fileNameOf } from "../../../shell/modes";
+import { MODES, fileNameOf } from "../../../shell/modes";
 import {
-  assignSource, assignmentLabel, autoDistribute, createExhibit, exhibitPageCount,
-  exhibitsListText, moveExhibit, nameFromFile, removeExhibit, renameExhibit,
-  unassignSource, unassignedSources,
+  annexPhase, assignSource, assignmentLabel, autoDistribute, createExhibit, discardsWork,
+  emptyExhibits, exhibitPageCount, exhibitsListText, moveExhibit, nameFromFile, removeExhibit,
+  renameExhibit, unassignSource, unassignedSources,
 } from "./annexState";
-import type { AnnexSource, Project, StampConfig } from "./types";
+import type { AnnexSource, PreparedAnnex, PreparedPackage, Project, StampConfig } from "./types";
 import "./ekler.css";
 
 /**
@@ -66,6 +67,75 @@ let seq = 0;
 const nextId = () => `ek-${(seq += 1)}`;
 
 /**
+ * Tamamlanmış işlemin yüzeyi: ne üretildi, nerede, sırada ne var.
+ *
+ * Dönüştür'ün sonuç yüzeyiyle aynı dil (işaretli sonuç satırı, klasör satırı,
+ * tek baskın eylem). Klasör OTOMATİK açılmaz, güçlü bir "Klasörü Aç" verilir
+ * (madde 10): uygulama dış bir uygulamayı yalnız istenince açar; istenmeden
+ * açılan Gezgin penceresi odağı çalar ve ekran okuyucu kullanıcısını
+ * yerinden eder (WCAG 3.2.5), açılamazsa da sessizce kalırdı.
+ *
+ * Paketteki iki yardımcı dosya da burada tek satırla söylenir (madde 9:
+ * "Manifest ve txt'yi anlamadım"). Kullanıcıya "düzenleyin" diye bir
+ * sorumluluk yüklenmez.
+ */
+export function AnnexDone({ result, stale, onOpenFolder, onNew, headingRef }: {
+  result: PreparedPackage;
+  /** Düzen, hazırlandıktan sonra değiştirildi: paket bu değişikliği içermez. */
+  stale: boolean;
+  onOpenFolder: () => void;
+  onNew: () => void;
+  /** Tamamlanınca odak buraya gelir (çalışma alanı yönetir). */
+  headingRef?: Ref<HTMLParagraphElement>;
+}) {
+  const pdfs = result.outputs.length;
+  const split = result.outputs.filter((o) => o.is_continuation).length;
+  const review = (result.validation_report?.items ?? []).filter((i) => i.level !== "pass");
+  const ready = result.validation_report?.is_ready_for_uyap !== false && review.length === 0;
+  return (
+    <section className="ekler-done" aria-labelledby="ekler-sonuc">
+      <p className="flow-result" id="ekler-sonuc" ref={headingRef} tabIndex={-1} data-tone={ready ? undefined : "warn"}>
+        <span className="flow-result-mark" aria-hidden="true">{ready ? "✓" : "!"}</span>
+        {`${pdfs} ek PDF'i hazırlandı ve kaydedildi`}
+      </p>
+      {split ? (
+        <p className="flow-note">{split} ek boyut sınırı nedeniyle bölündü (DEVAM dosyaları).</p>
+      ) : null}
+      {review.length ? (
+        <p className="flow-note" data-tone="error">Gözden geçirin: {review.map((i) => i.title).join(" · ")}</p>
+      ) : null}
+      {stale ? (
+        <p className="flow-note">Düzen, paket hazırlandıktan sonra değişti; bu değişiklikler pakette yok.</p>
+      ) : null}
+      <div className="flow-dest">
+        <p className="flow-label">Paket klasörü</p>
+        <p className="flow-dest-row">
+          <span title={result.package_dir}>{fileNameOf(result.package_dir)}</span>
+        </p>
+      </div>
+      <ul className="ekler-done-files">
+        <li>
+          <strong>EKLER_LISTESI.txt</strong> — dilekçenin EKLER bölümüne yapıştıracağınız liste
+        </li>
+        <li>
+          <strong>manifest.json</strong> — sayfa ve özet bilgisini tutan teknik doğrulama kaydı;
+          açmanız gerekmez, UYAP&apos;a yüklemeyin
+        </li>
+      </ul>
+      <p className="flow-note">Kaynak belgeleriniz değiştirilmedi.</p>
+      <div className="flow-action">
+        <Button variant="primary" onClick={onOpenFolder}>
+          Klasörü Aç
+        </Button>
+        <Button variant="quiet" onClick={onNew}>
+          Yeni Ekler İşlemi
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+/**
  * Ek oturumu KİP DEĞİŞİNCE KAYBOLMAMALI.
  *
  * Durum bileşenin içindeyken başka bir kipe geçmek bileşeni söküyor ve
@@ -74,11 +144,25 @@ const nextId = () => `ek-${(seq += 1)}`;
  * almadan her şeyi kaybediyordu. Paketlenmiş uygulamada yapılan smoke bunu
  * ortaya çıkardı. Durum artık kabukta yaşıyor.
  */
-export function AnnexWorkspace({ project, onProject }: {
+export function AnnexWorkspace({ project, onProject, prepared, onPrepared, onNewOperation }: {
   project: Project;
   onProject: (next: Project | ((current: Project) => Project)) => void;
+  /** Son hazırlanan paket; kabukta yaşar ki kip değişince sonuç kaybolmasın. */
+  prepared: PreparedAnnex | null;
+  onPrepared: (next: PreparedAnnex) => void;
+  /** Belgeleri, ekleri, başlıkları ve sonucu bırakır; tercihlere dokunmaz. */
+  onNewOperation: () => void;
 }) {
   const setProject = onProject;
+  const phase = annexPhase(project, prepared);
+  const [confirming, setConfirming] = useState(false);
+  // Tamamlanınca klavye kullanıcısı sonucun başına gelir; "Klasörü Aç" bir
+  // Sekme ötede. Kip değişip dönünce de sonuç orada karşılar.
+  const doneHeading = useRef<HTMLParagraphElement>(null);
+  const completedResult = phase === "completed" ? prepared?.result : undefined;
+  useEffect(() => {
+    if (completedResult) doneHeading.current?.focus();
+  }, [completedResult]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [tone, setTone] = useState<"info" | "busy" | "success" | "error">("info");
@@ -170,56 +254,101 @@ export function AnnexWorkspace({ project, onProject }: {
       if (typeof dir !== "string") return;
       setBusy(true);
       say("Ekler hazırlanıyor…", "busy");
-      const result = await invoke<{
-        outputs: { file_name: string; is_continuation: boolean }[];
-        exhibits_list_plain: string;
-        package_dir: string;
-        /**
-         * `ekler_core::ValidationReport`. Maddenin durumu `level`dedir
-         * (pass / warning / error) — `passed` diye bir alan YOKTUR. İlk
-         * sürüm `passed` okuyordu; `undefined` olduğu için GEÇEN kontroller
-         * de "gözden geçirin" diye listeleniyor ve başarılı çalıştırma hata
-         * tonuyla gösteriliyordu. Paketlenmiş smoke bunu yakaladı.
-         */
-        validation_report: {
-          is_ready_for_uyap: boolean;
-          items: { title: string; level: "pass" | "warning" | "error" }[];
-        };
-      }>("duzenek_prepare_uyap", { project, outputDir: dir });
-      // Motor boyut sınırını aşan eki KENDİSİ böler ve "…_DEVAM_…" dosyaları
-      // üretir. Bu, mahkemeye giden dosya kümesini ve EKLER listesini
-      // değiştirir; sessizce olmamalı.
-      const split = result.outputs.filter((o) => o.is_continuation).length;
-      const failures = (result.validation_report?.items ?? []).filter((i) => i.level !== "pass");
-      const lines = [
-        `${result.outputs.length} dosya üretildi: ${result.package_dir}`,
-        split ? `${split} ek boyut sınırı nedeniyle bölündü (DEVAM dosyaları).` : "",
-        failures.length ? `Gözden geçirin: ${failures.map((i) => i.title).join(" · ")}` : "",
-        "Kaynak belgeleriniz değiştirilmedi.",
-      ].filter(Boolean);
-      // Ton motorun kendi kararına bağlanır; tek tek maddelerin sayısına değil.
-      const ready = result.validation_report?.is_ready_for_uyap !== false;
-      say(lines.join("\n"), ready && !failures.length ? "success" : "error");
+      const result = await invoke<PreparedPackage>("ekler_prepare_package", { project, outputDir: dir });
+      // Sonuç yüzeyi (AnnexDone) motorun sonucunu gösterir: bölünen ekler,
+      // gözden geçirilecek maddeler, klasör. Durum satırı tekrarlamaz.
+      onPrepared({ snapshot: project, result });
+      setStatus("");
+      announce(`${result.outputs.length} ek PDF'i hazırlandı ve kaydedildi.`);
     } catch (e) {
       logFailure("ekler prepare", e);
       say(safeMessage(e, "Ekler hazırlanamadı. Çıktı klasörünü ve belgeleri kontrol edin."), "error");
     } finally {
       setBusy(false);
     }
-  }, [project, say]);
+  }, [project, say, onPrepared]);
 
-  const canPrepare = project.exhibits.some((e) => e.sources.length > 0);
+  const openFolder = useCallback(async () => {
+    if (!prepared) return;
+    try {
+      await invoke("ekler_open_package_folder", { path: prepared.result.package_dir });
+    } catch (e) {
+      logFailure("ekler open folder", e);
+      say(safeMessage(e, "Klasör açılamadı. Taşınmış veya silinmiş olabilir."), "error");
+    }
+  }, [prepared, say]);
+
+  const startNew = useCallback(() => {
+    if (discardsWork(project, prepared)) setConfirming(true);
+    else onNewOperation();
+  }, [project, prepared, onNewOperation]);
+
+  // Motor boş eki reddeder; düğme o durumda açık kalırsa kullanıcı klasör
+  // seçtikten SONRA hata alıyordu. Sebep önceden, ekranda söylenir.
+  const blockers = emptyExhibits(project);
+  const blockerText = blockers.length
+    ? `${blockers.map((e) => `Ek-${e.order}`).join(", ")} boş: her eke en az bir belge atayın ya da boş eki silin.`
+    : "";
 
   return (
     <div className="ekler-root">
       <ToolbarActions>
-        <Button disabled={busy || !canPrepare} variant="primary" onClick={() => void prepare()}>
-          Ekleri Hazırla ve Kaydet
-        </Button>
+        {phase === "working" || phase === "ready" ? (
+          <Button variant="quiet" disabled={busy} onClick={startNew}>
+            Yeni Ekler İşlemi
+          </Button>
+        ) : null}
+        {phase === "working" || phase === "ready" ? (
+          <Button
+            disabled={busy || phase !== "ready"}
+            variant="primary"
+            onClick={() => void prepare()}
+            title={blockerText || undefined}
+          >
+            Ekleri Hazırla ve Kaydet
+          </Button>
+        ) : null}
       </ToolbarActions>
 
       <Status tone={tone}>{status}</Status>
 
+      {prepared ? (
+        <AnnexDone
+          result={prepared.result}
+          stale={phase !== "completed"}
+          onOpenFolder={() => void openFolder()}
+          onNew={startNew}
+          headingRef={doneHeading}
+        />
+      ) : null}
+
+      {confirming ? (
+        <ConfirmSheet
+          title="Mevcut çalışma temizlenecek"
+          confirmLabel="Temizle"
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false);
+            onNewOperation();
+          }}
+        >
+          Yüklenen belgeler, ekler ve başlıklar listeden kaldırılır. Kaynak belgeleriniz
+          {prepared ? " ve kaydedilen paket klasörü" : ""} diskte kalır. Devam edilsin mi?
+        </ConfirmSheet>
+      ) : null}
+
+      {phase === "empty" ? (
+        <EmptyState
+          title={MODES.ekler.emptyTitle}
+          note={MODES.ekler.hint}
+          action={
+            <Button variant="primary" disabled={busy} onClick={() => void addDocuments()}>
+              {MODES.ekler.openLabel}
+            </Button>
+          }
+        />
+      ) : (
+      <>
       <div className="ekler-columns">
         {/* --------------------------------------------- Yüklenen Belgeler */}
         <section className="ekler-pane" aria-labelledby="yuklenen-baslik">
@@ -462,6 +591,9 @@ export function AnnexWorkspace({ project, onProject }: {
           ) : null}
         </section>
       </div>
+      {blockerText ? <p className="ekler-blocker">{blockerText}</p> : null}
+      </>
+      )}
 
       <p className="tool-safe">Yeni dosyalar oluşturulur; kaynak belgeleriniz korunur.</p>
     </div>
