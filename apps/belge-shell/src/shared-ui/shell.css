@@ -842,10 +842,14 @@ textarea {
    ekranda tek baskın eylem olur (§10, §22).
    ========================================================================== */
 
-/* Üstten 72 px içeride, 680 px okuma genişliği: akış ekranın sol üst
-   köşesine yapışmaz, ortasında da yüzmez. */
+/* Üstten 72 px içeride, 680 px okuma genişliği, karşılama bloğuyla AYNI
+   eksende (ortada). Saha (madde 17): sütun sola kaydırılmış bir bantta
+   duruyordu; geniş pencerede sağda büyük bir ölü alan kalıyor, karşılama
+   ortada, akış solda olduğu için durum değişince içerik sıçrıyordu. Ayrıca
+   %100 genişlik + yüzde sol boşluk, 900 px'lik en küçük pencerede yatay
+   kaydırma çubuğu açıyordu (707/680). Otomatik boşluk dar pencerede 0'a iner. */
 .surface.convert { padding-top: 72px; }
-.convert-body { width: 100%; max-width: 680px; margin-left: var(--band-left); }
+.convert-body { width: 100%; max-width: 680px; margin-inline: auto; }
 
 /* İki durak tek ızgarada: etiket · ad · biçim satırları hizalı, ok ADLARIN
    arasında durur. Ok kendi satırını bulamayınca biçim satırının yanına
@@ -904,6 +908,8 @@ textarea {
   line-height: 1.5;
 }
 .flow-warn-mark { flex: none; }
+/* Bilgi: sakin ton; yaklaşık aktarım ve kayıp sarı ▲ ile kalır. */
+.flow-warn[data-severity="INFO"] { color: var(--text-secondary); }
 
 .flow-dest { margin: var(--space-6) 0 0; }
 .flow-dest-row {

@@ -1489,6 +1489,12 @@ fn c34_page_number_becomes_a_real_updatable_word_field() {
     let codes: Vec<WarningCode> = w.into_vec().iter().map(|x| x.code).collect();
     assert!(codes.contains(&WarningCode::PageNumberFieldApproximated));
     assert!(!codes.contains(&WarningCode::PageNumberFieldDropped));
+    // Uyarı çıktıyı dürüstçe anlatır (saha maddesi 15): numara ortalanıyorsa
+    // başlık bunu söyler; kaynaktaki hiza korunmuş gibi davranılmaz.
+    assert!(ftr.contains("<w:jc w:val=\"center\"/>"));
+    assert!(WarningCode::PageNumberFieldApproximated
+        .title_tr()
+        .contains("ortal"));
 }
 
 /// A page-number-only field, with no separator, must emit PAGE and not NUMPAGES.

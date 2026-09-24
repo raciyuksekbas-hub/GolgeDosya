@@ -156,7 +156,12 @@ impl WarningCode {
             }
             FormContentLost => "Bazı form alanlarının görünür içeriği aktarılamadı",
             PageSizeChanged => "Sayfa boyutu değiştirildi",
-            PageNumberFieldApproximated => "Sayfa numarası alanı yeniden oluşturuldu",
+            // Yazıcı hizayı bilmez ve numarayı ORTALAR (docx/writer.rs,
+            // page_number_paragraph). UDF'nin hizayı nasıl kodladığı örnekle
+            // kanıtlanmadıkça tahmin edilmez; ama başlık bunu saklamaz.
+            PageNumberFieldApproximated => {
+                "Sayfa numarası Word alanı olarak yeniden oluşturuldu ve ortalandı"
+            }
         }
     }
 

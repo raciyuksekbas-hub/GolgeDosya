@@ -253,8 +253,12 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
 
       {items.flatMap((r) =>
         r.warnings.map((w, i) => (
-          <p className="flow-warn" key={`${r.source}-${w.code}-${i}`}>
-            <span className="flow-warn-mark" aria-hidden="true">▲</span>
+          // Bilgi bir alarm değildir (madde 15): beklenen bir dönüşüm (ör.
+          // sayfa numarasının Word alanı olarak yeniden kurulması) sarı ▲ ile
+          // içerik kaybıyla aynı görünüyordu. Tür yalnız renkle değil, işaret
+          // ve "Bilgi:" metniyle de ayrışır.
+          <p className="flow-warn" data-severity={w.severity} key={`${r.source}-${w.code}-${i}`}>
+            <span className="flow-warn-mark" aria-hidden="true">{w.severity === "INFO" ? "i" : "▲"}</span>
             <span>
               {SEVERITY_LABEL[w.severity] ?? w.severity}: {w.title}
               {w.location ? ` (${w.location})` : ""}
