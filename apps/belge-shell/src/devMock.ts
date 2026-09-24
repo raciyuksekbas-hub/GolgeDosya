@@ -34,6 +34,7 @@ const SETTINGS = {
   sourceReadOnly: true,
   linearResults: false,
   recentDocuments: RECENTS,
+  showRecents: true,
   migratedFrom: [],
 };
 

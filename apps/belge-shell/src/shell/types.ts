@@ -38,6 +38,8 @@ export interface Settings {
   sourceReadOnly: boolean;
   linearResults: boolean;
   recentDocuments: RecentDocument[];
+  /** Kapalıyken liste gizlenir ve yeni kayıt eklenmez; mevcut liste silinmez. */
+  showRecents: boolean;
   migratedFrom: string[];
 }
 

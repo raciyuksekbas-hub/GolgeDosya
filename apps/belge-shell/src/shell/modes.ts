@@ -10,7 +10,7 @@
  * geçildiğinde belgenin sessizce düşmesi kaçınılmaz olurdu.
  */
 
-import type { FeatureState } from "./types";
+import type { FeatureState, RecentDocument } from "./types";
 
 export interface Mode {
   /** Kullanıcının gördüğü eylem adı. */
@@ -160,6 +160,15 @@ export function extensionOf(path: string): string {
  */
 export function fileNameOf(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() || path;
+}
+
+/**
+ * Ekranda gösterilecek son belgeler. "Son belgeleri göster" kapalıysa boş:
+ * liste bölümü ve "Tümünü Temizle" kendiliğinden kaybolur. Alanı taşımayan
+ * eski bir arka uç (undefined) gösterir.
+ */
+export function visibleRecents(settings: { showRecents?: boolean; recentDocuments: RecentDocument[] }): RecentDocument[] {
+  return settings.showRecents === false ? [] : settings.recentDocuments;
 }
 
 /** Bu kip, açık olan belgelerle çalışabilir mi? */

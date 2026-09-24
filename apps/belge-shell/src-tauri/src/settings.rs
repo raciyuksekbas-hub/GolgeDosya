@@ -100,6 +100,13 @@ pub struct Settings {
     #[serde(default)]
     pub recent_documents: Vec<RecentDocument>,
 
+    /// Son belgeler gösterilsin ve yeni belge eklensin mi? (saha maddesi 11)
+    ///
+    /// Kapatmak YENİ kayıt üretmeyi durdurur ve listeyi gizler; mevcut listeyi
+    /// SİLMEZ. Silmek ayrı ve açık bir eylemdir ("Listeyi Temizle").
+    #[serde(default = "yes")]
+    pub show_recents: bool,
+
     /// Ayarların hangi eski uygulamalardan okunduğu. Yalnız kayıt amaçlı;
     /// migration'ın bir kez çalıştığını buradan anlarız.
     #[serde(default)]
@@ -122,6 +129,7 @@ impl Default for Settings {
             source_read_only: true,
             linear_results: false,
             recent_documents: Vec::new(),
+            show_recents: true,
             migrated_from: Vec::new(),
         }
     }
@@ -130,7 +138,12 @@ impl Default for Settings {
 impl Settings {
     /// Bir belgeyi listenin başına al. Aynı yol iki kez görünmez ve liste
     /// `MAX_RECENTS` ile sınırlıdır.
+    /// Kullanıcı son belgeleri kapattıysa hiçbir şey yazılmaz: kapı burada,
+    /// tek yerde; hiçbir çağıran onu atlayamaz.
     pub fn remember(&mut self, path: &str, now: u64) {
+        if !self.show_recents {
+            return;
+        }
         self.recent_documents.retain(|r| r.path != path);
         self.recent_documents.insert(
             0,
@@ -194,6 +207,7 @@ fn lenient(text: &str) -> Settings {
     field!("sourceReadOnly", source_read_only);
     field!("linearResults", linear_results);
     field!("recentDocuments", recent_documents);
+    field!("showRecents", show_recents);
     field!("migratedFrom", migrated_from);
     s
 }
@@ -208,6 +222,28 @@ pub fn save_to(dir: &Path, settings: &Settings) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn hidden_recents_record_nothing_new_and_keep_the_history() {
+        let mut s = Settings::default();
+        s.remember("C:\\Users\\Çağrı Şahin\\a.pdf", 1);
+        s.show_recents = false;
+        s.remember("C:\\Users\\Çağrı Şahin\\b.pdf", 2);
+        let paths: Vec<&str> = s.recent_documents.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, ["C:\\Users\\Çağrı Şahin\\a.pdf"]);
+        // Yeniden açılınca kayıt devam eder; eski liste yerinde.
+        s.show_recents = true;
+        s.remember("C:\\Users\\Çağrı Şahin\\b.pdf", 3);
+        assert_eq!(s.recent_documents.len(), 2);
+    }
+
+    #[test]
+    fn the_choice_survives_a_partly_broken_settings_file() {
+        let s = lenient(r#"{"showRecents": false, "textScale": "bozuk"}"#);
+        assert!(!s.show_recents);
+        assert!(Settings::default().show_recents);
+    }
+
     use super::*;
 
     fn tmp() -> PathBuf {

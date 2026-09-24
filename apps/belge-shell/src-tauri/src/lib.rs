@@ -83,6 +83,7 @@ fn save_settings(next: Settings) -> Result<Settings, String> {
     merged.include_review = next.include_review;
     merged.source_read_only = next.source_read_only;
     merged.linear_results = next.linear_results;
+    merged.show_recents = next.show_recents;
 
     // --- Kendi komutu olan alanlar: diskten korunur ---
     // accepted_terms   → tavzih_accept_terms
@@ -409,6 +410,36 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Madde 11: "Son belgeleri göster" kapatılınca liste gizlenir ve yeni
+    /// kayıt eklenmez, ama DİSKTEKİ liste silinmez. Tercih kaydının beyaz
+    /// listesine eklenmezse seçim sessizce düşerdi.
+    #[test]
+    fn hiding_recents_is_saved_and_never_forgets_the_list() {
+        let dir = paths::app_config_dir();
+        let mut on_disk = settings::load_from(&dir);
+        on_disk.recent_documents.clear();
+        on_disk.show_recents = true;
+        on_disk.remember("C:\\Users\\Çağrı Şahin\\dilekçe.pdf", 1);
+        settings::save_to(&dir, &on_disk).unwrap();
+
+        let mut next = get_settings();
+        next.show_recents = false;
+        let saved = save_settings(next).expect("tercih kaydı");
+        assert!(!saved.show_recents);
+        assert_eq!(
+            saved.recent_documents.len(),
+            1,
+            "gizlemek listeyi silmemeli"
+        );
+
+        let after = remember_documents(vec!["C:\\Users\\Çağrı Şahin\\yeni.pdf".into()]).unwrap();
+        assert_eq!(
+            after.recent_documents.len(),
+            1,
+            "gizliyken yeni kayıt eklenmemeli"
+        );
+    }
 
     /// P1: Tercihler penceresi ayarların TAMAMINI gönderir. Arayüzün elindeki
     /// anlık görüntü, bir modül aynı dosyaya yazdıktan sonra BAYATLAR; o bayat

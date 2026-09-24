@@ -195,6 +195,17 @@ export function PreferencesSheet({
                     Listeyi Temizle
                   </Button>
                 </div>
+                <label className="field prefs-check">
+                  <span className="field-label">
+                    Son belgeleri göster
+                    <span>Kapalıyken liste gizlenir ve yeni belge eklenmez; mevcut liste silinmez.</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={settings.showRecents !== false}
+                    onChange={(e) => set("showRecents", e.target.checked)}
+                  />
+                </label>
                 <p className="prefs-hint">
                   Liste yalnız bu bilgisayarda tutulur ve hiçbir yere gönderilmez.
                 </p>

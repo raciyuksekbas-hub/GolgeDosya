@@ -13,7 +13,7 @@ import { CompareWorkspace } from "./modules/degisikis/CompareWorkspace";
 import { PdfWorkspace } from "./modules/duzenek/PdfWorkspace";
 import { AnnexWorkspace, emptyProject } from "./modules/duzenek/ekler/AnnexWorkspace";
 import type { PreparedAnnex, Project as AnnexProject } from "./modules/duzenek/ekler/types";
-import { MODES, carryContext, fileNameOf, type ContextOutcome } from "./shell/modes";
+import { MODES, carryContext, fileNameOf, visibleRecents, type ContextOutcome } from "./shell/modes";
 import { Button, Status } from "./shared-ui/primitives";
 import { announce } from "./shared-ui/Announcer";
 import { useShortcuts } from "./shared-ui/useShortcuts";
@@ -313,7 +313,7 @@ export function App() {
           ) : (
             <DocumentSurface
               feature={active}
-              recents={settings.recentDocuments}
+              recents={visibleRecents(settings)}
               outcome={outcome}
               openRequest={openRequest}
               onDocuments={openDocuments}
