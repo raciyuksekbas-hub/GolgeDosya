@@ -105,6 +105,15 @@ function setDebugPolicy(args) {
   return debugPolicySet;
 }
 
+function debugPolicyPresent() {
+  try {
+    execFileSync("reg.exe", ["query", DEBUG_POLICY, "/v", basename(EXE)], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function clearDebugPolicy() {
   if (!debugPolicySet) return;
   try {
@@ -285,6 +294,16 @@ function fixtures() {
 
 // ---------------------------------------------------------------- senaryolar
 async function environment() {
+  // Runner ekranı 1024x768: pencere (1044x788) ve 1280x800'lük görüntüler
+  // ekrana sığmaz, tıklar görev çubuğuna düşebilir, görüntüler kırpılır.
+  // Ekranı büyütmeyi DENE; sonuç ne olursa olsun kaydedilir.
+  let screen = null;
+  try {
+    screen = native("resolution", { Width: 1920, Height: 1080 });
+  } catch (e) {
+    screen = { error: String(e?.message ?? e).slice(0, 300) };
+  }
+  observe("47", "Ekran çözünürlüğü (önce → sonra)", screen);
   const info = await cdp.eval(`({ ua: navigator.userAgent, dpr: devicePixelRatio, w: innerWidth, h: innerHeight })`);
   observe("ortam", "WebView2 ve pencere", { ...info, window: native("window") });
 }
@@ -341,6 +360,22 @@ async function previews() {
   await closeDocument();
 }
 
+/**
+ * Sayfanın etkileşimsiz bir noktası (CSS pikseli). İçerik alanı odak yönetimi
+ * için `<main tabindex="-1">` taşır: o bir etkileşim öğesi değildir, sayılmaz.
+ * Yalnız orta bant taranır: 1024x768'lik runner ekranında pencerenin alt
+ * kısmı görev çubuğunun altında kalır; oraya yapılan tık sayfaya ulaşmaz.
+ */
+const EMPTY_SPOT = `(() => {
+  const bad = 'button,a,input,textarea,select,label,[role=button],[role=link],[tabindex]:not([tabindex="-1"]),img,canvas,svg,[contenteditable]';
+  for (let y = Math.round(innerHeight * 0.6); y > innerHeight * 0.15; y -= 23)
+    for (let x = Math.round(innerWidth * 0.95); x > innerWidth * 0.05; x -= 31) {
+      const el = document.elementFromPoint(x, y);
+      if (el && !el.closest(bad)) return { x, y, dpr: devicePixelRatio, el: el.tagName + '.' + el.className };
+    }
+  return null;
+})()`;
+
 /** Maddeler 32 / 38 / 26 / 39: tarayıcı yüzeyi. */
 async function browserSurface() {
   // Kontrol A: yeniden yükleme ölçülebiliyor mu?
@@ -360,15 +395,7 @@ async function browserSurface() {
   await arm();
 
   // Sayfanın etkileşimsiz bir noktası.
-  const spot = await cdp.eval(`(() => {
-    const bad = 'button,a,input,textarea,select,label,[role=button],[tabindex],img,canvas,svg,[contenteditable]';
-    for (let y = Math.round(innerHeight * 0.85); y > innerHeight * 0.3; y -= 23)
-      for (let x = Math.round(innerWidth * 0.55); x < innerWidth * 0.95; x += 31) {
-        const el = document.elementFromPoint(x, y);
-        if (el && !el.closest(bad)) return { x, y, dpr: devicePixelRatio, el: el.tagName + '.' + el.className };
-      }
-    return null;
-  })()`);
+  const spot = await cdp.eval(EMPTY_SPOT);
   // Kontrol B: gerçek tuşlar pencereye ulaşıyor mu? Önce WebView'in klavye
   // odağını almak için etkileşimsiz noktaya bir sol tık.
   const focus = spot
@@ -402,7 +429,7 @@ async function browserSurface() {
     const x = Math.round(point.x * point.dpr);
     const y = Math.round(point.y * point.dpr);
     const win = native("window");
-    const region = { X: win.client.x + x - 60, Y: win.client.y + y - 60, W: 460, H: 560 };
+    const region = { X: win.client.x + x - 60, Y: win.client.y + y - 60, Width: 460, Height: 560 };
     const before = join(SHOTS, `menu-${label}-once.png`);
     const after = join(SHOTS, `menu-${label}-sonra.png`);
     native("shot", { ...region, Path: before });
@@ -442,16 +469,8 @@ async function paste() {
   await mode("Düzenle");
   await closeDocument();
   native("clip-file", { Path: F.vektor });
-  const spot = await cdp.eval(`(() => {
-    const bad = 'button,a,input,textarea,select,label,[role=button],[tabindex],img,canvas,svg';
-    for (let y = Math.round(innerHeight * 0.85); y > innerHeight * 0.3; y -= 23)
-      for (let x = Math.round(innerWidth * 0.55); x < innerWidth * 0.95; x += 31) {
-        const el = document.elementFromPoint(x, y);
-        if (el && !el.closest(bad)) return { x: Math.round(x * devicePixelRatio), y: Math.round(y * devicePixelRatio) };
-      }
-    return null;
-  })()`);
-  if (spot) native("click", { X: spot.x, Y: spot.y });
+  const spot = await cdp.eval(EMPTY_SPOT);
+  if (spot) native("click", { X: Math.round(spot.x * spot.dpr), Y: Math.round(spot.y * spot.dpr) });
   native("key", { Keys: "CTRL+V" });
   let opened = false;
   try {
@@ -541,7 +560,7 @@ async function screenshots() {
     { name: "buyuk" },
   ];
   for (const size of sizes) {
-    const geom = size.w ? native("move", { X: 40, Y: 40, W: size.w, H: size.h }) : native("maximize");
+    const geom = size.w ? native("move", { X: 40, Y: 40, Width: size.w, Height: size.h }) : native("maximize");
     observe("47", `pencere ${size.name}`, geom);
     for (const theme of ["light", "dark"]) {
       await cdp.eval(`document.documentElement.dataset.theme = ${JSON.stringify(theme)}`);
@@ -552,7 +571,7 @@ async function screenshots() {
       }
     }
   }
-  native("move", { X: 40, Y: 40, W: 1280, H: 800 });
+  native("move", { X: 40, Y: 40, Width: 1280, Height: 800 });
 
   // Madde 1: ürün işaretinin yeri, yerel başlık çubuğunun altında.
   const head = await cdp.eval(`(() => {
@@ -646,7 +665,12 @@ try {
   check("adım", "harness", false, String(e?.stack ?? e));
   await quit().catch(() => {});
 } finally {
+  const policyWasSet = debugPolicySet;
   clearDebugPolicy();
+  if (policyWasSet) {
+    check("temizlik", "WebView2 hata ayıklama ilkesi iş sonunda silindi (HKLM)", !debugPolicyPresent(),
+      { anahtar: DEBUG_POLICY, deger: basename(EXE) });
+  }
   writeFileSync(join(OUT, "sonuc.json"), JSON.stringify(results, null, 2), "utf8");
   const lines = ["# Kapı 6 — gerçek pencere", "", "| | madde | iddia | ayrıntı |", "|---|---|---|---|"];
   for (const r of results) {
