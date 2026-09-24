@@ -207,6 +207,18 @@ public static class GdDiff {
     $pair = $Path.Split('|')
     Out-Json @{ changed = [GdDiff]::Count($pair[0], $pair[1]) }
   }
+  'darkframe' {
+    # Yerel başlık çubuğu koyu mu: DWMWA_USE_IMMERSIVE_DARK_MODE (20).
+    Add-Type -TypeDefinition @"
+using System; using System.Runtime.InteropServices;
+public static class GdDwm {
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int value, int size);
+}
+"@
+    $h = Get-Hwnd; $v = 0
+    $hr = [GdDwm]::DwmGetWindowAttribute($h, 20, [ref]$v, 4)
+    Out-Json @{ hr = $hr; value = $v; dark = ($hr -eq 0 -and $v -ne 0) }
+  }
   'resolution' {
     # Barındırılan runner'ın ekranı 1024x768: 1280x800'lük pencere ekrana
     # sığmaz, ekran görüntüsü kırpılır. Birincil ekranı -Width x -Height'a
