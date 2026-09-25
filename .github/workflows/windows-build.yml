@@ -163,7 +163,7 @@ jobs:
           $portable = Get-ChildItem "$rel/belge-shell.exe" -ErrorAction Stop
           New-Item -ItemType Directory -Force -Path out | Out-Null
           Copy-Item $setup.FullName  "out/$($setup.Name)"
-          Copy-Item $portable.FullName "out/GolgeDosya_0.3.0_x64.exe"
+          Copy-Item $portable.FullName "out/GolgeDosya_0.3.1_x64.exe"
           Copy-Item LICENSE out/LICENSE
           Copy-Item THIRD_PARTY_NOTICES.md out/THIRD_PARTY_NOTICES.md
           "SETUP_NAME=$($setup.Name)" >> $env:GITHUB_ENV
@@ -178,7 +178,7 @@ jobs:
         run: |
           [Console]::OutputEncoding = [Text.Encoding]::UTF8
           $ok = $true
-          foreach ($f in @("out/GolgeDosya_0.3.0_x64.exe", "out/$env:SETUP_NAME")) {
+          foreach ($f in @("out/GolgeDosya_0.3.1_x64.exe", "out/$env:SETUP_NAME")) {
             $v = (Get-Item $f).VersionInfo
             # PE COFF başlığından makine tipi: 0x8664 = x64
             $fs = [IO.File]::OpenRead((Resolve-Path $f)); $br = New-Object IO.BinaryReader($fs)
@@ -197,10 +197,10 @@ jobs:
           }
           # Portable exe kullanıcıya görünen alanları taşımalı; installer'ın
           # kendi VersionInfo'su NSIS'ten gelir ve ürün sürümünü taşımayabilir.
-          $pv = (Get-Item "out/GolgeDosya_0.3.0_x64.exe").VersionInfo
+          $pv = (Get-Item "out/GolgeDosya_0.3.1_x64.exe").VersionInfo
           if ($pv.ProductName -ne "GölgeDosya") { "✗ ProductName 'GölgeDosya' degil: $($pv.ProductName)"; $ok = $false }
           foreach ($field in @($pv.FileVersion, $pv.ProductVersion)) {
-            if ($field -notmatch "^0\.3\.0") { "✗ surum 0.3.0 ile baslamiyor: $field"; $ok = $false }
+            if ($field -notmatch "^0\.3\.1") { "✗ surum 0.3.1 ile baslamiyor: $field"; $ok = $false }
           }
           # Kurulum dili (saha maddesi 4): Türkçe Windows'ta Türkçe, başka her
           # dilde İngilizce. makensis dil tablolarını sayar: yalnız İngilizce
@@ -233,7 +233,7 @@ jobs:
         continue-on-error: true
         run: |
           [Console]::OutputEncoding = [Text.Encoding]::UTF8
-          $p = Start-Process -FilePath (Resolve-Path "out/GolgeDosya_0.3.0_x64.exe") -PassThru
+          $p = Start-Process -FilePath (Resolve-Path "out/GolgeDosya_0.3.1_x64.exe") -PassThru
           "PID $($p.Id) baslatildi"
           Start-Sleep -Seconds 20
           $alive = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
@@ -276,7 +276,7 @@ jobs:
           "- DisplayVersion  : $($key.DisplayVersion)"  | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           "- Publisher       : $($key.Publisher)"       | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
           "- InstallLocation : $($key.InstallLocation)" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
-          if ($key.DisplayVersion -ne "0.3.0") { throw "kurulu surum 0.3.0 degil: $($key.DisplayVersion)" }
+          if ($key.DisplayVersion -ne "0.3.1") { throw "kurulu surum 0.3.1 degil: $($key.DisplayVersion)" }
 
           # Kayit defterindeki InstallLocation degeri TIRNAKLI saklanir
           # ("C:\Users\...\GölgeDosya"). Tirnaklari birlikte gecirmek
@@ -337,7 +337,7 @@ jobs:
         working-directory: apps/belge-shell
         run: |
           [Console]::OutputEncoding = [Text.Encoding]::UTF8
-          $exe = (Resolve-Path ../../out/GolgeDosya_0.3.0_x64.exe).Path
+          $exe = (Resolve-Path ../../out/GolgeDosya_0.3.1_x64.exe).Path
           node qa/windows/saha-e2e.mjs --exe $exe --out ../../saha-kanit
           $code = $LASTEXITCODE
           if (Test-Path ../../saha-kanit/sonuc.md) {
@@ -381,7 +381,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GolgeDosya-v0.3.0-windows-x64
+          name: GolgeDosya-v0.3.1-windows-x64
           path: out/
           if-no-files-found: error
           retention-days: 30

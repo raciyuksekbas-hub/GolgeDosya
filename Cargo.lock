@@ -242,7 +242,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "belge-shell"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "ekler-core",
  "ikincigoz-core",
@@ -970,7 +970,7 @@ checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
 name = "ekler-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "flate2",
  "image",
@@ -1861,7 +1861,7 @@ dependencies = [
 
 [[package]]
 name = "ikincigoz-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "once_cell",
  "quick-xml 0.36.2",
@@ -2699,7 +2699,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "flate2",
  "image",
@@ -2945,7 +2945,7 @@ dependencies = [
 
 [[package]]
 name = "process-bridge"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "pxfm"
