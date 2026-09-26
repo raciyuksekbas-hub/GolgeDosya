@@ -1,64 +1,219 @@
-# GölgeDosya
+<div align="center">
 
-**GölgeDosya**, belge üzerinde günlük çalışmayı tek bir masaüstü uygulamasında toplayan, **yerel-first** bir belge çalışma ortamıdır.
+# 📚 GölgeDosya
 
-PDF düzenleme ve sıkıştırma, belge dönüştürme, sürüm karşılaştırma, belge denetimi ve dilekçe eklerini hazırlama işlemleri tek uygulama içinde yürütülür. Belge içeriği işlenmek üzere bir bulut servisine gönderilmez; temel işlemler cihaz üzerinde gerçekleştirilir.
+### PDF ve hukuk belgeleri için yerel masaüstü çalışma alanı
 
-> **Güncel sürüm:** 0.3.1 Beta  
-> Windows x64 ve Apple Silicon macOS paketleri için [Releases](https://github.com/raciyuksekbas-hub/GolgeDosya/releases) sayfasına bakın.
+**Düzenleyin, dönüştürün, karşılaştırın, denetleyin ve dilekçe eklerinizi tek uygulamada hazırlayın.**
 
-## Araçlar
+![Version](https://img.shields.io/badge/version-v0.3.1%20Beta-555?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000?style=flat-square&logo=apple&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-x64-0078D4?style=flat-square&logo=windows&logoColor=white)
+![Local](https://img.shields.io/badge/çalışma-yerel-success?style=flat-square)
+
+</div>
+
+---
+
+## ⬇️ İndir
+
+| 🪟 Windows | 🍎 macOS |
+|---|---|
+| **Windows 10 / 11 — x64** | **Apple Silicon (arm64)** |
+| [**GölgeDosya v0.3.1 Beta — Windows kurulumunu indir**](https://github.com/raciyuksekbas-hub/GolgeDosya/releases/download/v.0.3.1/GolgeDosya_0.3.1_x64-setup.exe) | [**GölgeDosya v0.3.1 Beta — macOS'u indir**](https://github.com/raciyuksekbas-hub/GolgeDosya/releases/download/v.0.3.1/GolgeDosya_0.3.1_aarch64.dmg) |
+| [Taşınabilir Windows sürümü](https://github.com/raciyuksekbas-hub/GolgeDosya/releases/download/v.0.3.1/GolgeDosya_0.3.1_x64.exe) | — |
+
+> **Beta sürümüdür.** Özellikle önemli belgelerde, oluşturulan veya değiştirilen çıktıyı kullanmadan önce son kontrolünüzü yapmanızı öneririm.
+
+**Tüm dosyalar ve sürüm notları:** [Releases](https://github.com/raciyuksekbas-hub/GolgeDosya/releases)
+
+---
+
+## ✨ GölgeDosya ne yapar?
+
+Günlük hukuk pratiğinde aynı belge üzerinde birbirinden farklı işlemler yapıyoruz: PDF sayfalarını düzenlemek, Word belgesini UYAP biçimine dönüştürmek, iki sürüm arasındaki farkları bulmak, metindeki tutarsızlıkları denetlemek veya dilekçenin eklerini hazırlamak.
+
+GölgeDosya bu işleri **tek, sade ve yerel bir masaüstü çalışma alanında** bir araya getirir.
 
 | Araç | Ne yapar? |
 |---|---|
-| **Düzenle** | PDF sayfalarını görüntüler ve düzenler; döndürme, silme, sıralama, birleştirme, sıkıştırma ve ilgili PDF işlemlerini tek çalışma alanında toplar. |
-| **Ekler** | Belgeleri **Ek-1, Ek-2…** mantığıyla gruplandırır, dilekçe eklerini düzenler ve çıktı paketini hazırlar. |
-| **Dönüştür** | Hukuk pratiğinde kullanılan belge biçimleri arasında yerel dönüştürme işlemlerini yürütür; DOCX/UDF iş akışını destekler. |
-| **Karşılaştır** | İki belge sürümünü karşılaştırır; eklenen, silinen ve değişiklik içeren bölümleri gösterir. Eş zamanlı kaydırma ve değişiklikleri kopyalama araçları içerir. |
-| **Denetle** | Belgedeki yapısal ve yazımsal tutarlılık sorunlarını; boşluk, noktalama, tekrar, numaralandırma ve terim tutarlılığı gibi başlıklarda denetler. |
+| 🧩 **Düzenle** | PDF sayfalarını görüntüler; döndürme, silme, sıralama, birleştirme, sıkıştırma ve diğer PDF işlemlerini yürütür. |
+| 📎 **Ekler** | Belgeleri **Ek-1, Ek-2…** mantığıyla gruplandırır, dilekçe eklerini düzenler ve çıktı paketini hazırlar. |
+| 🔄 **Dönüştür** | Hukuk pratiğinde kullanılan belge biçimleri arasında yerel dönüşüm sağlar; **DOCX ↔ UDF** iş akışını destekler. |
+| 🆚 **Karşılaştır** | İki belge sürümünü karşılaştırır; eklenen, silinen ve değişiklik içeren bölümleri gösterir. Eş zamanlı kaydırma ve değişiklikleri kopyalama araçları içerir. |
+| 🔎 **Denetle** | Boşluk, noktalama, tekrar, numaralandırma ve terim tutarlılığı gibi metin sorunlarını denetler; uygun durumlarda düzeltme önerileri sunar. |
 
-## Temel yaklaşım
+---
 
-GölgeDosya üç ilkeye göre geliştirilir:
+## 🧩 Düzenle
 
-- **Yerel çalışma:** Belge içeriği varsayılan olarak cihazdan çıkmaz.
-- **Açıklanabilir işlem:** Belge üzerinde yapılan işlem kullanıcı tarafından görülebilir ve denetlenebilir olmalıdır.
-- **Masaüstü disiplini:** Arayüz; araç kalabalığından, gereksiz animasyondan ve web sitesi hissinden kaçınır. Klavye kullanımı ve erişilebilirlik birincil gereksinimdir.
+PDF üzerinde sık yapılan işlemleri tek çalışma alanında toplar.
 
-Uygulama belge içeriği için LLM/üretken yapay zekâ servisi kullanmaz ve belge içeriğine ilişkin telemetri toplamaz.
+- 📄 Sayfa küçük resimleri ve büyük önizleme
+- 🔃 Sayfa döndürme
+- 🗑️ Sayfa silme
+- ↕️ Sayfa sıralama
+- 🧷 PDF birleştirme
+- 🗜️ PDF sıkıştırma
+- 🖼️ Görsellerden PDF oluşturma
+- 🔢 Sayfa numarası ve ilgili PDF araçları
+- 🪟 Windows'ta yerel PDF önizleme desteği
 
-## Platformlar
+PDF işlemleri kaynak dosyayı sessizce değiştirmek yerine yeni çıktı üretme esasına göre tasarlanmıştır.
 
-### Windows
+---
 
-- Windows 10/11 x64
-- Kurulum paketi: `GolgeDosya_0.3.1_x64-setup.exe`
-- Taşınabilir sürüm: `GolgeDosya_0.3.1_x64.exe`
-- Yerel PDF küçük resim ve sayfa önizlemesi Windows'un kendi PDF altyapısı üzerinden desteklenir.
+## 📎 Ekler
 
-**İmza notu:** Mevcut Windows paketinde Authenticode imzası bulunmamaktadır. Bu nedenle SmartScreen ilk açılışta uyarı gösterebilir.
+Dilekçe eklerini hazırlarken kaynak dosya ile mantıksal ek birbirine karışmaz.
 
-### macOS
+1. Belgelerinizi yükleyin.
+2. **Ek-1, Ek-2…** gruplarını oluşturun.
+3. Belgeleri elle yerleştirin veya atanmamış belgeler için **Otomatik Dağıt** kullanın.
+4. Başlıkları düzenleyin.
+5. **Ekleri Hazırla ve Kaydet** ile çıktı paketini oluşturun.
 
-- Apple Silicon (arm64)
-- Disk görüntüsü: `GolgeDosya_0.3.1_aarch64.dmg`
-- Uygulama Developer ID ile imzalıdır ve Hardened Runtime kullanır.
+Bir mantıksal ek birden fazla kaynak belge içerebilir. Böylece “Ek-3” ile onu oluşturan fiziksel PDF dosyaları ayrı kavramlar olarak korunur.
 
-**Notarization notu:** Mevcut macOS paketi notarize edilmemiştir. Bu nedenle başka bir Mac'te normal ilk açılış sırasında Gatekeeper uyarısı veya engeli oluşabilir.
+---
 
-## İndirme ve bütünlük denetimi
+## 🔄 Dönüştür
 
-Yayımlanmış paketler ve `SHA256SUMS` dosyası [Releases](https://github.com/raciyuksekbas-hub/GolgeDosya/releases) bölümündedir.
+GölgeDosya, Word ve UYAP belge biçimleri arasında yerel dönüşüm iş akışını destekler.
 
-İndirdiğiniz dosyaları doğrulamak için:
+- 📝 DOCX / UDF dönüşümü
+- 🔤 Farklı yazı tipleriyle belge işleme
+- 🔢 Sayfa numarası yapılarının mümkün olduğunca korunması
+- 📂 Dönüşümden sonra çıktı klasörüne doğrudan erişim
+- ➕ **Yeni Dönüştürme** ile arka arkaya işlemler
 
-```bash
-shasum -a 256 -c SHA256SUMS
+Dönüşüm sırasında belgenin yapısında teknik olarak birebir korunamayan bir unsur varsa uygulama bunu kullanıcıya açıkça bildirir.
+
+---
+
+## 🆚 Karşılaştır
+
+İki belge sürümünü yan yana incelemek için tasarlanmıştır.
+
+- ➕ Eklenen bölümler
+- ➖ Silinen bölümler
+- 🟨 Değişiklik içeren bölümler
+- 🔗 Açılıp kapatılabilen eş zamanlı kaydırma
+- 📋 Değişiklikleri kopyalama
+- 🔁 Temel veya değişik sürümü çalışma sırasında değiştirme
+- 🌗 Açık ve koyu tema desteği
+
+Amaç yalnız “fark var” demek değil; değişikliğin nerede olduğunu okunabilir biçimde göstermektir.
+
+---
+
+## 🔎 Denetle
+
+Denetle, belgenin hukukî değerlendirmesini yapmaz; metnin **mekanik ve yapısal tutarlılığına** odaklanır.
+
+Kontrol edilen başlıklardan bazıları:
+
+- ↔️ Fazla veya olağandışı boşluklar
+- 🔣 Noktalama sorunları
+- 🔁 Tekrarlanan kelime ve ifadeler
+- 🔢 Numara ve sıralama tutarlılığı
+- 🧾 Terim kullanımındaki farklılıklar
+
+Uygun ve güvenli olduğu durumlarda kullanıcıya düzeltme önerisi gösterilebilir; değişiklik kullanıcı onayı olmadan uygulanmaz.
+
+---
+
+## 🔐 Belgeleriniz sizde kalır
+
+GölgeDosya'nın temel tasarım ilkelerinden biri **local-first** çalışmadır.
+
+- 💻 Belge işleme cihazınızda gerçekleştirilir.
+- ☁️ Belge içeriği işlenmek üzere bir bulut servisine yüklenmez.
+- 🤖 Belge işleme için LLM / üretken yapay zekâ servisi kullanılmaz.
+- 📊 Belge içeriğine ilişkin telemetri veya analitik veri gönderilmez.
+- 🕶️ Son belgeler görünümü istenirse kapatılabilir.
+- 🔌 Temel belge işlemleri için çevrim içi hesap gerekmez.
+
+**Belge içeriğiniz, siz ayrıca paylaşmadığınız sürece geliştiriciye veya merkezi bir sunucuya gönderilmez.**
+
+İşletim sisteminin kendi hizmetlerinin veya kullanıcı tarafından ayrıca seçilen harici uygulamaların davranışları doğal olarak kendi koşullarına tabidir.
+
+---
+
+## 🧪 v0.3.1 Beta
+
+Bu sürüm, gerçek kullanıcı geri bildirimleri ve Windows/macOS saha testleri doğrultusunda hazırlanmıştır.
+
+Başlıca geliştirmeler:
+
+- 🪟 Windows için gerçek yerel PDF küçük resim ve sayfa önizleme desteği eklendi.
+- 🧭 Windows'ta klasör gösterme ve Unicode/uzun yol davranışları düzeltildi.
+- 🆚 Karşılaştır'da eş zamanlı kaydırma, kopyalama ve koyu tema davranışları iyileştirildi.
+- 📎 Ekler iş akışına yeni işlem başlatma ve işlem sonrası akış iyileştirmeleri eklendi.
+- 🔄 Dönüştür ekranı ve işlem sonrası **Yeni Dönüştürme** akışı sadeleştirildi.
+- 🛡️ Kaydedilmemiş çalışmanın sessizce kaybolmasına yol açabilecek yenileme/gezinme davranışları koruma altına alındı.
+- 🔎 Denetle'de boşluk vurguları ve terim tutarlılığı önerileri geliştirildi.
+- 🗜️ PDF sıkıştırma ve PDF çıktı işleme zinciri iyileştirildi.
+- 🏷️ GölgeDosya'nın oluşturduğu/değiştirdiği PDF çıktılarında marka davranışı tutarlı hâle getirildi.
+
+---
+
+## 🍎 macOS
+
+- Apple Silicon / arm64 içindir.
+- Uygulama **Apple Developer ID** ile imzalanmıştır.
+- Hardened Runtime kullanır.
+- Mevcut v0.3.1 paketi **notarize edilmemiştir**.
+
+Bu nedenle başka bir Mac'te ilk açılış sırasında Gatekeeper uyarısı veya engeli görülebilir. Böyle bir durumda Finder'da uygulamaya **sağ tık → Aç** yoluyla izin vermeniz gerekebilir.
+
+---
+
+## 🪟 Windows
+
+- Windows 10 / 11 x64 içindir.
+- Kurulum ve taşınabilir paket birlikte yayımlanır.
+- Windows paketi henüz **Authenticode ile imzalı değildir**.
+
+Bu nedenle Microsoft SmartScreen ilk açılışta uyarı gösterebilir. Uyarı durumunda **Ek bilgi → Yine de çalıştır** seçeneği kullanılabilir.
+
+---
+
+## ✅ Doğrulama
+
+v0.3.1 paketleri aynı kaynak sürümünden üretilmiştir:
+
+```text
+d1fd33011998767628bf43154118ed44b9d71cc4
 ```
 
-Windows paketleri GitHub-hosted gerçek Windows runner üzerinde derlenip kurulum, açılış ve kaldırma smoke testlerinden geçirilir. macOS paketi aynı kaynak commit'inden arm64 olarak üretilir.
+Windows tarafında gerçek Windows runner üzerinde:
 
-## Kaynaktan derleme
+- ✅ yerel derleme ve test kapıları,
+- ✅ gerçek PDF render testleri,
+- ✅ Unicode ve 260+ karakterlik yol testleri,
+- ✅ kurulum → açılış → kaldırma smoke testi,
+- ✅ gerçek pencere davranışı kontrolleri
+
+başarıyla tamamlanmıştır.
+
+macOS paketi aynı commit'ten arm64 olarak üretilmiş ve Developer ID ile imzalanmıştır.
+
+### 🔐 SHA-256
+
+```text
+5a9073d38e9a439ac01a719f55cc0e9fb3f1ccb5ea0cf162f6cd1bee5e65cd3a  GolgeDosya_0.3.1_aarch64.dmg
+2438e1b3b96969d5a9314ae407edf954ea0ed58a83cb22ac75fc2964788e5090  GolgeDosya_0.3.1_x64-setup.exe
+47bf39b936b841681e07e982fcbf1a0b6b1a38ace9399834ac514859a00884dd  GolgeDosya_0.3.1_x64.exe
+```
+
+Release içindeki `SHA256SUMS` dosyasıyla da doğrulama yapabilirsiniz.
+
+---
+
+## 🛠️ Kaynaktan derleme
+
+GölgeDosya, **Tauri 2 + Rust workspace** yapısını kullanır.
 
 ### Gereksinimler
 
@@ -66,7 +221,7 @@ Windows paketleri GitHub-hosted gerçek Windows runner üzerinde derlenip kurulu
 - Node.js / npm
 - Tauri 2'nin platform gereksinimleri
 
-Frontend, Tauri'nin `generate_context!` aşamasından **önce** derlenmelidir:
+Frontend, Rust/Tauri derlemesinden önce hazırlanmalıdır:
 
 ```bash
 cd apps/belge-shell
@@ -87,9 +242,9 @@ cargo test --workspace --locked --no-fail-fast
 bash scripts/release-gate.sh --fast
 ```
 
-## Mimari
+---
 
-GölgeDosya, Tauri 2 tabanlı masaüstü kabuğu ile Rust çekirdeklerinden oluşur.
+## 🧱 Mimari
 
 ```text
 apps/belge-shell/          Tauri masaüstü uygulaması
@@ -101,29 +256,34 @@ crates/process-bridge/     dış süreç sınırı
 tools/preflight/           ön kontroller
 ```
 
-Belge çekirdekleri ile platform kabuğu arasındaki sınırlar otomatik mimari ve komut-paritesi testleriyle korunur.
+Çekirdekler ile platform kabuğu arasındaki sınırlar mimari, özellik matrisi ve komut-paritesi testleriyle korunur.
 
-## Gizlilik
+---
 
-GölgeDosya'nın tasarımında belge içeriği **yerel veri** olarak kabul edilir.
+## 💬 Geri bildirim
 
-- Belge içeriği işlenmek üzere buluta gönderilmez.
-- Belge içeriğine ilişkin telemetri bulunmaz.
-- Geçici dosyalar ve çıktı işlemleri yerel dosya sistemi üzerinde yürütülür.
-- Son belgeler görünümü kullanıcı tarafından kapatılabilir.
+GölgeDosya hâlen beta aşamasındadır. Gerçek kullanım sırasında karşılaştığınız hata, eksik veya geliştirme önerilerini paylaşmanız uygulamanın gelişimine doğrudan katkı sağlar.
 
-Harici bir uygulama veya işletim sistemi hizmeti kullanılan işlemlerde ilgili platformun kendi davranışları ayrıca geçerlidir.
+📧 **raci@yuksekbas.av.tr**
 
-## Durum
+---
 
-0.3.1, gerçek Windows ve macOS paketleri üretilmiş **beta** sürümdür. Sürüm; saha geri bildirimleri, Windows-native testler, PDF render testleri ve paket smoke testleri üzerinden geliştirilmektedir.
+## 🙏 Meslektaşlarımdan bir ricam var
 
-Bilinen paketleme kısıtları:
+Kıymetli meslektaşlarım,
 
-- Windows paketi henüz Authenticode imzalı değildir.
-- macOS paketi Developer ID ile imzalıdır ancak henüz notarize edilmemiştir.
+Ben yazılımcı değilim. Yapay zekâ destekli geliştirme yöntemlerinden yararlanarak, kendi işimde ve meslektaşlarımın günlük pratiğinde faydalı olabilecek masaüstü araçları üretmeye çalışan bir hukukçuyum.
 
-## Lisans
+Bu nedenle GölgeDosya'nın hataları, eksikleri veya geliştirilmesi gereken yönleri olabilir. Uygulamayı kullandıkça karşılaştığınız sorunları, dileklerinizi, önerilerinizi ve eleştirilerinizi benimle paylaşırsanız GölgeDosya'yı birlikte daha iyi hâle getirebiliriz.
+
+Uygulamayı sizlere sunarken tek kişisel ricam; beni yetiştiren müteveffa anneannem **Cemile Salman'ın** aziz ruhu ve hatırası için, kendi inancınız çerçevesinde bir dua etmenizdir.
+
+Sevgiler,  
+Raci
+
+---
+
+## ⚖️ Lisans
 
 **Proprietary / All Rights Reserved**  
 © 2026 Raci Çetin Yüksekbaş.
@@ -131,3 +291,13 @@ Bilinen paketleme kısıtları:
 Kaynak kodun bu depoda erişilebilir olması; kopyalama, değiştirme, yeniden dağıtma veya türev çalışma oluşturma izni vermez. Ayrıntılar için [LICENSE](LICENSE) dosyasına bakın.
 
 Üçüncü taraf açık kaynak bileşenleri kendi lisanslarına tabidir. Canonical kayıt [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) dosyasındadır.
+
+---
+
+<div align="center">
+
+### 📚 GölgeDosya
+
+**Belgeleriniz üzerinde çalışın. Verileriniz sizde kalsın.**
+
+</div>
