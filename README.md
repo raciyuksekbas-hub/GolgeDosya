@@ -1,118 +1,133 @@
 # GölgeDosya
 
-Dört bağımsız masaüstü uygulamasının — **Tavzih**, **DüzenEk**, **Değişikİş**,
-**İkinciGöz** — tek bir yerel belge çalışma ortamında birleştirilmesi.
+**GölgeDosya**, belge üzerinde günlük çalışmayı tek bir masaüstü uygulamasında toplayan, **yerel-first** bir belge çalışma ortamıdır.
 
-> **`Yuksekbas-Belge` ve `belge-shell` GEÇİCİ TEKNİK ADLARDIR.**
-> Ürün markası kararı verilmedi. Kod, `AppInfo.nameIsProvisional = true` ile
-> bunu açıkça bildirir.
+PDF düzenleme ve sıkıştırma, belge dönüştürme, sürüm karşılaştırma, belge denetimi ve dilekçe eklerini hazırlama işlemleri tek uygulama içinde yürütülür. Belge içeriği işlenmek üzere bir bulut servisine gönderilmez; temel işlemler cihaz üzerinde gerçekleştirilir.
 
-## Durum — mimari tamamlandı, GUI bilinçli olarak ertelendi
+> **Güncel sürüm:** 0.3.1 Beta  
+> Windows x64 ve Apple Silicon macOS paketleri için [Releases](https://github.com/raciyuksekbas-hub/GolgeDosya/releases) sayfasına bakın.
 
-| Faz | İş | Durum |
-|---|---|---|
-| 0 | Snapshot + temiz taban | ✅ |
-| 1 | Tavzih ↔ DüzenEk `document-core` tekilleştirmesi | ✅ |
-| 2 | Birleşik workspace + minimal kabuk | ✅ |
-| 3 | Tavzih migration'ı | ✅ |
-| 4 | İkinciGöz migration'ı (mevcut parser korunarak) | ✅ |
-| 5 | Değişikİş migration'ı (TS diff motoru korunarak) | ✅ |
-| 6 | DüzenEk migration'ı (dondurulmuş temele karşı) | ✅ |
-| 7 | Final mimari konsolidasyon | ✅ |
-| — | **GUI tasarımı ve GUI kabulü** | ⏸ **bilinçli olarak ertelendi** |
+## Araçlar
 
-**Dört bağımsız uygulama çalışmaya devam ediyor.** Hiçbiri emekliye ayrılmadı;
-dördü de dondurulmuş referans olarak `*-premerge-2026-09-07` etiketlerinde
-duruyor. **Bu deponun derlenmesi artık onlara bağlı değildir.**
+| Araç | Ne yapar? |
+|---|---|
+| **Düzenle** | PDF sayfalarını görüntüler ve düzenler; döndürme, silme, sıralama, birleştirme, sıkıştırma ve ilgili PDF işlemlerini tek çalışma alanında toplar. |
+| **Ekler** | Belgeleri **Ek-1, Ek-2…** mantığıyla gruplandırır, dilekçe eklerini düzenler ve çıktı paketini hazırlar. |
+| **Dönüştür** | Hukuk pratiğinde kullanılan belge biçimleri arasında yerel dönüştürme işlemlerini yürütür; DOCX/UDF iş akışını destekler. |
+| **Karşılaştır** | İki belge sürümünü karşılaştırır; eklenen, silinen ve değişiklik içeren bölümleri gösterir. Eş zamanlı kaydırma ve değişiklikleri kopyalama araçları içerir. |
+| **Denetle** | Belgedeki yapısal ve yazımsal tutarlılık sorunlarını; boşluk, noktalama, tekrar, numaralandırma ve terim tutarlılığı gibi başlıklarda denetler. |
 
-## Kurulum ve derleme
+## Temel yaklaşım
 
-Sıra zorunludur. Tauri, `generate_context!` sırasında `dist/` dizinini binary'ye
-gömer; `dist/` git'te tutulmadığı için frontend derlemesi Rust derlemesinden
-**önce** gelmelidir. Aksi hâlde taze bir klonda `error: proc macro panicked`
-alırsınız.
+GölgeDosya üç ilkeye göre geliştirilir:
+
+- **Yerel çalışma:** Belge içeriği varsayılan olarak cihazdan çıkmaz.
+- **Açıklanabilir işlem:** Belge üzerinde yapılan işlem kullanıcı tarafından görülebilir ve denetlenebilir olmalıdır.
+- **Masaüstü disiplini:** Arayüz; araç kalabalığından, gereksiz animasyondan ve web sitesi hissinden kaçınır. Klavye kullanımı ve erişilebilirlik birincil gereksinimdir.
+
+Uygulama belge içeriği için LLM/üretken yapay zekâ servisi kullanmaz ve belge içeriğine ilişkin telemetri toplamaz.
+
+## Platformlar
+
+### Windows
+
+- Windows 10/11 x64
+- Kurulum paketi: `GolgeDosya_0.3.1_x64-setup.exe`
+- Taşınabilir sürüm: `GolgeDosya_0.3.1_x64.exe`
+- Yerel PDF küçük resim ve sayfa önizlemesi Windows'un kendi PDF altyapısı üzerinden desteklenir.
+
+**İmza notu:** Mevcut Windows paketinde Authenticode imzası bulunmamaktadır. Bu nedenle SmartScreen ilk açılışta uyarı gösterebilir.
+
+### macOS
+
+- Apple Silicon (arm64)
+- Disk görüntüsü: `GolgeDosya_0.3.1_aarch64.dmg`
+- Uygulama Developer ID ile imzalıdır ve Hardened Runtime kullanır.
+
+**Notarization notu:** Mevcut macOS paketi notarize edilmemiştir. Bu nedenle başka bir Mac'te normal ilk açılış sırasında Gatekeeper uyarısı veya engeli oluşabilir.
+
+## İndirme ve bütünlük denetimi
+
+Yayımlanmış paketler ve `SHA256SUMS` dosyası [Releases](https://github.com/raciyuksekbas-hub/GolgeDosya/releases) bölümündedir.
+
+İndirdiğiniz dosyaları doğrulamak için:
 
 ```bash
-cd apps/belge-shell && npm ci && npm run build   # dist/ üretir
-cd ../.. && cargo build --workspace
-cargo test --workspace
+shasum -a 256 -c SHA256SUMS
 ```
 
-Bu sıra `scripts/check-fresh-clone.sh` tarafından her koşuda doğrulanır: depo,
-eski dört depo erişilemezken klonlanıp derlenir ve test edilir.
+Windows paketleri GitHub-hosted gerçek Windows runner üzerinde derlenip kurulum, açılış ve kaldırma smoke testlerinden geçirilir. macOS paketi aynı kaynak commit'inden arm64 olarak üretilir.
+
+## Kaynaktan derleme
+
+### Gereksinimler
+
+- Rust toolchain
+- Node.js / npm
+- Tauri 2'nin platform gereksinimleri
+
+Frontend, Tauri'nin `generate_context!` aşamasından **önce** derlenmelidir:
+
+```bash
+cd apps/belge-shell
+npm ci
+npm run build
+
+cd ../..
+cargo build --workspace
+cargo test --workspace --locked
+```
+
+Temel kalite kapıları:
+
+```bash
+cargo fmt --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --locked --no-fail-fast
+bash scripts/release-gate.sh --fast
+```
+
+## Mimari
+
+GölgeDosya, Tauri 2 tabanlı masaüstü kabuğu ile Rust çekirdeklerinden oluşur.
+
+```text
+apps/belge-shell/          Tauri masaüstü uygulaması
+crates/document-core/      belge işleme çekirdeği
+crates/pdf-core/           PDF işlemleri
+crates/ekler-core/         Ekler alan mantığı
+crates/ikincigoz-core/     Denetim motoru
+crates/process-bridge/     dış süreç sınırı
+tools/preflight/           ön kontroller
+```
+
+Belge çekirdekleri ile platform kabuğu arasındaki sınırlar otomatik mimari ve komut-paritesi testleriyle korunur.
+
+## Gizlilik
+
+GölgeDosya'nın tasarımında belge içeriği **yerel veri** olarak kabul edilir.
+
+- Belge içeriği işlenmek üzere buluta gönderilmez.
+- Belge içeriğine ilişkin telemetri bulunmaz.
+- Geçici dosyalar ve çıktı işlemleri yerel dosya sistemi üzerinde yürütülür.
+- Son belgeler görünümü kullanıcı tarafından kapatılabilir.
+
+Harici bir uygulama veya işletim sistemi hizmeti kullanılan işlemlerde ilgili platformun kendi davranışları ayrıca geçerlidir.
+
+## Durum
+
+0.3.1, gerçek Windows ve macOS paketleri üretilmiş **beta** sürümdür. Sürüm; saha geri bildirimleri, Windows-native testler, PDF render testleri ve paket smoke testleri üzerinden geliştirilmektedir.
+
+Bilinen paketleme kısıtları:
+
+- Windows paketi henüz Authenticode imzalı değildir.
+- macOS paketi Developer ID ile imzalıdır ancak henüz notarize edilmemiştir.
 
 ## Lisans
 
-**Proprietary / All Rights Reserved** — © 2026 Raci Çetin Yüksekbaş.
-Bkz. `LICENSE`.
+**Proprietary / All Rights Reserved**  
+© 2026 Raci Çetin Yüksekbaş.
 
-Yedi birinci taraf bileşenin tamamı bu ürün için özgün geliştirilmiştir ve
-gömülü üçüncü taraf kaynak kod içermez. Üçüncü taraf açık kaynak bağımlılıklar
-kendi lisanslarına tabidir; tek canonical kayıt `THIRD_PARTY_NOTICES.md`.
+Kaynak kodun bu depoda erişilebilir olması; kopyalama, değiştirme, yeniden dağıtma veya türev çalışma oluşturma izni vermez. Ayrıntılar için [LICENSE](LICENSE) dosyasına bakın.
 
-Bağımsız Tavzih ve DüzenEk depolarının yayımlanmış MIT sürümleri bu kararla
-değişmez; karar yalnız birleşik ürünün bundan sonraki rejimidir.
-
-## Kapılar
-
-| Betik | Ne kanıtlar |
-|---|---|
-| `scripts/check-architecture.sh` | katman yönleri, süreç sınırı, capability yüzeyi, legacy yolu izolasyonu |
-| `scripts/check-external-dependencies.py` | depo dışı yol bağımlılığı **sıfır** (mandal) |
-| `scripts/check-feature-matrix.sh` | altı derleme şeklinin hepsi derlenir, yedincisi reddedilir |
-| `scripts/check-command-parity.py` | taşınan 21 DüzenEk komutunun gövdesi bağımsız depoyla aynı |
-| `scripts/check-licensing.py` | Proprietary rejimi, LICENSE, üçüncü taraf kaydı ve bağımlılık lisansları — fail-closed |
-| `scripts/check-fresh-clone.sh` | taze klon → kur → derle → test, eski depolar olmadan |
-| `scripts/release-gate.sh` | hepsi + lisans, ağ bağımsızlığı, paketleme, kullanıcı verisi değişmezliği |
-
-## Yapı
-
-```
-Cargo.toml                          workspace
-apps/belge-shell/                   Tauri 2 uygulaması
-  src/shell/                        rota, yerleşim, navigasyon
-  src/shared-ui/                    tema, duyurucu, odak tuzağı, token'lar
-  src/features/                     modül yer tutucuları
-  src-tauri/src/                    kabuk, ayarlar, eski ayar migration'ı, feature flag
-  src-tauri/capabilities/           ETKİN izinler (yalnız kabuk)
-  src-tauri/capabilities-planned/   modül izinleri — taşınırken etkinleşir
-crates/document-core/               Tavzih çekirdeği — TEK kopya (Phase 1)
-crates/                             pdf-core, office-bridge (Phase 6)
-scripts/check-architecture.sh       mimari değişmez denetimi
-scripts/release-gate.sh             sürüm kapısı
-scripts/bundle-macos.sh             imzalama + notarization + karantina provası
-docs/MIGRATION.md                   faz kayıtları, açık sorular, rollback
-```
-
-## Mimari değişmez
-
-```
-pdf-core  →  document-core     SERBEST
-document-core  →  pdf-core     YASAK
-```
-
-Bu kural bugün zaten geçerli: Tavzih'in çekirdeğinde tek bir PDF referansı yok,
-DüzenEk'in çekirdeği onu yalnız beş API noktasından tüketiyor.
-`scripts/check-architecture.sh` kuralı kilitler.
-
-## Feature-level rollback
-
-Her modül iki kapı arkasında:
-
-* **derleme zamanı** — `cargo build --features feature_tavzih`
-  (hiçbiri `default` değil; mimari denetimi bunu doğrular)
-* **çalışma zamanı** — `BELGE_DISABLE_TAVZIH=1`
-
-Bir modül sorun çıkarırsa yalnız o rota kapanır; uygulamanın tamamı geri alınmaz.
-
-## Komutlar
-
-```sh
-cd apps/belge-shell && npm install
-npm run build                      # tsc + vite
-cargo test --workspace             # 51 takım · 736 test
-cargo clippy --workspace --all-targets -- -D warnings
-bash scripts/check-architecture.sh
-bash scripts/release-gate.sh --fast
-BELGE_ADHOC=1 sh scripts/bundle-macos.sh    # imzasız yerel paket
-```
+Üçüncü taraf açık kaynak bileşenleri kendi lisanslarına tabidir. Canonical kayıt [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) dosyasındadır.
