@@ -22,7 +22,7 @@
  * ya da henüz yoksa ne araç paneli ne de sayfa şeridi çizilir — kullanılamayan
  * araçları soluk göstermek yerine hata/boş durum tam genişliği alır.
  */
-import { rotatePages, previewGeometry, workspaceSurfaces, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
+import { rotatePages, previewGeometry, previewStageSize, workspaceSurfaces, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { noBenefitStatus } from './noBenefitMessage';
 import { copyDestination } from './copyDestination';
 import { describeOpenFailure, describeSaveFailure, logFailure, safeMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
@@ -134,9 +134,15 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
     useEffect(() => {
         const target = large ? ref.current?.parentElement : ref.current;
         if (!target) return;
-        const observer = new ResizeObserver(() => setViewport({width: target.clientWidth, height: target.clientHeight}));
+        // Yalnız gerçekten değişen ölçü durumu günceller: aynı ölçü yeni bir
+        // geometri, yeni bir dpi ve yeni bir render demek değildir.
+        const measure = () => setViewport(previous =>
+            previous.width === target.clientWidth && previous.height === target.clientHeight
+                ? previous
+                : {width: target.clientWidth, height: target.clientHeight});
+        const observer = new ResizeObserver(measure);
         observer.observe(target);
-        setViewport({width: target.clientWidth, height: target.clientHeight});
+        measure();
         return () => observer.disconnect();
     }, [large]);
     useEffect(() => {
@@ -171,9 +177,21 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
     const wait = error
         ? <p className="pdf-wait" data-tone="error" role="status" title={safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}>{safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}</p>
         : <p className="pdf-wait" role="status"><span className="spinner" aria-hidden="true"/>Önizleme hazırlanıyor</p>;
-    return <div ref={ref} className={large ? 'pdf-preview-stage' : 'pdf-thumbnail-stage'} style={large && geometry ? {width: Math.max(viewport.width, geometry.width + 16), minHeight: Math.max(viewport.height, geometry.height + 16)} : undefined}>
+    // Sahne ölçülen kutunun sayılarıyla BOYUTLANMAZ. Eskiden genişlik/yükseklik
+    // `max(ölçülen kutu, sayfa)` idi: ölçüm bir kare gecikmeliydi ve sayfanın
+    // kendi yarattığı kaydırma çubuğu ölçümü küçültüyordu. Büyük ölçüde taşan,
+    // küçük ölçüde sığan bir sayfa her karede iki durum arasında gidip geldi
+    // (sahada "tir tir titriyor"). Artık kutuyu CSS doldurur (min-width/
+    // min-height: 100%, gerçek kesirli boyutla); burada yalnız sayfanın kendi
+    // boyu verilir. Sığdırma kiplerinde sayfa kutudan büyük olamaz, dolayısıyla
+    // sahne hiçbir zaman kendi başına kaydırma çubuğu doğurmaz.
+    return <div ref={ref} className={large ? 'pdf-preview-stage' : 'pdf-thumbnail-stage'} style={large && geometry ? previewStageSize(geometry) : undefined}>
         {bitmap && geometry ? <div className="pdf-page-surface" style={{width: geometry.width, height: geometry.height}}><img src={bitmap.url} alt={`${item.source.file_name}, sayfa ${item.page}`} style={{width: geometry.imageWidth, height: geometry.imageHeight, transform: `translate(-50%, -50%) rotate(${rotation}deg)`}}/></div> : wait}
-        {bitmap && error && wait}
+        {/* Sayfa çizilmişken sonraki (daha keskin) render başarısız olursa hata
+            sayfanın YANINA değil üstüne, yerleşim dışı bir şerit olarak gelir:
+            yanına konan cümle genişliği taşırıp kaydırma çubuğu döngüsünü
+            başlatıyordu. */}
+        {bitmap && error && <p className="pdf-wait pdf-wait-overlay" data-tone="error" role="status" title={safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}>{safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}</p>}
     </div>;
 }
 /**
