@@ -122,7 +122,8 @@ const CORPUS: Record<string, Page> = {
   "CropBox ≠ MediaBox (400×610 görünür alan)": { w: 400, h: 610 },
   "küçük sayfa (A6)": { w: 150, h: 210 },
 };
-const MODES: PreviewMode[] = ["fit-page", "fit-width", 75, 100, 125];
+/** Yakınlaştır listesinin tamamı: varsayılan (Sayfaya sığdır), Genişliğe sığdır ve bütün elle yakınlaştırma değerleri. */
+const MODES: PreviewMode[] = ["fit-page", "fit-width", 75, 100, 125, 150, 200];
 const WIDTHS = Array.from({ length: 334 }, (_, i) => 300 + 3 * i);
 const HEIGHTS = [430, 530, 547, 647, 800, 983];
 
@@ -159,6 +160,16 @@ describe("ölçü kaydırma çubuğundan bağımsız", () => {
           const width = previewStageSize(previewGeometry(w * 96 / 72, h * 96 / 72, 0, W, H, "fit-width"));
           expect(width.width).toBeLessThanOrEqual(W + 1e-9);
         }
+  });
+});
+
+describe("sınanan kipler Yakınlaştır listesinin tamamıdır", () => {
+  it("arayüzdeki her seçenek sınanıyor", () => {
+    const zoom = source.match(/<label className="zoom">[\s\S]*?<\/label>/)?.[0] ?? "";
+    const offered = [...zoom.matchAll(/value="(fit-[a-z]+)"/g)].map((m) => m[1] as PreviewMode)
+      .concat((zoom.match(/\{\[([\d, ]+)\]\.map/)?.[1] ?? "").split(",").map(Number));
+    expect(offered.length).toBeGreaterThan(2);
+    expect([...offered].sort()).toEqual([...MODES].sort());
   });
 });
 
