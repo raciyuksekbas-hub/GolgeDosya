@@ -54,16 +54,18 @@ const STAGE = ".pdf-root .pdf-preview-stage";
  */
 const fill = decl(STAGE, "min-width") === "100%" && decl(STAGE, "min-height") === "100%";
 const errorBeside = decl(".pdf-root .pdf-wait-overlay", "position") !== "absolute";
+const clipX = decl(`${VIEWPORT}[data-fit]`, "overflow-x") === "hidden";
 const ENGINES = {
-  "scrollbar-gutter destekli motor": { reserve: decl(VIEWPORT, "scrollbar-gutter") === "stable", fill, errorBeside },
-  "scrollbar-gutter desteksiz WebKit": { reserve: decl(VIEWPORT, "overflow-y", "@supports not (scrollbar-gutter: stable)") === "scroll", fill, errorBeside },
+  "scrollbar-gutter destekli motor": { reserve: decl(VIEWPORT, "scrollbar-gutter") === "stable", fill, errorBeside, clipX },
+  "scrollbar-gutter desteksiz WebKit": { reserve: decl(VIEWPORT, "overflow-y", "@supports not (scrollbar-gutter: stable)") === "scroll", fill, errorBeside, clipX },
 };
 /** v0.3.1'in kuralı: çubuk yeri yok, sahne ölçülen (bayat) kutuyla boyutlanır, hata sayfanın yanında. */
-const LEGACY: Policy = { reserve: false, fill: false, errorBeside: true, legacyStage: true };
+const LEGACY: Policy = { reserve: false, fill: false, errorBeside: true, clipX: false, legacyStage: true };
 /** İlk düzeltme (1bcd223) desteksiz WebKit'te: `scrollbar-gutter` yok sayılır, yedek yok. */
-const FIRST_FIX_OLD_WEBKIT: Policy = { reserve: false, fill: true, errorBeside: false };
+const FIRST_FIX_OLD_WEBKIT: Policy = { reserve: false, fill: true, errorBeside: false, clipX: false };
 
-type Policy = { reserve: boolean; fill: boolean; errorBeside: boolean; legacyStage?: boolean };
+/** `clipX`: sığdırma kiplerinde yatay taşma kırpılır (yatay çubuk hiç çıkmaz). */
+type Policy = { reserve: boolean; fill: boolean; errorBeside: boolean; clipX: boolean; legacyStage?: boolean };
 type Page = { w: number; h: number };
 type Frame = { W: number; H: number; scale: number; v: boolean; h: boolean };
 
@@ -72,12 +74,16 @@ type Frame = { W: number; H: number; scale: number; v: boolean; h: boolean };
  * kaplayan çubuk kalınlığı T. Her kare: ölçü (bir önceki karenin ResizeObserver
  * teslimi) → geometri → sahne → taşma → çubuklar → yeni ölçü. clientWidth/
  * clientHeight çubukları dışlar; `reserve` dikey çubuğun yerini hep düşer
- * (`scrollbar-gutter: stable` ya da hep çizilen çubuk).
+ * (`scrollbar-gutter: stable` ya da hep çizilen çubuk). `snap`: taşma,
+ * Chromium ve WebKit'teki gibi piksele yuvarlanmış değerlerle karşılaştırılır;
+ * `false` iken kesirli karşılaştırılır (yuvarlamaya güvenmeyen katı motor).
  */
-function simulate(outerW: number, outerH: number, page: Page, mode: PreviewMode, policy: Policy, errorWidth: number, T = 17): Frame[] {
+function simulate(outerW: number, outerH: number, page: Page, mode: PreviewMode, policy: Policy, errorWidth: number, snap = true, T = 17): Frame[] {
   const cssW = page.w * 96 / 72, cssH = page.h * 96 / 72;
   let v: boolean = false, hbar: boolean = false;
-  let measured: { width: number; height: number } = { width: outerW - (policy.reserve ? T : 0), height: outerH };
+  const fit = typeof mode === "string";
+  const exceeds = (a: number, b: number) => snap ? Math.round(a) > Math.round(b) : a > b + 1e-9;
+  let measured: { width: number; height: number } = { width: Math.round(outerW - (policy.reserve ? T : 0)), height: Math.round(outerH) };
   const frames: Frame[] = [];
   for (let frame = 0; frame < 16; frame++) {
     const g = previewGeometry(cssW, cssH, 0, measured.width, measured.height, mode);
@@ -94,9 +100,8 @@ function simulate(outerW: number, outerH: number, page: Page, mode: PreviewMode,
       // kaydırılabilir taşma, sahnenin kenar kutusundan sağa taşan yarıdır.
       const inner: number = errorWidth > 0 && policy.errorBeside ? g.width + errorWidth : g.width;
       const contentW: number = stageW + Math.max(0, inner - stageW) / 2;
-      // Tarayıcılar taşmayı piksele yuvarlanmış değerlerle karşılaştırır.
-      const nextH: boolean = Math.round(contentW) > Math.round(boxW);
-      const nextV: boolean = Math.round(stageH) > Math.round(boxH);
+      const nextH: boolean = !(policy.clipX && fit) && exceeds(contentW, boxW);
+      const nextV: boolean = exceeds(stageH, boxH);
       if (nextH === hbar && nextV === v) break;
       hbar = nextH; v = nextV;
     }
@@ -160,8 +165,8 @@ describe("ölçü kaydırma çubuğundan bağımsız", () => {
 describe("üretim CSS'i modelin kararlılık varsayımlarını taşır", () => {
   it("her motorda dikey çubuk yeri ayrılır, sahne kutuyu doldurur, hata yerleşim dışıdır", () => {
     expect(ENGINES).toEqual({
-      "scrollbar-gutter destekli motor": { reserve: true, fill: true, errorBeside: false },
-      "scrollbar-gutter desteksiz WebKit": { reserve: true, fill: true, errorBeside: false },
+      "scrollbar-gutter destekli motor": { reserve: true, fill: true, errorBeside: false, clipX: true },
+      "scrollbar-gutter desteksiz WebKit": { reserve: true, fill: true, errorBeside: false, clipX: true },
     });
     expect(decl(STAGE, "position")).toBe("relative");
   });
@@ -195,9 +200,10 @@ describe("üretim bileşeni (PreviewStage) sahneyi yalnız sayfa boyuyla çizer"
     expect(stageStyle(html)).toEqual(stageStyle(renderToStaticMarkup(<PreviewStage large geometry={geometry} bitmap={{ url }} error="" rotation={0} label="sayfa 1"/>)));
   });
 
-  it("önizleme bileşeni sahneyi PreviewStage ile çizer ve ölçüyü nextViewport ile günceller", () => {
+  it("önizleme bileşeni sahneyi PreviewStage ile çizer, ölçüyü nextViewport ile günceller, sığdırma kipini kutuya bildirir", () => {
     expect(source).toContain("return <PreviewStage ref={ref} large={large} geometry={geometry}");
     expect(source).toContain("setViewport(previous => nextViewport(previous, target))");
+    expect(source).toContain(`<div className="pdf-page-viewport" data-fit={typeof zoom === 'string' ? '' : undefined}`);
   });
 });
 
@@ -221,6 +227,28 @@ describe("model hatayı yakalıyor (negatif kontrol, eski kurallar)", () => {
   });
   it("yedeksiz ilk düzeltme, scrollbar-gutter desteksiz WebKit · Genişliğe sığdır: titrer (gerçek WKWebView'da 49/808 pencere ölçüldü)", () => {
     expect(oscillates("fit-width", FIRST_FIX_OLD_WEBKIT, [0], CORPUS["A4 portre"], [500, 1300], HEIGHTS).length).toBeGreaterThan(0);
+  });
+});
+
+describe("piksel altı farklar döngü kuramaz (yuvarlamaya güvenmeyen katı motor)", () => {
+  // Kutu kesirli (Windows %125/%150 ölçek); ölçü yuvarlanmış tamsayıdır ve
+  // gerçek kutudan yarım piksele kadar büyük olabilir.
+  const sweep = (policy: Policy, page: Page, mode: PreviewMode) => {
+    const found: string[] = [];
+    for (let W = 400; W <= 1300; W++)
+      for (const fx of [0, 0.3, 0.6])
+        for (const H of [530.4, 547.6, 647.3, 800.5])
+          if (!settled(simulate(W + fx, H, page, mode, policy, 0, false))) found.push(`${W + fx}x${H}`);
+    return found;
+  };
+  for (const [engine, policy] of Object.entries(ENGINES))
+    for (const [name, page] of Object.entries(CORPUS))
+      for (const mode of ["fit-page", "fit-width"] as PreviewMode[])
+        it(`${engine} · ${name} · ${mode}`, () => { expect(sweep(policy, page, mode)).toEqual([]); });
+  it("negatif kontrol: yatay taşma kırpılmazsa katı motorda Sayfaya sığdır döngü kurar", () => {
+    const unclipped = { ...ENGINES["scrollbar-gutter destekli motor"], clipX: false };
+    const found = Object.values(CORPUS).flatMap((page) => sweep(unclipped, page, "fit-page"));
+    expect(found.length).toBeGreaterThan(0);
   });
 });
 
