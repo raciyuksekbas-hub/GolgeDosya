@@ -22,7 +22,7 @@
  * ya da henüz yoksa ne araç paneli ne de sayfa şeridi çizilir — kullanılamayan
  * araçları soluk göstermek yerine hata/boş durum tam genişliği alır.
  */
-import { rotatePages, previewGeometry, previewStageSize, workspaceSurfaces, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
+import { rotatePages, previewGeometry, previewStageSize, nextViewport, workspaceSurfaces, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { noBenefitStatus } from './noBenefitMessage';
 import { copyDestination } from './copyDestination';
 import { describeOpenFailure, describeSaveFailure, logFailure, safeMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
@@ -136,10 +136,7 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
         if (!target) return;
         // Yalnız gerçekten değişen ölçü durumu günceller: aynı ölçü yeni bir
         // geometri, yeni bir dpi ve yeni bir render demek değildir.
-        const measure = () => setViewport(previous =>
-            previous.width === target.clientWidth && previous.height === target.clientHeight
-                ? previous
-                : {width: target.clientWidth, height: target.clientHeight});
+        const measure = () => setViewport(previous => nextViewport(previous, target));
         const observer = new ResizeObserver(measure);
         observer.observe(target);
         measure();
@@ -171,29 +168,41 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
         return () => { alive = false; observer.disconnect(); /* URL remains visible while a sharper bitmap loads. */ urls.forEach(url => deferredUrls.add(url)); };
     }, [item.key, dpi]);
     useEffect(() => () => { deferredUrls.forEach(url => URL.revokeObjectURL(url)); deferredUrls.clear(); }, []);
-    // Bekleme, dev bir kutunun ortasındaki tek kelime değil: küçük bir döner
-    // ve kısa bir etiket. Hata olursa kategorisinin tek cümlesi gösterilir;
-    // ham motor metni kullanıcı yüzeyine çıkmaz.
+    return <PreviewStage ref={ref} large={large} geometry={geometry} bitmap={bitmap} error={error} rotation={rotation} label={`${item.source.file_name}, sayfa ${item.page}`}/>;
+}
+type PreviewGeometry = ReturnType<typeof previewGeometry>;
+/**
+ * Önizleme sahnesi — saf sunum. Büyük önizleme de küçük resim de bunu çizer;
+ * ölçü, render ve kuyruk `Preview`'dadır.
+ *
+ * Sahne ölçülen kutunun sayılarıyla BOYUTLANMAZ. Eskiden genişlik/yükseklik
+ * `max(ölçülen kutu, sayfa)` idi: ölçüm bir kare gecikmeliydi ve sayfanın
+ * kendi yarattığı kaydırma çubuğu ölçümü küçültüyordu. Büyük ölçüde taşan,
+ * küçük ölçüde sığan bir sayfa her karede iki durum arasında gidip geldi
+ * (sahada "tir tir titriyor"). Artık kutuyu CSS doldurur (min-width/
+ * min-height: 100%, gerçek kesirli boyutla); burada yalnız sayfanın kendi
+ * boyu verilir. Sığdırma kiplerinde sayfa kutudan büyük olamaz, dolayısıyla
+ * sahne hiçbir zaman kendi başına kaydırma çubuğu doğurmaz.
+ */
+export const PreviewStage = React.forwardRef<HTMLDivElement, {
+    large: boolean; geometry: PreviewGeometry | null; bitmap: {url: string} | null; error: string; rotation: number; label: string;
+}>(function PreviewStage({ large, geometry, bitmap, error, rotation, label }, ref) {
+    const message = safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.');
+    // Bekleme, dev bir kutunun ortasındaki tek kelime değil: küçük bir
+    // döner ve kısa bir etiket. Hata olursa kategorisinin tek cümlesi
+    // gösterilir; ham motor metni kullanıcı yüzeyine çıkmaz.
     const wait = error
-        ? <p className="pdf-wait" data-tone="error" role="status" title={safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}>{safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}</p>
+        ? <p className="pdf-wait" data-tone="error" role="status" title={message}>{message}</p>
         : <p className="pdf-wait" role="status"><span className="spinner" aria-hidden="true"/>Önizleme hazırlanıyor</p>;
-    // Sahne ölçülen kutunun sayılarıyla BOYUTLANMAZ. Eskiden genişlik/yükseklik
-    // `max(ölçülen kutu, sayfa)` idi: ölçüm bir kare gecikmeliydi ve sayfanın
-    // kendi yarattığı kaydırma çubuğu ölçümü küçültüyordu. Büyük ölçüde taşan,
-    // küçük ölçüde sığan bir sayfa her karede iki durum arasında gidip geldi
-    // (sahada "tir tir titriyor"). Artık kutuyu CSS doldurur (min-width/
-    // min-height: 100%, gerçek kesirli boyutla); burada yalnız sayfanın kendi
-    // boyu verilir. Sığdırma kiplerinde sayfa kutudan büyük olamaz, dolayısıyla
-    // sahne hiçbir zaman kendi başına kaydırma çubuğu doğurmaz.
     return <div ref={ref} className={large ? 'pdf-preview-stage' : 'pdf-thumbnail-stage'} style={large && geometry ? previewStageSize(geometry) : undefined}>
-        {bitmap && geometry ? <div className="pdf-page-surface" style={{width: geometry.width, height: geometry.height}}><img src={bitmap.url} alt={`${item.source.file_name}, sayfa ${item.page}`} style={{width: geometry.imageWidth, height: geometry.imageHeight, transform: `translate(-50%, -50%) rotate(${rotation}deg)`}}/></div> : wait}
+        {bitmap && geometry ? <div className="pdf-page-surface" style={{width: geometry.width, height: geometry.height}}><img src={bitmap.url} alt={label} style={{width: geometry.imageWidth, height: geometry.imageHeight, transform: `translate(-50%, -50%) rotate(${rotation}deg)`}}/></div> : wait}
         {/* Sayfa çizilmişken sonraki (daha keskin) render başarısız olursa hata
             sayfanın YANINA değil üstüne, yerleşim dışı bir şerit olarak gelir:
             yanına konan cümle genişliği taşırıp kaydırma çubuğu döngüsünü
             başlatıyordu. */}
-        {bitmap && error && <p className="pdf-wait pdf-wait-overlay" data-tone="error" role="status" title={safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}>{safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.')}</p>}
+        {bitmap && error && <p className="pdf-wait pdf-wait-overlay" data-tone="error" role="status" title={message}>{message}</p>}
     </div>;
-}
+});
 /**
  * Araç grupları — panelin görsel kütlesi.
  *

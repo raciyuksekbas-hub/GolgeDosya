@@ -25,6 +25,17 @@ export function previewGeometry(width: number, height: number, rotation: number,
 export function previewStageSize(geometry: { width: number; height: number }) {
     return { width: geometry.width + 2 * STAGE_PADDING, height: geometry.height + 2 * STAGE_PADDING };
 }
+/**
+ * Kaydırma kutusunun yeni ölçüsü. Ölçü değişmediyse ÖNCEKİ nesne döner: React
+ * yeniden çizmez; geometri, dpi ve render zinciri başlamaz. Genişlik
+ * `clientWidth`'tir ve pdf.css dikey çubuğun yerini her motorda hep ayırdığı
+ * için çubuğun o an görünüp görünmemesine bağlı değildir.
+ */
+export function nextViewport(previous: { width: number; height: number }, box: { clientWidth: number; clientHeight: number }) {
+    return previous.width === box.clientWidth && previous.height === box.clientHeight
+        ? previous
+        : { width: box.clientWidth, height: box.clientHeight };
+}
 
 /**
  * Düzenle'ye verilen belgenin durumu.
