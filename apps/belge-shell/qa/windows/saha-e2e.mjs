@@ -16,6 +16,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { deflateSync } from "node:zlib";
 import { attach } from "./cdp.mjs";
+import { previewStability } from "./preview-stability.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(here, "../../../..");
@@ -670,6 +671,9 @@ async function main() {
     ["klasörde göster", reveal],
     ["ekler klasörü", annexFolder],
     ["ekran görüntüleri", screenshots],
+    // En sonda: son belgelere kendi PDF'lerini ekler ve sayfayı yeniden yükler;
+    // yukarıdaki ekran görüntülerini değiştirmemeli.
+    ["önizleme kararlılığı", () => previewStability({ cdp, invoke, native, mode, clickText, check, observe, sleep, dir: WORK, shot })],
   ];
   for (const [name, step] of steps) {
     try {
