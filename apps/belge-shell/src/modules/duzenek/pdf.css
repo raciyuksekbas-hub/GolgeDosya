@@ -184,6 +184,11 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  /* Dikey kaydırma çubuğunun yeri HEP ayrılır: ölçülen genişlik çubuğun
+     görünüp görünmemesine bağlı olmaz. Yer kaplayan çubuklu sistemlerde
+     (Windows; fareli macOS) sığdırma ölçeği çubuğa, çubuk ölçeğe bağlıydı ve
+     sayfa iki boy arasında titreyebiliyordu. Kaplamalı çubukta yer ayrılmaz. */
+  scrollbar-gutter: stable;
   background: var(--surface-sunken);
   border-radius: var(--radius);
 }
@@ -208,13 +213,30 @@
 }
 /* -- Önizleme sahnesi (geometri davranışı değişmedi) --------------------- */
 .pdf-root .pdf-preview-stage {
+  position: relative;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Kutuyu gerçek (kesirli) boyutuyla doldurur; sayfa büyükse sayfa kadar
+     büyür. Yuvarlanmış, bir kare eski ölçüyle boyutlanmaz. */
+  min-width: 100%;
+  min-height: 100%;
   padding: var(--space-2);
 }
+/* Sayfa çizilmişken sonraki render hatası: yerleşimi değiştirmeyen şerit. */
+.pdf-root .pdf-wait-overlay {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  left: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
 .pdf-root .pdf-thumbnail-stage {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;

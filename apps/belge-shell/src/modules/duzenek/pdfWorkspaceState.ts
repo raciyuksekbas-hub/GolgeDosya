@@ -6,13 +6,24 @@ export function rotatePages(previous: Record<string, number>, selected: string[]
 }
 
 export type PreviewMode = number | 'fit-page' | 'fit-width';
+/** Büyük önizleme sahnesinin iç boşluğu (pdf.css `.pdf-preview-stage`: `padding: var(--space-2)`). */
+export const STAGE_PADDING = 8;
 /** CSS geometry in pixels. One scale is applied to both axes, including rotation. */
 export function previewGeometry(width: number, height: number, rotation: number, viewportWidth: number, viewportHeight: number, mode: PreviewMode) {
     const swapped = Math.abs(rotation % 180) === 90;
     const w = swapped ? height : width, h = swapped ? width : height;
-    const availableWidth = Math.max(1, viewportWidth - 16), availableHeight = Math.max(1, viewportHeight - 16);
+    const availableWidth = Math.max(1, viewportWidth - 2 * STAGE_PADDING), availableHeight = Math.max(1, viewportHeight - 2 * STAGE_PADDING);
     const scale = typeof mode === 'number' ? mode / 100 : mode === 'fit-width' ? availableWidth / w : Math.min(availableWidth / w, availableHeight / h);
     return { width: w * scale, height: h * scale, imageWidth: width * scale, imageHeight: height * scale, scale };
+}
+/**
+ * Büyük önizleme sahnesinin AÇIK boyutu: yalnız sayfa + iç boşluk. Ölçülen
+ * kutuya bağlı DEĞİLDİR; kutuyu doldurmak CSS'in işidir (`min-width/min-height:
+ * 100%`). Sığdırma kiplerinde bu boyut ölçülen kutuyu aşamaz, dolayısıyla sahne
+ * kendi başına kaydırma çubuğu doğuramaz.
+ */
+export function previewStageSize(geometry: { width: number; height: number }) {
+    return { width: geometry.width + 2 * STAGE_PADDING, height: geometry.height + 2 * STAGE_PADDING };
 }
 
 /**
