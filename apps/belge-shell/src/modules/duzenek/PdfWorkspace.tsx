@@ -619,7 +619,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                 </div>
                 <div className="pdf-canvas">
                     <p className="page-line">{active?.source.file_name} · Kaynak sayfa {active?.page} / {active?.source.page_count}{kind === 'delete' && selected.includes(active?.key) ? ' — Çıktıdan çıkarılacak' : ''}{kind === 'rotate' ? ` · Dönüş: ${rotations[active?.key] || 0}°` : ''}{selected.includes(active?.key) ? ' · İşaretli' : ''}</p>
-                    <div className="pdf-page-viewport" tabIndex={0} role="region" aria-label="Kaydırılabilir PDF sayfası">{active && <Preview key={active.key} item={active} large mode={zoom} rotation={rotations[active.key] || 0}/>}</div>
+                    <div className="pdf-page-viewport" data-fit={typeof zoom === 'string' ? '' : undefined} tabIndex={0} role="region" aria-label="Kaydırılabilir PDF sayfası">{active && <Preview key={active.key} item={active} large mode={zoom} rotation={rotations[active.key] || 0}/>}</div>
                     <p className="preview-note">Kaynak sayfanın önizlemesi. Yeni PDF’nin her sayfasına içerik dışında sağ alt logo payı eklenir. Açıklama/form görünümleri bu önizlemede eksik olabilir; son kopyayı ayrıca inceleyin.</p>
                 </div>
             </> : <PreviewPlaceholder state={docState} detail={failure} onOpenAnother={openAnother} forImages={kind === 'images'}/>}</aside>

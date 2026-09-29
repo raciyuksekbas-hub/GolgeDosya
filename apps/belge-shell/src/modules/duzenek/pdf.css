@@ -199,6 +199,11 @@
 @supports not (scrollbar-gutter: stable) {
   .pdf-root .pdf-page-viewport { overflow-y: scroll; }
 }
+/* Sığdırma kiplerinde sayfa kutunun genişliğini hiç aşmaz; yatay çubuk
+   gerekmez ve hiç çıkmaz. Böylece ölçülen yükseklik de içeriğe bağlı olmaz:
+   yuvarlanmış ölçüyle çizilen sayfa gerçek kutudan yarım piksel geniş olsa
+   bile hiçbir motorda çubuk → daha küçük ölçek → çubuksuz döngüsü kurulamaz. */
+.pdf-root .pdf-page-viewport[data-fit] { overflow-x: hidden; }
 
 /* Bekleme: dev kutunun ortasında kaybolan bir kelime değil, küçük bir
    dönerle sakin tek satır. */
