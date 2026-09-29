@@ -192,6 +192,13 @@
   background: var(--surface-sunken);
   border-radius: var(--radius);
 }
+/* `scrollbar-gutter` WebKit'e Safari 18.2 (macOS 15.2) ile geldi; uygulama
+   macOS 11'den beri açılır. Desteklemeyen motorda dikey çubuğun kendisi hep
+   çizilir: yer yine hep ayrılmış olur, genişlik yine çubuğa bağlı olmaz.
+   Kaplamalı çubukta (macOS varsayılanı) yer kaplamaz, görünmez. */
+@supports not (scrollbar-gutter: stable) {
+  .pdf-root .pdf-page-viewport { overflow-y: scroll; }
+}
 
 /* Bekleme: dev kutunun ortasında kaybolan bir kelime değil, küçük bir
    dönerle sakin tek satır. */
@@ -224,11 +231,13 @@
   min-height: 100%;
   padding: var(--space-2);
 }
-/* Sayfa çizilmişken sonraki render hatası: yerleşimi değiştirmeyen şerit. */
+/* Sayfa çizilmişken sonraki render hatası: yerleşimi değiştirmeyen şerit.
+   Üstte durur: Genişliğe sığdır'da ve yakınlaştırmada sahne kutudan uzundur,
+   alt kenar ilk bakışta görünmez. */
 .pdf-root .pdf-wait-overlay {
   position: absolute;
+  top: var(--space-2);
   right: var(--space-2);
-  bottom: var(--space-2);
   left: var(--space-2);
   padding: var(--space-1) var(--space-2);
   background: var(--surface-raised);
