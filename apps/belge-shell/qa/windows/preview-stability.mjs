@@ -50,29 +50,32 @@ export const CORPUS = [
   { key: "kart", name: "Küçük kart.pdf", pages: repeat(2, { media: [0, 0, 150, 210] }), ratio: 150 / 210 },
 ];
 
-const SAMPLE = `window.__probe = async (ms) => {
-  const vp = document.querySelector('.pdf-page-viewport');
-  if (!vp) return { error: 'önizleme kutusu yok' };
-  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
-  const states = new Map(); const c0 = window.__previewCalls || 0; const t0 = performance.now(); let frames = 0; const history = [];
-  while (performance.now() - t0 < ms) {
-    await frame(); frames++;
-    const stage = vp.querySelector('.pdf-preview-stage'), surf = vp.querySelector('.pdf-page-surface');
-    const s = [vp.clientWidth, vp.clientHeight, stage ? Math.round(stage.getBoundingClientRect().width) + 'x' + Math.round(stage.getBoundingClientRect().height) : '-', surf?.style.width, surf?.style.height, vp.scrollHeight > vp.clientHeight ? 'V' : '-', vp.scrollWidth > vp.clientWidth ? 'H' : '-', vp.querySelector('[data-tone="error"]') ? 'HATA' : 'ok'].join(' ');
-    states.set(s, (states.get(s) || 0) + 1);
-    if (history.length < 8) history.push(s);
-  }
-  return { frames, states: states.size, renders: (window.__previewCalls || 0) - c0, history: states.size > 1 ? history : history.slice(0, 1) };
-};
-(() => {
-  const T = window.__TAURI_INTERNALS__;
-  if (!T.__counted) {
-    const original = T.invoke;
-    T.invoke = (cmd, args, options) => { if (cmd === 'duzenek_preview_pdf_page') window.__previewCalls = (window.__previewCalls || 0) + 1; return original(cmd, args, options); };
-    T.__counted = true;
-  }
+// Render sayacı: Tauri `invoke`'u salt okunur tanımlar (sarmalanamaz). Windows'ta
+// her IPC çağrısı `http://ipc.localhost/<komut>` isteğidir; tarayıcının kaynak
+// zamanlaması bunları kaydeder. İkinci işaret: sayfa görselinin blob adresi —
+// her başarılı render yeni bir adres üretir.
+const SAMPLE = `(() => {
+  performance.setResourceTimingBufferSize(1000000);
+  window.__previewCalls = () => performance.getEntriesByType('resource').filter((e) => e.name.includes('duzenek_preview_pdf_page')).length;
+  window.__probe = async (ms) => {
+    const vp = document.querySelector('.pdf-page-viewport');
+    if (!vp) return { error: 'önizleme kutusu yok' };
+    const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+    const states = new Map(); const sources = new Set(); const c0 = window.__previewCalls(); const t0 = performance.now(); let frames = 0; const history = [];
+    while (performance.now() - t0 < ms) {
+      await frame(); frames++;
+      const stage = vp.querySelector('.pdf-preview-stage'), surf = vp.querySelector('.pdf-page-surface'), img = surf?.querySelector('img');
+      if (img) sources.add(img.getAttribute('src'));
+      const s = [vp.clientWidth, vp.clientHeight, stage ? Math.round(stage.getBoundingClientRect().width) + 'x' + Math.round(stage.getBoundingClientRect().height) : '-', surf?.style.width, surf?.style.height, vp.scrollHeight > vp.clientHeight ? 'V' : '-', vp.scrollWidth > vp.clientWidth ? 'H' : '-', vp.querySelector('[data-tone="error"]') ? 'HATA' : 'ok'].join(' ');
+      states.set(s, (states.get(s) || 0) + 1);
+      if (history.length < 8) history.push(s);
+    }
+    return { frames, states: states.size, renders: window.__previewCalls() - c0, images: sources.size, history: states.size > 1 ? history : history.slice(0, 1) };
+  };
   return true;
 })()`;
+/** Bir ölçüm penceresinde titreme/render oldu mu? Yerleşim, IPC ve görsel adresi birlikte. */
+const unstable = (r) => r.states !== 1 || r.renders !== 0 || r.images > 1;
 
 /**
  * @param ctx { cdp, invoke, native, mode, clickText, check, observe, sleep, dir, shot }
@@ -110,7 +113,7 @@ export async function previewStability(ctx) {
       move(w, h); windows++;
       const r = await probe();
       onEach?.(r);
-      if (r.states !== 1 || r.renders !== 0) bad.push({ pencere: `${w}x${h}`, ...r });
+      if (unstable(r)) bad.push({ pencere: `${w}x${h}`, ...r });
     }
     return { bad, windows };
   };
@@ -133,6 +136,9 @@ export async function previewStability(ctx) {
     move(1280, 800);
     await open(doc);
     shot(`kararlilik-${spec.key}`);
+    // Sayaç boş yere sıfır okumuyor: açılışın render'ları gerçekten sayıldı.
+    const counted = await cdp.eval("window.__previewCalls()");
+    check("önizleme", `${spec.name}: render sayacı açılıştaki IPC isteklerini görüyor`, counted > 0, { sayilan: counted });
 
     // Sayısal kiplerin ölçeği kutuya bağlı değil: üç pencerede ölçülür.
     for (const zoom of [75, 100, 125]) {
@@ -141,7 +147,7 @@ export async function previewStability(ctx) {
       for (const [w, h] of [[1280, 800], [1100, 760], [900, 860]]) {
         move(w, h);
         const r = await probe();
-        if (r.states !== 1 || r.renders !== 0) bad.push({ pencere: `${w}x${h}`, ...r });
+        if (unstable(r)) bad.push({ pencere: `${w}x${h}`, ...r });
       }
       check("önizleme", `${spec.name} · %${zoom}: 1 sn boyunca ölçek/yerleşim sabit, render yok`, bad.length === 0, bad.length ? bad : "3 pencere");
     }
@@ -176,10 +182,10 @@ export async function previewStability(ctx) {
     shot("kararlilik-render-hatasi");
     // Titreme ölçütü burada yalnız yerleşimdir: dosyaya ulaşılamadığı için
     // her pencere değişikliği bir render isteği doğurur ve başarısız olur.
-    const unstable = bad.filter((b) => b.states !== 1);
+    const shaky = bad.filter((b) => b.states !== 1);
     observe("önizleme", "Yeniden render hatası görünen pencere", `${withError}/${windows}`);
     check("önizleme", `Sayfa çizilmişken yeniden render başarısız: Sayfaya sığdır'da titreme yok (${windows} pencere)`,
-      z && withError > 0 && unstable.length === 0, { bolge: z, hataGorulen: withError, titreyen: unstable.length, ornek: unstable.slice(0, 3) });
+      z && withError > 0 && shaky.length === 0, { bolge: z, hataGorulen: withError, titreyen: shaky.length, ornek: shaky.slice(0, 3) });
   } finally {
     renameSync(moved, doc.path);
   }
