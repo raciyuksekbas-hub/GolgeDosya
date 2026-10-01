@@ -232,6 +232,13 @@ describe("fark şekli renkten bağımsız (a09)", () => {
       expect(sheet.toString().indexOf(`${sel}`)).toBeGreaterThan(sheet.toString().indexOf(`.document-row.is-selected .fragment.${kind}`));
     }
   });
+
+  it("ayrıntı panelinde Eski/Yeni metni ana metin rengindedir; etiket anlamı taşır", () => {
+    for (const kind of FRAGMENTS) {
+      const color = cascaded(`.compare-root .detail-block.${kind} p`, "color");
+      expect(color === undefined || color === "var(--text-primary)", kind).toBe(true);
+    }
+  });
 });
 
 describe("vurgu senkron geometrisini bozmaz (a09)", () => {
