@@ -65,6 +65,23 @@ describe("appendSources — açık belge taban, yeniler sona", () => {
   });
 });
 
+describe("Birleştir en az iki belgeyle kaydeder", () => {
+  it("tek belgede kaydetme kapalı ve nedeni söylenir", () => {
+    const shortfall = fn("mergeShortfall") as unknown as (k: string, n: number) => string;
+    expect(shortfall("merge", 1)).toBe("Birleştirmek için en az bir belge daha ekleyin.");
+    expect(shortfall("merge", 0)).not.toBe("");
+    expect(shortfall("merge", 2)).toBe("");
+    // Öteki araçlar tek belgeyle çalışır; kapı yalnız Birleştir'de.
+    expect(shortfall("compress", 1)).toBe("");
+  });
+
+  it("bileşen kapıyı Kaydet'e bağlar ve nedeni panelde gösterir", () => {
+    const gate = source.slice(source.indexOf("const cannotSave"), source.indexOf("const pick ="));
+    expect(gate).toMatch(/mergeShortfall\(kind, sources\.length\)/);
+    expect(source).toMatch(/\{needMore && <p className="tool-hint"[^>]*>\{needMore\}<\/p>\}/);
+  });
+});
+
 describe("ekleme sözcükleri 'eklendi / eklenemedi' — açık belge bozuk sanılmaz", () => {
   const note = () => fn("appendNote") as unknown as (a: number, s: string[], f: string[], d?: string) => { text: string; tone: string };
 

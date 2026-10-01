@@ -22,7 +22,7 @@
  * ya da henüz yoksa ne araç paneli ne de sayfa şeridi çizilir — kullanılamayan
  * araçları soluk göstermek yerine hata/boş durum tam genişliği alır.
  */
-import { rotatePages, previewGeometry, previewStageSize, nextViewport, workspaceSurfaces, appendSources, appendNote, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
+import { rotatePages, previewGeometry, previewStageSize, nextViewport, workspaceSurfaces, appendSources, appendNote, mergeShortfall, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { noBenefitStatus } from './noBenefitMessage';
 import { copyDestination } from './copyDestination';
 import { describeOpenFailure, describeSaveFailure, logFailure, safeMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
@@ -515,7 +515,10 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const pickVerb = kind === 'delete' ? 'Çıkar' : 'Dahil et';
     const surfaces = workspaceSurfaces(docState, order.length);
     const cannotSave = busy || !sources.length || (sources.some(s => s.is_signed) && !approved) ||
-        (['select', 'delete'].includes(kind) && !selected.length) || outputCount === 0 || (kind === 'rotate' && !Object.values(rotations).some(Boolean));
+        (['select', 'delete'].includes(kind) && !selected.length) || outputCount === 0 || (kind === 'rotate' && !Object.values(rotations).some(Boolean)) ||
+        mergeShortfall(kind, sources.length) !== '';
+    // Kaydet kapalıysa nedeni görünür: tek belgeyle Birleştir.
+    const needMore = mergeShortfall(kind, sources.length);
     // İmzalı belgede kaydetme, Araçlar panelindeki onaya bağlıdır. Panel
     // kapalıyken düğmeler nedensiz sönük duruyordu; neden kaydetmenin yanında
     // söylenir ve tıklanınca panel açılıp onay kutusuna gidilir.
@@ -604,6 +607,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                         <Button onClick={choose} disabled={busy}>
                             {kind === 'merge' ? 'Birleştirilecek Belge Ekle' : 'Görsel Ekle'}
                         </Button>}
+                    {needMore && <p className="tool-hint">{needMore}</p>}
                     {sources.length > 0 && <ol className="source-list">{sources.map((s, i) => <li key={s.path}>
                         <span>{s.file_name} · {s.page_count} sayfa</span>
                         {sources.length > 1 && <IconButton label={`${i + 1}. belgeyi yukarı taşı`} disabled={busy || i === 0} onClick={() => moveSource(i)}>

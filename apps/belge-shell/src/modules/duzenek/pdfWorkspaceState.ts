@@ -87,6 +87,20 @@ export function appendSources<T extends { path: string; file_name: string }>(exi
     return { next, skipped };
 }
 
+export const MERGE_NEEDS_MORE = 'Birleştirmek için en az bir belge daha ekleyin.';
+
+/**
+ * Birleştir neden kaydedemiyor? Boş dize: engel yok.
+ *
+ * Tek belgeyle "Birleştir" markalı bir kopya üretiyor ve "PDF kaydedildi"
+ * diyordu — birleştirilmiş hiçbir şey yokken. Kaydet artık kapalı ve nedeni
+ * görünür: düğme sebepsiz sönük kalırsa yeni bir "hiçbir şey olmuyor"
+ * şikâyeti doğar.
+ */
+export function mergeShortfall(kind: string, sourceCount: number): string {
+    return kind === 'merge' && sourceCount < 2 ? MERGE_NEEDS_MORE : '';
+}
+
 /**
  * Ekleme sonucunun tek satırı.
  *
