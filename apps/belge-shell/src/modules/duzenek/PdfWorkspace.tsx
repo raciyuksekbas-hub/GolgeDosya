@@ -30,7 +30,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { ScanBatchResult, SourceFile } from './types';
-import { InspectorPanel, InspectorSection, ToolbarActions, ToolbarStatus } from '../../shell/chrome';
+import { InspectorPanel, InspectorSection, ToolbarActions, ToolbarStatus, useRevealInspector } from '../../shell/chrome';
 import { Button, EmptyState, IconButton, Status } from '../../shared-ui/primitives';
 import { announce } from '../../shared-ui/Announcer';
 import './pdf.css';
@@ -465,6 +465,13 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const surfaces = workspaceSurfaces(docState, order.length);
     const cannotSave = busy || !sources.length || (sources.some(s => s.is_signed) && !approved) ||
         (['select', 'delete'].includes(kind) && !selected.length) || outputCount === 0 || (kind === 'rotate' && !Object.values(rotations).some(Boolean));
+    // İmzalı belgede kaydetme, Araçlar panelindeki onaya bağlıdır. Panel
+    // kapalıyken düğmeler nedensiz sönük duruyordu; neden kaydetmenin yanında
+    // söylenir ve tıklanınca panel açılıp onay kutusuna gidilir.
+    const needsApproval = sources.some(s => s.is_signed) && !approved;
+    const revealTools = useRevealInspector();
+    const approvalRef = useRef<HTMLInputElement>(null);
+    const showApproval = () => { revealTools(); requestAnimationFrame(() => approvalRef.current?.focus()); };
     const pick = (key: Kind) => {
         setKind(key);
         const kept = key === 'images' || kind === 'images' ? [] : (key === 'merge' ? sources : sources.slice(0, 1));
@@ -515,6 +522,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         </ToolbarStatus>}
 
         {surfaces.tools && <ToolbarActions>
+            {needsApproval && !busy && <Button variant="quiet" className="save-reason" onClick={showApproval}>İmza Onayı Gerekli</Button>}
             {kind !== 'raster' && <Button disabled={cannotSave} onClick={() => run(true)}>Klasör Seçerek Kaydet</Button>}
             <Button variant="primary" disabled={cannotSave} onClick={() => run()}>
                 {busy ? 'PDF hazırlanıyor…' : kind === 'raster' ? 'Görsel Paketi Kaydet' : 'Yeni PDF Kaydet'}
@@ -558,7 +566,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                             <Button className="btn-sm" variant="quiet" disabled={busy} onClick={() => setSelected([])}>Seçimi Temizle</Button>
                         </div>}
                     </>}
-                    {sources.some(s => s.is_signed) && <label className="approval"><input type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)}/>İmza işareti bulundu. Türetilmiş PDF kaynak elektronik imzanın doğrulanabilirliğini taşımaz; onaylıyorum.</label>}
+                    {sources.some(s => s.is_signed) && <label className="approval"><input ref={approvalRef} type="checkbox" checked={approved} onChange={e => setApproved(e.target.checked)}/>İmza işareti bulundu. Türetilmiş PDF kaynak elektronik imzanın doğrulanabilirliğini taşımaz; onaylıyorum.</label>}
                     <p className="tool-safe">Yeni bir kopya oluşturulur; kaynak belgeleriniz korunur.</p>
                 </InspectorSection>
             </div>

@@ -105,3 +105,25 @@ describe("şerit sözleşmesi", () => {
     expect(wrapLines([ITEMS[1].segment, ITEMS[1].zoom], 457 - 32, 12).lines).toBe(1);
   });
 });
+
+describe("imzalı belgede kaydetme", () => {
+  /**
+   * Kaydetme, imzalı belgede Araçlar panelindeki onay kutusuna bağlıdır. Panel
+   * kapalıyken (dar pencere) iki kaydetme düğmesi nedensiz sönük duruyordu ve
+   * onay kutusu görünmüyordu: kullanıcı kaydedemiyor, nedenini de göremiyordu.
+   */
+  it("neden kaydetmenin yanında görünür ve paneli açıp onaya götürür", () => {
+    const bar = source.slice(source.indexOf("<ToolbarActions>"), source.indexOf("</ToolbarActions>"));
+    expect(source).toContain("const needsApproval = sources.some(s => s.is_signed) && !approved;");
+    // Neden, kaydetme düğmelerinden ÖNCE ve aynı barda.
+    expect(bar).toMatch(
+      /\{needsApproval && !busy && <Button variant="quiet" className="save-reason" onClick=\{showApproval\}>İmza Onayı Gerekli<\/Button>\}[\s\S]*Klasör Seçerek Kaydet[\s\S]*Yeni PDF Kaydet/,
+    );
+    // Tıklanınca panel açılır ve odak onay kutusuna gider.
+    expect(source).toContain("const revealTools = useRevealInspector();");
+    expect(source).toMatch(/const showApproval = \(\) => \{ revealTools\(\); requestAnimationFrame\(\(\) => approvalRef\.current\?\.focus\(\)\); \};/);
+    expect(source).toMatch(/<label className="approval"><input ref=\{approvalRef\} type="checkbox"/);
+    // Kaydetme kuralı değişmedi: onaysız imzalı belge kaydedilmez.
+    expect(source).toMatch(/const cannotSave = busy \|\| !sources\.length \|\| \(sources\.some\(s => s\.is_signed\) && !approved\)/);
+  });
+});
