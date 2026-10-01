@@ -377,3 +377,66 @@ cargo test --workspace
 ```
 
 `scripts/check-fresh-clone.sh` bu sırayı uygular ve her koşuda doğrular.
+
+---
+
+## 10. GölgeDosya markası belge geometrisini değiştirmez (v0.3.2)
+
+Saha: "Her işlemde şu filigranı görmek biraz yordu. Hem yapıyı da bozuyor …
+direkt evrakın üstüne çakılsın. Büyütmesin aşağıya doğru evrakı." ve "Bu
+filigranda simge ile yazı ortada değil."
+
+### Ölçüm (gerçek `finalize_pdf_output`, v0.3.1)
+
+| Örnek | Önce | v0.3.1 çıktısı |
+| --- | --- | --- |
+| A4 dikey | MediaBox `[0 0 595 842]`, CropBox yok | MediaBox = CropBox `[0 -34 595 842]` |
+| A4 /Rotate 90 | `[0 0 595 842]` | `[0 0 629 842]` (pay x ekseninde) |
+| Letter, CropBox `[36 36 576 756]` | — | CropBox `[36 2 576 756]` |
+| PDF → PNG, A4, 72 DPI | — | 595×876 px |
+
+İşaret, Ek damgası/filigran/sayfa numarasıyla aynı `apply_stamp_to_page`
+yolundan geçiyordu ve o yol "işaret kaynak piksele binmesin" diye her çağrıda
+görsel alt kenara bir pay (`margin·2 + punto + 10` = 34 pt) ekliyordu.
+
+### Karar
+
+**Yeni zorunlu kural:** marka MediaBox'ı, CropBox'ı, sayfa boyutunu,
+içeriğin konumunu, kenar boşluklarını, sayfa sayısını ve sayfalamayı
+DEĞİŞTİRMEZ. Önceki karar korunur: her başarılı GölgeDosya PDF çıktısı
+kanonik işareti tam BİR kez taşır.
+
+- Marka, pay mantığından ayrıldı: `stamp::place_brand_overlay`. Çıktı kapısı
+  (`finalize_pdf_output`) ve PDF → görsel yolu (`apply_raster_branding`)
+  yalnız bunu kullanır. MediaBox/CropBox/Annots'a dokunmaz; açıklama ret yolu
+  marka için yoktur (açılacak bir pay yok).
+- İşaret görünür kutunun (CropBox ∩ MediaBox) içinde, /Rotate ile
+  görüntülenen sayfanın sağ alt köşesinde, dik basılır; belgenin üstünde,
+  aynı ExtGState saydamlığıyla (%24, normal karışım).
+- Boyut: A4/Letter'da 56 pt, köşeden 12 pt içeride (yazıcıların basamadığı
+  ~4–5 mm kenarın içinde). Ölçek yüksekliğe de bakar; 595×18 pt gibi çok kısa
+  sayfalar da işareti taşır.
+- Kelime işaretinin taban çizgisi `76 27 Td` → `76 23.4 Td`: büyük harf bandı
+  simgenin ortasına oturur (kanonik `brand/horizontal.svg` kuralı). Eski
+  baytlar `brand-logo-2026-09-20.ops` olarak tutulur; hem yerinde yükseltme
+  (`OUTDATED_BRAND_LOGOS`) hem Sıkıştır'ın "daha önce işlenmiş" tanıması
+  (`is_golgedosya_output`) onları tanır.
+- v0.3.0/0.3.1 çıktıları: girdinin geometrisi (34 pt'lik eski pay dahil)
+  AYNEN korunur. Kurala uyan eski işaret olduğu gibi kalır (çizimi yerinde
+  yükseltilir); okunmaz küçüklükteki eski işaret sökülür ve yenisi kutuya
+  dokunulmadan bindirilir. `detach_brand_stamps` artık CropBox yazmaz.
+
+### Bu kararın DIŞINDA kalan (ayrı ürün kararı)
+
+Ek damgası ("Ek-n / n. Sayfa", varsayılan sağ üst: üste 60 pt), Filigran ve
+Sayfa numarası (alta 60 pt) kullanıcının istediği işaretlerdir ve hâlâ pay
+ekleyerek sayfayı büyütür. Yeni kural bunları da kapsayacaksa aynı overlay
+yaklaşımı onlara uygulanmalıdır.
+
+### Bilinen ödünler
+
+- İşaret artık içeriğin üstündedir: sağ alt köşede sayfa numarası, UYAP
+  dipnotu ya da koyu bir görsel varsa %24 saydam işaret onun üstüne biner;
+  koyu zeminde neredeyse görünmez.
+- Daha önce markalanmış bir çıktı sonradan döndürülürse işaret yerinde kalır
+  (görünür ve okunur olduğu sürece yeniden konumlanmaz).

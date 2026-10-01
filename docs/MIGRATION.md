@@ -469,6 +469,11 @@ kalmasını sağlayacak kenara ekleniyor (`stamp.rs:114-119`). Kutular bu yüzde
 **tasarım gereği** farklı. Test artık gerçek sözleşmeyi ölçüyor: tam bir kenar,
 tam 34 punto büyür; özgün sayfa alanı hiç kırpılmaz; pay dönüşü izler.
 
+> **v0.3.2 güncellemesi:** marka artık pay eklemez; işaret sayfanın içine,
+> görüntülenen sağ alt köşeye bindirilir. Döndürülmüş ve döndürülmemiş sayfanın
+> kutusu özgün kutudur (bkz. `ARCHITECTURE_DECISIONS.md` §10). Test bu yeni
+> sözleşmeyi ölçer.
+
 **Büyüme tavanı.** Bağımsız uygulamanın mutlak tavanını (`kaynak + 4096 +
 n*100`) ödünç aldım. O test tek belgede `apply_branding`'i ölçüyor; buradaki
 ise nesne akışını yeniden yazan komut yolunun tamamını. Test artık
