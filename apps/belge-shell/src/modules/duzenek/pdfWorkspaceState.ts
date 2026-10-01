@@ -59,3 +59,49 @@ export function workspaceSurfaces(state: DocumentState, pageCount: number): { to
     const open = state === 'ready';
     return { tools: open, strip: open && pageCount > 0 };
 }
+
+/**
+ * Birleştir listesine yeni taranan belgeleri ekler.
+ *
+ * Kabuk Düzenle'yi her zaman TEK açık belgeyle açar; Birleştir'in "Belge Ekle"
+ * düğmesi o belgenin ÜSTÜNE eklemelidir. Eskiden seçilen dosyalar listenin
+ * yerine geçiyordu: yalnız B'yi seçen kullanıcının açık A'sı uyarısız düşüyor,
+ * kaydedilen "birleştirme" yalnız B'den oluşuyordu.
+ *
+ * Açık belge ilk sırada kalır (taban); yeniler seçim sırasıyla sona eklenir.
+ * Listede zaten olan bir yol yeniden eklenmez, adı `skipped` ile döner ki
+ * kullanıcıya tek satırla söylenebilsin. Girdi dizileri değiştirilmez.
+ */
+export function appendSources<T extends { path: string; file_name: string }>(existing: readonly T[], scanned: readonly T[]): { next: T[]; skipped: string[] } {
+    const seen = new Set(existing.map(source => source.path));
+    const next = [...existing];
+    const skipped: string[] = [];
+    for (const source of scanned) {
+        if (seen.has(source.path)) {
+            skipped.push(source.file_name);
+            continue;
+        }
+        seen.add(source.path);
+        next.push(source);
+    }
+    return { next, skipped };
+}
+
+/**
+ * Ekleme sonucunun tek satırı.
+ *
+ * Ekleme AÇMA değildir: "açıldı" ya da "Belge açılamadı" demek, açık belgenin
+ * bozulduğu izlenimini verir. Burada yalnız eklenen/eklenemeyen dosyalar
+ * adlandırılır. `detail`, hiçbir dosya eklenemediğinde kategorinin tek
+ * cümlesidir (bkz. describeOpenFailure). Boş metin: söylenecek ek bir şey yok.
+ */
+export function appendNote(added: number, skipped: readonly string[], failed: readonly string[], detail = ''): { text: string; tone: 'info' | 'error' } {
+    const parts: string[] = [];
+    if (failed.length)
+        parts.push(added
+            ? `${added} belge eklendi. ${failed.length} dosya eklenemedi: ${failed.join(', ')}.`
+            : `${failed.join(', ')} eklenemedi.${detail ? ` ${detail}` : ''}`);
+    if (skipped.length)
+        parts.push(`${skipped.join(', ')} zaten listede; yeniden eklenmedi.`);
+    return { text: parts.join(' '), tone: failed.length ? 'error' : 'info' };
+}

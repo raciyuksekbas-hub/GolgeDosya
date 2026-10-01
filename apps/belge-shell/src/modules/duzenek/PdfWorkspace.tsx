@@ -22,7 +22,7 @@
  * ya da henüz yoksa ne araç paneli ne de sayfa şeridi çizilir — kullanılamayan
  * araçları soluk göstermek yerine hata/boş durum tam genişliği alır.
  */
-import { rotatePages, previewGeometry, previewStageSize, nextViewport, workspaceSurfaces, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
+import { rotatePages, previewGeometry, previewStageSize, nextViewport, workspaceSurfaces, appendSources, appendNote, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { noBenefitStatus } from './noBenefitMessage';
 import { copyDestination } from './copyDestination';
 import { describeOpenFailure, describeSaveFailure, logFailure, safeMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
@@ -35,7 +35,7 @@ import { Button, EmptyState, IconButton, Status } from '../../shared-ui/primitiv
 import { announce } from '../../shared-ui/Announcer';
 import './pdf.css';
 const tools = {
-    merge: ['Birleştir', 'Birden fazla PDF’yi seçtiğiniz sırayla tek dosyada birleştirir.'],
+    merge: ['Birleştir', 'Açık belgeye eklediğiniz PDF’leri listedeki sırayla tek dosyada birleştirir.'],
     select: ['Seçili sayfalar → yeni PDF', 'İşaretlediğiniz sayfalardan yeni bir PDF kopyası oluşturur.'],
     reorder: ['Sayfa sırasını değiştir', 'Sayfaları görsel olarak yeniden sıralayıp yeni bir kopya oluşturur.'],
     delete: ['Sayfa sil', 'İşaretlediğiniz sayfaları çıkararak yeni bir PDF oluşturur.'],
@@ -92,7 +92,7 @@ const TOOL_GROUPS: { title: string; keys: Kind[]; collapsed?: boolean }[] = [
  *   output  — sonunda ne oluşur?
  */
 const TOOL_FACTS: Record<Kind, { affects: string; output: string }> = {
-    merge: { affects: 'Eklediğiniz bütün belgeler, listedeki sırayla.', output: 'Tek yeni PDF.' },
+    merge: { affects: 'Açık belge ilk sırada; eklediğiniz belgeler sonuna eklenir, sırayı oklarla değiştirebilirsiniz.', output: 'Tek yeni PDF.' },
     select: { affects: 'Şeritte işaretlediğiniz sayfalar.', output: 'Yalnız o sayfalardan yeni PDF.' },
     reorder: { affects: 'Belgenin tamamı; sıra şeritten değişir.', output: 'Aynı sayfalar, yeni sırayla yeni PDF.' },
     delete: { affects: 'Şeritte işaretlediğiniz sayfalar.', output: 'O sayfalar olmadan yeni PDF.' },
@@ -290,61 +290,111 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const [statusTone, setStatusTone] = useState<'info' | 'busy' | 'success' | 'error'>('info');
     const [margin, setMargin] = useState(10), [text, setText] = useState('KOPYA'), [imageFormat, setImageFormat] = useState('png'), [start, setStart] = useState(1), [level, setLevel] = useState('balanced_compression'), [approved, setApproved] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
     const build = (list: SourceFile[]) => { setRotations({}); setReordered(false); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
+    // Her tarama bir nesil alır. Kabuk tarama sürerken başka bir belge açarsa
+    // (bar, son kullanılanlar) eski taramanın sonucu yenisinin üstüne yazılmaz;
+    // yalnız en son başlatılan tarama listeyi ve meşgul durumunu değiştirir.
+    const loadGeneration = useRef(0);
+    // Ekleme, tıklama anındaki kopyaya değil SON işlenen listeye yapılır.
+    const sourcesRef = useRef(sources);
+    sourcesRef.current = sources;
     // Tarama gövdesi, kendi seçicisi ile kabuğun açtığı belgeler arasında ortak.
-    const load = async (paths: string[]) => { try {
+    // `replace` oturumu verilen belgelerle yeniden kurar; `append` Birleştir'de
+    // açık belgenin ÜSTÜNE ekler (açık belge ilk sırada kalır). `note`,
+    // başarılı bir yeniden kurulumdan sonra durum satırında kalacak cümledir.
+    const load = async (paths: string[], mode: 'replace' | 'append' = 'replace', note = '') => {
         if (!paths.length)
             return;
-        setBusy(true);
-        setDocState(previous => previous === 'ready' ? previous : 'loading');
-        setFailure('');
-        setStatus('Belgeler inceleniyor…'); setStatusTone('busy');
-        const result = await invoke<ScanBatchResult>('duzenek_scan_source_files', { paths });
-        // TEK bozuk dosya, sağlam olanları da çöpe atmamalı. Eskiden
-        // `errors.length` doluysa hata fırlatılıyor ve `result.sources` hiç
-        // kullanılmıyordu: 20 taranmış ek seçip birini bozuk bulan kullanıcı
-        // 19 sağlam belgeyi de kaybediyor, üstelik HANGİSİNİN bozuk olduğu
-        // söylenmiyordu (yalnız `reason` gösteriliyordu, `path` değil).
-        if (result.errors.length && !result.sources.length)
-            throw new Error(result.errors.map(e => `${baseNameOf(e.path)}: ${e.reason}`).join('\n'));
-        setSources(result.sources);
-        build(result.sources);
-        setApproved(false);
-        // Belge ekranda: "açıldı" diyen yeşil bir kutu yeni bir bilgi taşımaz.
-        // Ekran okuyucu için sonuç yine bildirilir.
-        if (result.errors.length) {
-            const names = result.errors.map(e => baseNameOf(e.path)).join(', ');
-            const note = `${result.sources.length} belge açıldı. ${result.errors.length} dosya açılamadı: ${names}`;
-            setStatus(note); setStatusTone('error');
-            announce(note);
-        } else {
-            setStatus(''); setStatusTone('info');
-            announce(result.sources.length > 1 ? 'Belgeler açıldı.' : 'Belge açıldı.');
+        const generation = ++loadGeneration.current;
+        try {
+            setBusy(true);
+            if (mode === 'replace') {
+                setDocState(previous => previous === 'ready' ? previous : 'loading');
+                setFailure('');
+            }
+            setStatus(mode === 'append' ? 'Belgeler ekleniyor…' : 'Belgeler inceleniyor…'); setStatusTone('busy');
+            const result = await invoke<ScanBatchResult>('duzenek_scan_source_files', { paths });
+            if (generation !== loadGeneration.current)
+                return;
+            // TEK bozuk dosya, sağlam olanları da çöpe atmamalı. Eskiden
+            // `errors.length` doluysa hata fırlatılıyor ve `result.sources` hiç
+            // kullanılmıyordu: 20 taranmış ek seçip birini bozuk bulan kullanıcı
+            // 19 sağlam belgeyi de kaybediyor, üstelik HANGİSİNİN bozuk olduğu
+            // söylenmiyordu (yalnız `reason` gösteriliyordu, `path` değil).
+            // Eklemede de aynı: hiçbiri taranamadıysa hata yolu eklenemeyenleri adlandırır.
+            if (result.errors.length && !result.sources.length)
+                throw new Error(result.errors.map(e => `${baseNameOf(e.path)}: ${e.reason}`).join('\n'));
+            const base = mode === 'append' ? sourcesRef.current : [];
+            const { next, skipped } = appendSources(base, result.sources);
+            const failed = result.errors.map(e => baseNameOf(e.path));
+            if (mode === 'append') {
+                // Ekleme açma değildir: açık belge yerinde durur, söylenen
+                // yalnız eklenen ve eklenemeyen dosyalardır.
+                const added = next.length - base.length;
+                if (added > 0) {
+                    setSources(next);
+                    build(next);
+                    // Yeni eklenen belge imzalıysa onay o belge için yeniden istenir.
+                    if (next.slice(base.length).some(s => s.is_signed))
+                        setApproved(false);
+                }
+                const { text, tone } = appendNote(added, skipped, failed);
+                setStatus(text); setStatusTone(tone);
+                announce(text || (added > 1 ? `${added} belge eklendi.` : 'Belge eklendi.'));
+                return;
+            }
+            setSources(next);
+            build(next);
+            setApproved(false);
+            // Belge ekranda: "açıldı" diyen yeşil bir kutu yeni bir bilgi taşımaz.
+            // Ekran okuyucu için sonuç yine bildirilir.
+            const repeated = skipped.length ? appendNote(0, skipped, []).text : '';
+            if (result.errors.length) {
+                const message = [`${next.length} belge açıldı. ${result.errors.length} dosya açılamadı: ${failed.join(', ')}`, repeated].filter(Boolean).join(' ');
+                setStatus(message); setStatusTone('error');
+                announce(message);
+            } else {
+                const message = [note, repeated].filter(Boolean).join(' ');
+                setStatus(message); setStatusTone('info');
+                announce(next.length > 1 ? 'Belgeler açıldı.' : 'Belge açıldı.');
+            }
+            setDocState('ready');
         }
-        setDocState('ready');
-    }
-    catch (e) {
-        // Kullanıcıya kategorisinin tek cümlesi gider; teknik metin yalnız
-        // geliştirme derlemesinde, üretimde redakte edilmiş tek satır olarak.
-        logFailure('duzenek open failure', e);
-        const detail = describeOpenFailure(e);
-        setFailure(detail);
-        setStatus(`${OPEN_FAILURE_TITLE}. ${detail}`); setStatusTone('error');
-        // Açık bir oturum sırasında yapılan ekleme başarısız olursa oturum ayakta
-        // kalır; kullanıcı panelden yeniden deneyebilir. Kabuğun verdiği belge
-        // açılamadıysa oturum hiç kurulmamıştır.
-        setDocState(previous => previous === 'ready' ? previous : 'failed');
-    }
-    finally {
-        setBusy(false);
-    } };
+        catch (e) {
+            if (generation !== loadGeneration.current)
+                return;
+            // Kullanıcıya kategorisinin tek cümlesi gider; teknik metin yalnız
+            // geliştirme derlemesinde, üretimde redakte edilmiş tek satır olarak.
+            logFailure('duzenek open failure', e);
+            const detail = describeOpenFailure(e);
+            // Açık bir oturum sırasında yapılan ekleme başarısız olursa oturum ayakta
+            // kalır; kullanıcı panelden yeniden deneyebilir. Kabuğun verdiği belge
+            // açılamadıysa oturum hiç kurulmamıştır.
+            setDocState(previous => previous === 'ready' ? previous : 'failed');
+            // Ekleme hatası açık belgenin değil, seçilen dosyanındır: "Belge
+            // açılamadı" demek açık belgenin bozulduğu izlenimini verirdi.
+            const message = mode === 'append' ? appendNote(0, [], paths.map(baseNameOf), detail).text : `${OPEN_FAILURE_TITLE}. ${detail}`;
+            if (mode === 'replace')
+                setFailure(detail);
+            setStatus(message); setStatusTone('error');
+            if (mode === 'append')
+                announce(message);
+        }
+        finally {
+            if (generation === loadGeneration.current)
+                setBusy(false);
+        }
+    };
     // Seçici VAZGEÇMEDE null döner (sessizlik doğrudur) ama BAŞARISIZLIKTA
     // reddeder. `.catch(() => null)` ikisini aynı şeye indiriyordu: gerçek bir
     // hata da "vazgeçildi" gibi görünüyor, düğmeye basan kullanıcı hiçbir şey
     // olmadığını görüp nedenini öğrenemiyordu. İkisi artık ayrı.
     const choose = async () => {
+        // Birleştir'de açık bir belge varken seçilenler ONA eklenir; seçici
+        // başlığı tabanı adlandırır ki kullanıcı açık belgeyi yeniden aramasın.
+        const appending = kind === 'merge' && sources.length > 0;
         let paths: string | string[] | null;
         try {
-            paths = await open({ multiple: kind === 'merge' || kind === 'images', filters: [{ name: kind === 'images' ? 'Görseller' : 'PDF', extensions: kind === 'images' ? ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'heic'] : ['pdf'] }] });
+            paths = await open({ multiple: kind === 'merge' || kind === 'images', title: appending ? `${sources[0].file_name} ile birleştirilecek PDF’ler` : undefined, filters: [{ name: kind === 'images' ? 'Görseller' : 'PDF', extensions: kind === 'images' ? ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'heic'] : ['pdf'] }] });
         } catch (e) {
             logFailure('duzenek picker failure', e);
             setStatus('Dosya seçici açılamadı. Lütfen yeniden deneyin.'); setStatusTone('error');
@@ -353,7 +403,8 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         }
         if (!paths)
             return;
-        await load(Array.isArray(paths) ? paths : [paths]);
+        const picked = Array.isArray(paths) ? paths : [paths];
+        await load(picked, appending ? 'append' : 'replace');
     };
     // Açma başarısız olduğunda tek kurtarma yolu. Seçim kabuğa bildirilir ki
     // bardaki belge adı, son kullanılanlar ve çalışma alanı aynı belgeyi
