@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { Fragment, useRef } from "react";
 import type { FilledRef, NullableRef } from "./reactCompat";
 import type { ComparisonRow, DiffFragment, LocalDocument } from "./core/types";
 import { missingBlockLabel } from "./uiLabels";
@@ -83,6 +83,10 @@ export function PaneHeader({ doc, side, onReplace }: {
  * okuyucuya ne söylediğidir — `<span>` "bu bir sözcük" der, `<ins>` ve
  * `<del>` "bu sözcük eklendi / çıkarıldı" der. Görsel ipuçları da renge
  * bağlı değil: çıkarılan üstü çizili, eklenenin altında çizgi var.
+ *
+ * Parça ayracı (boşluk) etiketin DIŞINDA çizilir: içindeyken şerit ve alt
+ * çizgi sözcükten sonraki boşluğa taşıyordu ("Kaya_"). Okunan ve kopyalanan
+ * metin aynı kalır.
  */
 function FragmentText({ fragments }: { fragments: DiffFragment[] }) {
   return (
@@ -90,9 +94,10 @@ function FragmentText({ fragments }: { fragments: DiffFragment[] }) {
       {fragments.map((fragment, index) => {
         const Tag = fragment.kind === "added" ? "ins" : fragment.kind === "removed" ? "del" : "span";
         return (
-          <Tag key={`${fragment.kind}-${index}`} className={`fragment ${fragment.kind}`}>
-            {fragment.text}{index < fragments.length - 1 ? " " : ""}
-          </Tag>
+          <Fragment key={`${fragment.kind}-${index}`}>
+            <Tag className={`fragment ${fragment.kind}`}>{fragment.text}</Tag>
+            {index < fragments.length - 1 ? " " : ""}
+          </Fragment>
         );
       })}
     </>

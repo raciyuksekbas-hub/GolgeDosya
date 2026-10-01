@@ -81,3 +81,34 @@ describe("eklenen ve çıkarılan sözcükler", () => {
     expect(pane("revised")).toContain('class="fragment added"');
   });
 });
+
+describe("parça ayracı etiketin dışında (a09)", () => {
+  // Yeniden üretim: ayraç boşluğu `<ins>`/`<del>` İÇİNDE çiziliyordu; şerit
+  // ve alt çizgi sözcükten sonraki boşluğa taşıyordu ("Kaya_").
+  const comparison = compareDocuments(
+    makeBlocks([{ text: "Kiracı Ayşe Demir arasında düzenlenmiştir." }], "base"),
+    makeBlocks([{ text: "Kiracı Ayşe Demir Kaya arasında düzenlenmiştir." }], "revised"),
+  );
+  const html = renderToStaticMarkup(
+    <DocumentPane
+      side="revised"
+      doc={{ name: "s.docx", blocks: [] } as never}
+      rows={comparison.rows}
+      changes={[]}
+      selectedRows={[]}
+      paneRef={{ current: null }}
+      rowRefs={{ current: new Map() }}
+      onScroll={() => undefined}
+    />,
+  );
+
+  it("eklenen sözcüğün ardındaki boşluk işaretin dışında kalır", () => {
+    expect(html).toContain('<ins class="fragment added">Kaya</ins> ');
+    expect(html).not.toMatch(/<(ins|del)[^>]*>[^<]* <\/(ins|del)>/);
+  });
+
+  it("okunan metin değişmez", () => {
+    const text = html.replace(/<[^>]+>/g, "");
+    expect(text).toContain("Kiracı Ayşe Demir Kaya arasında düzenlenmiştir.");
+  });
+});
