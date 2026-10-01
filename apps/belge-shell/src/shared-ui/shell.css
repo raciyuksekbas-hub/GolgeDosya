@@ -806,8 +806,47 @@ textarea {
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
 }
-/* Görünür kılınmış boşluk işaretleri metin değildir: kopyalanmaz. */
-.finding-excerpt mark[data-visible-ws] { user-select: none; -webkit-user-select: none; }
+/* Görünür kılınmış boşluk (madde 35; v0.3.2'de ␣). Gerçek karakterler DOM'da
+   kalır ve kopyalanır; işaret METİN DEĞİLDİR, yalnız ::before ile çizilir.
+   Eskiden "·" boşlukların yerine yazılıyor ve mark user-select:none
+   taşıyordu: paragraf kopyalanınca boşluklar düşüyor, yerine "7 boşluk"
+   geliyordu. Mark'ta user-select:none BULUNMAMALI.
+   - white-space: pre → ␣ koşusu satır sonunda ikiye bölünmez, sayı okunur.
+   - Alt çizgi yok: ␣'nın kendi alt çizgisi onunla birleşip kayboluyordu.
+     Vurgu yalnız zemin değildir; ␣ işareti şekil olarak taşınır.
+   - Gerçek karakter font-size:0 ile yer kaplamaz; işaret okunur boyda ve
+     birincil renkte (mark zemininde ~12:1).
+   - İlk `content` satırı Safari 17.4 öncesi içindir (alt metin söz dizimi
+     orada geçersizdir, satır düşer). Ekran okuyucudan gizleme mark'taki
+     aria-hidden'dan gelir, alt metinden değil.
+   - Yazı tipi sabit: ␣ (U+2423) macOS'ta SF Mono/Menlo'da, Windows'ta
+     Segoe UI Symbol'de var; Consolas ve Segoe UI'da yok. */
+.finding-excerpt mark[data-visible-ws] { white-space: pre; text-decoration: none; }
+.finding-excerpt mark[data-visible-ws] .ws { font-size: 0; tab-size: 0; }
+.finding-excerpt mark[data-visible-ws] .ws::before {
+  font-size: var(--text-body);
+  color: var(--text-primary);
+}
+.finding-excerpt mark[data-visible-ws] .ws[data-ch="space"]::before,
+.finding-excerpt mark[data-visible-ws] .ws[data-ch="tab"]::before {
+  font-family: ui-monospace, "SF Mono", Menlo, "Segoe UI Symbol", monospace;
+}
+.finding-excerpt mark[data-visible-ws] .ws[data-ch="space"]::before {
+  content: "\2423";
+  content: "\2423" / "";
+}
+.finding-excerpt mark[data-visible-ws] .ws[data-ch="tab"]::before {
+  content: "\21E5";
+  content: "\21E5" / "";
+}
+/* Bölünmez boşluk ve sıfır genişlikliler: gerçek karakter kalır, ASCII
+   etiket ("[U+00A0]") öznitelikten çizilir. */
+.finding-excerpt mark[data-visible-ws] .ws[data-ch="invisible"]::before {
+  content: attr(data-label);
+  content: attr(data-label) / "";
+}
+/* "7 boşluk" yalnız ekran okuyucu içindir: kopyaya girmez. */
+.finding-excerpt .ws-spoken { user-select: none; -webkit-user-select: none; }
 
 .finding-fix { display: flex; gap: var(--space-2); align-items: flex-start; max-width: var(--measure); font-size: var(--text-meta); }
 .finding-fix code {

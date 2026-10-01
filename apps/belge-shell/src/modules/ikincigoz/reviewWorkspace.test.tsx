@@ -203,13 +203,17 @@ describe("düzeltmenin yazımı", () => {
   it("boşluk düzeltmesi görünür yazılır", () => {
     // HTML boşlukları daraltıyor: "iki boşluk → bir boşluk" düzeltmesi
     // paketlenmiş uygulamada iki boş kutu olarak çiziliyordu.
-    expect(visibleText("  ")).toBe("··");
-    expect(visibleText(" ")).toBe("·");
+    // İşaret ␣ (U+2423): "·" uygulamada ayırıcıdır ve üç nokta gibi okunuyordu.
+    expect(visibleText("  ")).toBe("␣␣");
+    expect(visibleText(" ")).toBe("␣");
     expect(visibleText("")).toBe("∅");
     expect(visibleText("\t")).toBe("⇥");
+    // Bölünmez boşluk düzeltmesi boş kutu olarak çiziliyordu.
+    expect(visibleText("\u00A0")).toBe("[U+00A0]");
+    expect(visibleText("a\u200Bb")).toBe("a[U+200B]b");
     // Gerçek metin değişmez.
     expect(visibleText("Ek-1'de")).toBe("Ek-1'de");
-    expect(visibleText("Ek - 1 ' de")).toBe("Ek·-·1·'·de");
+    expect(visibleText("Ek - 1 ' de")).toBe("Ek␣-␣1␣'␣de");
   });
 });
 

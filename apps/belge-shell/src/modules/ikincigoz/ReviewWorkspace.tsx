@@ -34,10 +34,34 @@ function summary(r: AnalysisResult): string {
  * boşlukları daralttığı için `<code>` kutuları bomboş çiziliyordu ve kullanıcı
  * "Önerilen düzeltme:  →  " diye bir şey okuyordu (gerçek pencerede görüldü).
  * Boşluklar görünür bir işaretle yazılır; metin değişmez.
+ *
+ * İşaret ␣ (U+2423), "·" değil: nokta uygulamanın her yerinde ayırıcıdır
+ * ("3 kesin hata · 2 uyarı") ve art arda gelince üç nokta gibi okunuyordu.
+ * Bölünmez boşluk ve sıfır genişlikliler alıntıdaki gibi "[U+XXXX]" yazılır;
+ * yoksa "bölünmez boşluk → tek boşluk" düzeltmesi boş bir kutu gösteriyordu.
+ * Bu yalnız gösterimdir; ekran okuyucu `spokenText` karşılığını duyar ve
+ * belgeye giden düzeltme motorun kendi `Fix` nesnesidir.
  */
 export function visibleText(text: string): string {
   if (text.length === 0) return "∅";
-  return text.replace(/ /g, "·").replace(/\t/g, "⇥");
+  return text
+    .replace(/ /g, "␣")
+    .replace(/\t/g, "⇥")
+    .replace(new RegExp(INVISIBLE.source, "gu"), (c) => `[${codePoint(c)}]`);
+}
+
+/** Düzeltme değerinin sözlü karşılığı: "2 boşluk", boşsa "" — metinse kendisi. */
+function spokenText(text: string): string {
+  return visibleRange(text)?.spoken ?? text;
+}
+
+/** Düzeltme satırının ekran okuyucu cümlesi: "2 boşluk yerine 1 boşluk". */
+export function spokenFix(fix: Pick<Fix, "original" | "replacement">): string {
+  const from = spokenText(fix.original);
+  const to = spokenText(fix.replacement);
+  if (!to) return `${from} silinir`;
+  if (!from) return `${to} eklenir`;
+  return `${from} yerine ${to}`;
 }
 
 /** Görünmeyen ama belgede duran karakterler: bölünmez boşluk, sıfır genişlikliler, yumuşak tire. */
@@ -53,27 +77,48 @@ const codePoint = (c: string) => `U+${c.codePointAt(0)!.toString(16).toUpperCase
  * boşluk aynı 3,6 px'lik şeride, sıfır genişlikli karakter 0 px'e iniyordu —
  * vurgu vardı ama görünmüyordu. Ekran okuyucu da bir şey duymuyordu.
  *
- * Görünür biçim düzeltme satırıyla aynı dil: boşluk "·", sekme "⇥". Bölünmez
+ * Görünür biçim düzeltme satırıyla aynı dil: boşluk "␣", sekme "⇥". Bölünmez
  * boşluk ve sıfır genişlikliler "[U+XXXX]" — Windows yazı tiplerinde karşılığı
  * olmayabilecek simgeler yerine her yazı tipinde çizilen ASCII. `spoken`,
- * ekran okuyucunun duyacağı karşılıktır. Metin DEĞİŞMEZ; yalnız gösterim.
+ * ekran okuyucunun duyacağı karşılıktır.
+ *
+ * İşaret METİN DEĞİLDİR (v0.3.2). Eskiden "·" boşlukların yerine DOM'a
+ * yazılıyordu; paragraf kopyalanınca boşluklar kayboluyor, yerine ekran
+ * okuyucu metni geliyordu ("Davacı7 boşlukvekili"). Artık her karakter DOM'da
+ * aynen kalır; `chars[i].label` yalnız CSS `::before` ile çizilir (bkz.
+ * MarkedSlice ve shell.css). `shown`, gözün gördüğü dizinin kendisidir.
  */
-export function visibleRange(slice: string): { shown: string; spoken: string } | null {
-  const chars = [...slice];
-  if (chars.length === 0 || !chars.every((c) => /\s/u.test(c) || INVISIBLE.test(c))) return null;
-  const shown = chars
-    .map((c) => (c === " " ? "·" : c === "\t" ? "⇥" : INVISIBLE.test(c) ? `[${codePoint(c)}]` : c))
-    .join("");
-  const spaces = chars.filter((c) => c === " ").length;
+export type VisibleChar = {
+  ch: string;
+  /** "other": /\s/ ile eşleşen öteki boşluklar (ör. em boşluk); işaretsiz kalır. */
+  kind: "space" | "tab" | "invisible" | "other";
+  label: string;
+};
+
+export function visibleRange(
+  slice: string,
+): { chars: VisibleChar[]; shown: string; spoken: string } | null {
+  const raw = [...slice];
+  if (raw.length === 0 || !raw.every((c) => /\s/u.test(c) || INVISIBLE.test(c))) return null;
+  const chars: VisibleChar[] = raw.map((ch) =>
+    ch === " "
+      ? { ch, kind: "space", label: "␣" }
+      : ch === "\t"
+        ? { ch, kind: "tab", label: "⇥" }
+        : INVISIBLE.test(ch)
+          ? { ch, kind: "invisible", label: `[${codePoint(ch)}]` }
+          : { ch, kind: "other", label: ch },
+  );
+  const spaces = raw.filter((c) => c === " ").length;
   const parts = [
     spaces ? `${spaces} boşluk` : "",
-    chars.some((c) => c === "\t") ? "sekme" : "",
-    chars.some((c) => c === "\u00A0") ? "bölünmez boşluk" : "",
-    ...[...new Set(chars.filter((c) => INVISIBLE.test(c) && c !== "\u00A0"))].map(
+    raw.some((c) => c === "\t") ? "sekme" : "",
+    raw.some((c) => c === "\u00A0") ? "bölünmez boşluk" : "",
+    ...[...new Set(raw.filter((c) => INVISIBLE.test(c) && c !== "\u00A0"))].map(
       (c) => `görünmeyen karakter (${codePoint(c)})`,
     ),
   ].filter(Boolean);
-  return { shown, spoken: parts.join(", ") };
+  return { chars, shown: chars.map((c) => c.label).join(""), spoken: parts.join(", ") };
 }
 
 /**
@@ -248,14 +293,36 @@ export const findingKey = (f: Finding) => {
  * Kanıt bulgunun yanında durur: paragrafın tamamı, işaretli aralık vurgulu.
  * Saf sunum; durumu ve seçimi çağıran tutar.
  */
-/** İşaretli aralık: boşluksa görünür biçimi ve ekran okuyucu karşılığıyla. */
+/**
+ * İşaretli aralık: boşluksa görünür biçimi ve ekran okuyucu karşılığıyla.
+ *
+ * Gerçek karakterler DOM'da kalır — paragraf kopyalanınca belgedeki metin
+ * birebir gelir. ␣ ve etiketler yalnız CSS `::before` ile çizilir; mark
+ * `aria-hidden` olduğu için ekran okuyucu işareti değil "7 boşluk"u duyar.
+ * O sözlü metin de kopyaya girmez (`.ws-spoken`, shell.css).
+ */
 function MarkedSlice({ slice }: { slice: string }) {
   const ws = visibleRange(slice);
   if (!ws) return <mark>{slice}</mark>;
   return (
     <>
-      <mark data-visible-ws="" aria-hidden="true">{ws.shown}</mark>
-      <span className="sr-only">{ws.spoken}</span>
+      <mark data-visible-ws="" aria-hidden="true">
+        {ws.chars.map((c, i) =>
+          c.kind === "other" ? (
+            c.ch
+          ) : (
+            <span
+              key={i}
+              className="ws"
+              data-ch={c.kind}
+              data-label={c.kind === "invisible" ? c.label : undefined}
+            >
+              {c.ch}
+            </span>
+          ),
+        )}
+      </mark>
+      <span className="sr-only ws-spoken">{ws.spoken}</span>
     </>
   );
 }
@@ -338,8 +405,13 @@ export function FindingList({
                           onChange={() => onToggleFix(f)}
                         />
                         <span>
-                          <code>{visibleText(f.fix.original)}</code> →{" "}
-                          <code>{visibleText(f.fix.replacement)}</code>
+                          {/* Görünür yazım gözedir; ekran okuyucu ␣ yerine
+                              "2 boşluk yerine 1 boşluk" duyar. */}
+                          <span aria-hidden="true">
+                            <code>{visibleText(f.fix.original)}</code> →{" "}
+                            <code>{visibleText(f.fix.replacement)}</code>
+                          </span>
+                          <span className="sr-only">{spokenFix(f.fix)}</span>
                           <span className="finding-fixnote"> ({f.fix.description})</span>
                         </span>
                       </label>
