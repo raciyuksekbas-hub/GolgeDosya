@@ -24,6 +24,7 @@
  */
 import { rotatePages, previewGeometry, previewStageSize, nextViewport, workspaceSurfaces, appendSources, appendNote, shiftSource, removeSource, mergeShortfall, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { noBenefitStatus } from './noBenefitMessage';
+import { savedStatus } from './savedMessage';
 import { copyDestination } from './copyDestination';
 import { describeOpenFailure, describeSaveFailure, logFailure, safeMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
 import React, { useState, useEffect, useRef } from 'react';
@@ -480,7 +481,6 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             setStatus('PDF hazırlanıyor…'); setStatusTone('busy');
             const outcome = await invoke<{ status: 'published' | 'compressed' | 'no_benefit' | 'failed'; reason?: string; source_bytes?: number; body_bytes?: number; output_bytes?: number; candidate_bytes?: number; images_found?: number; images_recompressed?: number; previously_processed?: boolean }>('duzenek_run_pdf_tool', { paths: sources.map(s => s.path), operation, outputPath, approved });
             if (outcome.status === 'failed') throw new Error(outcome.reason);
-            const metrics = `Sıkıştırılmış belge: ${((outcome.body_bytes || 0) / 1024).toFixed(1)} KB · Marka dahil: ${((outcome.output_bytes || outcome.candidate_bytes || 0) / 1024).toFixed(1)} KB`;
             if (outcome.status === 'no_benefit') {
                 // Gerçek bayt sonucu söylenir; motorun bulamadığı küçülmeden
                 // belgenin "zaten optimize" olduğu sonucu çıkarılmaz. Yeniden
@@ -494,8 +494,13 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             const receipt = await invoke<ScanBatchResult>('duzenek_scan_source_files', { paths: [outputPath] });
             if (receipt.errors.length || receipt.sources.length !== 1 || receipt.sources[0].size_bytes === 0)
                 throw new Error('Kaydedilen PDF yeniden doğrulanamadı.');
-            const size = receipt.sources[0].size_bytes, before = sources.reduce((n, s) => n + s.size_bytes, 0);
-            setStatus(`PDF kaydedildi ve yeniden açılarak doğrulandı: ${outputPath}\n${receipt.sources[0].page_count} sayfa · ${(size / 1024).toFixed(1)} KB` + (kind === 'compress' ? `\n${(before / 1024).toFixed(1)} KB → ${(size / 1024).toFixed(1)} KB · %${((1 - size / before) * 100).toFixed(1)} küçültüldü.\n${metrics}` : ''));
+            setStatus(savedStatus({
+                kind,
+                outputPath,
+                pageCount: receipt.sources[0].page_count,
+                outputBytes: receipt.sources[0].size_bytes,
+                sourceBytes: outcome.source_bytes || sources.reduce((n, s) => n + s.size_bytes, 0),
+            }));
             setStatusTone('success');
             // Bu düzen artık bir kopyada: kip değiştirmek bir şey kaybettirmez.
             setSavedSignature(signature);
