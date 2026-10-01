@@ -2392,6 +2392,78 @@ fn c57_awkward_file_names_produce_usable_outputs() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+// ---------------------------------------------------------------- page-number warnings (v0.3.2 a12)
+
+/// A footer carrying a UYAP page number, optionally with a start number.
+fn numbered_footer(start_at: Option<u32>) -> HeaderFooter {
+    HeaderFooter {
+        blocks: vec![para("Av. Ayşe FATMA")],
+        page_number: Some(PageNumberField {
+            prefix: Some("Sayfa ".into()),
+            separator: Some("/".into()),
+            start_at,
+            raw_spec: Some("BSP32_2120".into()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+fn docx_warnings(d: &Document) -> Vec<tavzih_core::warnings::Warning> {
+    let mut w = WarningSink::new();
+    let _ = docx::writer::write_docx(d, &mut w).unwrap();
+    w.into_vec()
+}
+
+/// Field report: "'sayfa numarası yeniden oluşturuldu' şeklinde uyarı vererek ortaya
+/// getirdi". The number really is a live Word field (c34), so the row stays, at INFO.
+/// But it must tell the lawyer the RESULT, not the mechanism, and must not claim the
+/// number was preserved while its position (always centred, on its own line) was not.
+#[test]
+fn c58_page_number_title_states_the_result_not_the_mechanism() {
+    let title = WarningCode::PageNumberFieldApproximated.title_tr();
+    assert!(
+        !title.contains("yeniden oluştur"),
+        "mechanism wording reads as 'broken and patched': {title}"
+    );
+    assert!(
+        !title.contains("korundu"),
+        "position is not preserved, so 'korundu' would be untrue: {title}"
+    );
+    assert!(title.starts_with("Sayfa numarası"), "{title}");
+    assert!(
+        title.contains("ortal"),
+        "the centring must be disclosed: {title}"
+    );
+    assert!(
+        title.contains("ayrı satır"),
+        "the new line must be disclosed: {title}"
+    );
+    // The result contract and the calm styling do not change.
+    assert_eq!(
+        WarningCode::PageNumberFieldApproximated.as_str(),
+        "PAGE_NUMBER_FIELD_APPROXIMATED"
+    );
+    assert_eq!(
+        WarningCode::PageNumberFieldApproximated.severity(),
+        Severity::Info
+    );
+
+    // Header and footer both numbered: still a single row.
+    let mut d = doc(vec![para("Gövde")]);
+    d.sections[0].header = Some(numbered_footer(None));
+    d.sections[0].footer = Some(numbered_footer(None));
+    let ws = docx_warnings(&d);
+    assert_eq!(
+        ws.iter()
+            .filter(|w| w.code == WarningCode::PageNumberFieldApproximated)
+            .count(),
+        1,
+        "{ws:?}"
+    );
+    assert_eq!(ws[0].title, title);
+}
+
 // ---------------------------------------------------------------- hardening: field-code leak (skeptic 3, P1)
 
 /// Ham bir DOCX paketi kur: yalnızca `word/document.xml`. Okuyucu bu tek parçayı

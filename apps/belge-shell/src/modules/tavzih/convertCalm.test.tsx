@@ -28,7 +28,7 @@ const result = {
   output: "C:\\Users\\Çağrı Şahin\\Documents\\GölgeDosya\\Dönüştürülen Belgeler\\dilekçe.docx",
   output_name: "dilekçe.docx",
   warnings: [
-    { code: "PAGE_NUMBER_FIELD_APPROXIMATED", severity: "INFO", title: "Sayfa numarası Word alanı olarak yeniden oluşturuldu ve ortalandı", location: null },
+    { code: "PAGE_NUMBER_FIELD_APPROXIMATED", severity: "INFO", title: "Sayfa numarası Word'ün otomatik sayfa numarasına çevrildi (ortalı, ayrı satırda)", location: null },
     { code: "EMBEDDED_OBJECT_DROPPED", severity: "LOSS", title: "Gömülü nesneler aktarılamadı", location: "s. 2" },
   ],
   error: null,
