@@ -559,6 +559,12 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         if (message)
             announce(message);
         setApproved(false);
+        // Görseller → PDF görsellerle çalışır ve açık belgeyi bırakır. PDF
+        // aracına dönülünce oturum boş kalıyordu, bar ise hâlâ açık belgeyi
+        // gösteriyordu; Birleştir'de eklenenler o belgesiz birleşiyordu.
+        // Kabuğun açık belgesi yeniden taban olur.
+        if (kind === 'images' && key !== 'images' && initialPaths?.length)
+            void load(initialPaths, 'replace', message);
     };
     const PAGE_TOOLS: Kind[] = ['select', 'reorder', 'delete', 'rotate'];
     const settingField = kind === 'compress'

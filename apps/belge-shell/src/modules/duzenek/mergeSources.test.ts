@@ -141,6 +141,12 @@ describe("bileşen bağlaması", () => {
     expect(load).toMatch(/const base = mode === 'append' \? sourcesRef\.current : \[\];\s*const \{ next, skipped \} = appendSources\(base, result\.sources\)/);
   });
 
+  it("Görseller'den PDF aracına dönüş kabuğun açık belgesini yeniden taban yapar", () => {
+    const pick = source.slice(source.indexOf("const pick ="), source.indexOf("const PAGE_TOOLS"));
+    expect(pick).toMatch(/kind === 'images' && key !== 'images' && initialPaths\?\.length/);
+    expect(pick).toMatch(/void load\(initialPaths, 'replace', message\)/);
+  });
+
   it("kaynak listesinde yukarı / aşağı taşı ve 'Listeden çıkar' var; etiket korunuyor", () => {
     const list = source.slice(source.indexOf('className="source-list"'), source.indexOf("</ol>}"));
     expect(list).toContain("belgeyi yukarı taşı");
