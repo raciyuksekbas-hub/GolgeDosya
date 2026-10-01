@@ -193,7 +193,7 @@ const SAVE_CATEGORIES: { match: RegExp; detail: string }[] = [
   {
     match: /damga payı eklenince görünür|açıklama\/form alanı/i,
     detail:
-      "Sayfa kenarının dışına taşan görünür bir açıklama var; marka payı eklenince görünür olacağı için kopya oluşturulmadı.",
+      "Sayfa kenarının dışına taşan görünür bir açıklama var; damga, filigran ya da sayfa numarası için eklenen kenar payı onu görünür kılacağı için kopya oluşturulmadı.",
   },
   {
     match: /damga bu sayfaya sığmıyor/i,

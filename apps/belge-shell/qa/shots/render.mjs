@@ -226,7 +226,7 @@ try {
                 el('div', { className: 'pdf-page-viewport', tabIndex: 0, role: 'region', 'aria-label': 'Kaydırılabilir PDF sayfası' },
                   el('div', { className: 'pdf-preview-stage' },
                     el('div', { className: 'pdf-page-surface', style: { width: 464, height: 600 } }))),
-                el('p', { className: 'preview-note' }, 'Kaynak sayfanın önizlemesi. Yeni PDF’nin her sayfasına içerik dışında sağ alt logo payı eklenir. Açıklama/form görünümleri bu önizlemede eksik olabilir; son kopyayı ayrıca inceleyin.')))));
+                el('p', { className: 'preview-note' }, 'Kaynak sayfanın önizlemesi. Yeni PDF’nin her sayfasının sağ alt köşesine, sayfa boyutu değişmeden, saydam GölgeDosya işareti eklenir. Açıklama/form görünümleri bu önizlemede eksik olabilir; son kopyayı ayrıca inceleyin.')))));
 
         const editPanel = renderToStaticMarkup(el('div', { className: 'pdf-controls', 'aria-label': 'PDF işlem kontrolleri' },
           el(ToolGroups, { kind: 'select', onPick(){} }),

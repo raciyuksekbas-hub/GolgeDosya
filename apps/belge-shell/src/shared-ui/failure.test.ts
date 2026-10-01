@@ -72,6 +72,10 @@ describe("kaydetme hatalarının sunumu", () => {
     ];
     const details = readable.map(describeSaveFailure);
     expect(details[0]).toMatch(/açıklama/);
+    // GölgeDosya markası artık pay eklemez; bu ret yalnız pay ekleyen
+    // damga, filigran ve sayfa numarasından gelir.
+    expect(details[0]).not.toMatch(/marka/i);
+    expect(details[0]).toMatch(/damga, filigran ya da sayfa numarası/);
     expect(details[1]).toMatch(/marka işaretinin sığamayacağı/);
     expect(details[2]).toMatch(/görsele dönüştürülemiyor/);
     // Dar ret: genel "açıklama içeren sayfalar dönüştürülemiyor" DEĞİL.
