@@ -305,9 +305,12 @@ PNG'nin tek renk olmadığı piksel kontrolüyle doğrulanır (bkz. §8).
 | 900×600 (minimum) | 232 | varsayılan kapalı; "Ayrıntılar" ile açılır | ≥ 656 |
 
 Metin ölçeği %150 ve %200'de aynı dört boyut tekrar alınır. Hiçbir boyutta
-yatay kaydırma yok; uzun dosya adı barda kısaltılır; eylemler sarmaz.
-Düzenle'de "Araçlar" paneli yukarıdaki 560 px kuralına uyar: %100'de 1024 ve
-900'de kapalı, %200'de 1280'de kapalı, 1440'ta açık.
+yatay kaydırma yok; uzun dosya adı barda kısaltılır. Eylemler %100'de sarmaz
+(tek istisna: 900 px'te imzalı PDF'in "İmza Onayı Gerekli" nedeni);
+%150–%200'de dar pencerede panel düğmesi ve Kapat ekranda kalsın diye kipin
+eylemleri alt satıra iner (bar uzar). Düzenle'de "Araçlar" paneli yukarıdaki
+560 px kuralına uyar: %100'de 1024 ve 900'de kapalı, %200'de 1280'de kapalı,
+1440'ta açık.
 
 ## 8. Görsel kabul yöntemi
 

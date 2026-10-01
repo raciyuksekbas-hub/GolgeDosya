@@ -207,7 +207,10 @@
   background: var(--border-subtle);
 }
 
-.toolbar-spacer { flex: 1; min-width: var(--space-4); }
+/* Boşluk en az 8 px: iki yanındaki 12'şer px aralıkla bağlam ve eylemler
+   arasında yine 32 px kalır. 16 px iken 900 px @%200'de Kapat'ın son
+   pikselleri ekran dışına itiliyordu. */
+.toolbar-spacer { flex: 1; min-width: var(--space-2); }
 
 .toolbar-shell,
 .toolbar-actions {
@@ -217,6 +220,23 @@
   align-items: center;
 }
 .toolbar-actions:empty { display: none; }
+/* Kipin eylemleri, barın geri kalanına (belge adı, ölçü, panel düğmesi,
+   Kapat) yer bırakacak kadar genişleyebilir; daha fazlası gerekiyorsa alt
+   satıra iner. %150–%200 metinle dar pencerede eylemler eskiden barı
+   taşırıyordu ve panel düğmesiyle Kapat ekranın dışında kalıyordu. %100'de
+   sınır, en dar pencerede (900 px) bile kiplerin olağan eylemlerinden
+   geniştir; tek istisna orada imzalı PDF'in "İmza Onayı Gerekli" nedeni:
+   sarmasa Kapat'ı ekran dışına iterdi. */
+.toolbar-actions {
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
+  justify-content: flex-end;
+  /* Kutunun en dar hâli en geniş tek düğmesidir: sınır daha darsa düğme
+     kutudan sola taşıp belge adının üstüne binmez. */
+  min-width: min-content;
+  max-width: calc(100vw - var(--sidebar-w) - 100px - 150px * var(--text-scale));
+  padding: var(--space-1) 0;
+}
 /* Bardaki anahtar (ör. "Eş zamanlı kaydır"): gerçek onay kutusu, switch rolü.
    Düğme değil ayar; metin ikincil tonda, tıklama alanı etiketin tamamı. */
 .toolbar-switch {
