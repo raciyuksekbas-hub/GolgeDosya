@@ -2464,6 +2464,136 @@ fn c58_page_number_title_states_the_result_not_the_mechanism() {
     assert_eq!(ws[0].title, title);
 }
 
+/// `pageNumber-pageStartNumStr` was parsed and then silently ignored: a petition whose
+/// pages read 3, 4, 5 in UYAP reads 1, 2, 3 in Word, and the panel said nothing about it.
+/// The start is not guessed into `<w:pgNumType>` (no specimen proves its meaning); the
+/// loss of it is stated in the TITLE, because the result surface shows titles only.
+#[test]
+fn c59_page_number_start_is_never_silently_dropped() {
+    let mut d = doc(vec![para("Gövde")]);
+    d.sections[0].footer = Some(numbered_footer(Some(3)));
+    let ws = docx_warnings(&d);
+    let s = ws
+        .iter()
+        .find(|w| w.code == WarningCode::PageNumberStartDropped)
+        .unwrap_or_else(|| panic!("start number dropped silently: {ws:?}"));
+    assert_eq!(s.severity, Severity::Approximation);
+    assert!(!s.data_loss);
+    assert_eq!(s.title, WarningCode::PageNumberStartDropped.title_tr());
+    assert!(s.title.starts_with("Sayfa numarası"), "{}", s.title);
+    assert!(s.title.contains("1'den"), "{}", s.title);
+    assert!(s.title.contains("başlangıç numarası"), "{}", s.title);
+    assert_eq!(s.location.as_deref(), Some("Alt bilgi"));
+    assert!(s.detail.as_deref().unwrap_or("").contains('3'), "{s:?}");
+    assert_eq!(
+        WarningCode::PageNumberStartDropped.as_str(),
+        "PAGE_NUMBER_START_DROPPED"
+    );
+    // The field itself is still reported, once, at INFO.
+    assert!(ws
+        .iter()
+        .any(|w| w.code == WarningCode::PageNumberFieldApproximated));
+    // Not guessed into the output.
+    let body = part_text(&to_docx(&d), "word/document.xml");
+    assert!(!body.contains("pgNumType"), "start number was guessed");
+
+    // A start of 1, or none at all, is what Word does anyway: no row.
+    for start in [None, Some(1)] {
+        let mut d = doc(vec![para("Gövde")]);
+        d.sections[0].footer = Some(numbered_footer(start));
+        let ws = docx_warnings(&d);
+        assert!(
+            !ws.iter()
+                .any(|w| w.code == WarningCode::PageNumberStartDropped),
+            "{start:?}: {ws:?}"
+        );
+    }
+
+    // Both parts start at 3: one row, not two identical lines.
+    let mut d = doc(vec![para("Gövde")]);
+    d.sections[0].header = Some(numbered_footer(Some(3)));
+    d.sections[0].footer = Some(numbered_footer(Some(3)));
+    let ws = docx_warnings(&d);
+    assert_eq!(
+        ws.iter()
+            .filter(|w| w.code == WarningCode::PageNumberStartDropped)
+            .count(),
+        1,
+        "{ws:?}"
+    );
+}
+
+/// The same, end to end from UDF bytes through `convert_bytes`, alongside the cases that
+/// must stay as they are: no page number (silence) and `pageNumber-*` without a spec (LOSS).
+#[test]
+fn c60_udf_page_number_warnings_end_to_end() {
+    fn udf_with_footer(attrs: &str) -> Vec<u8> {
+        let body = "Gövde paragrafı.\n";
+        let foot = "Av. Ayşe FATMA\n";
+        let (bl, fl) = (body.chars().count(), foot.chars().count());
+        let xml = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<template format_id=\"1.8\" >\
+             <content><![CDATA[{body}{foot}]]></content>\
+             <properties><pageFormat mediaSizeName=\"1\" leftMargin=\"70.875\" rightMargin=\"70.875\" \
+             topMargin=\"70.875\" bottomMargin=\"70.875\" paperOrientation=\"1\" headerFOffset=\"20.0\" \
+             footerFOffset=\"20.0\" /></properties>\
+             <elements resolver=\"hvl-default\" >\
+             <footer background=\"-1\" foreground=\"-1\"{attrs}><paragraph Alignment=\"2\">\
+             <content startOffset=\"{bl}\" length=\"{fl}\" /></paragraph></footer>\
+             <paragraph Alignment=\"3\"><content startOffset=\"0\" length=\"{bl}\" /></paragraph>\
+             </elements><styles><style name=\"hvl-default\" family=\"Times New Roman\" size=\"12\" /></styles>\
+             </template>"
+        );
+        udf::writer::package(xml.as_bytes()).unwrap()
+    }
+    fn convert(attrs: &str) -> Vec<tavzih_core::warnings::Warning> {
+        let mut w = WarningSink::new();
+        let out = convert_bytes(&udf_with_footer(attrs), Direction::UdfToDocx, &mut w)
+            .expect("udf->docx");
+        docx::writer::validate(&out).expect("output must validate");
+        w.into_vec()
+    }
+    let codes = |ws: &[tavzih_core::warnings::Warning]| -> Vec<WarningCode> {
+        ws.iter().map(|w| w.code).collect()
+    };
+    let spec =
+        " pageNumber-spec=\"BSP32_2120\" pageNumber-foreStr=\"Sayfa \" pageNumber-seperator=\"/\"";
+
+    // No page number: nothing to say.
+    assert!(convert("").is_empty());
+
+    // A page number: exactly the one calm row.
+    let ws = convert(spec);
+    assert_eq!(
+        codes(&ws),
+        vec![WarningCode::PageNumberFieldApproximated],
+        "{ws:?}"
+    );
+    assert_eq!(ws[0].severity, Severity::Info);
+
+    // A page number starting at 3: the calm row plus the visible start row.
+    let ws = convert(&format!("{spec} pageNumber-pageStartNumStr=\"3\""));
+    let c = codes(&ws);
+    assert!(
+        c.contains(&WarningCode::PageNumberFieldApproximated),
+        "{ws:?}"
+    );
+    assert!(c.contains(&WarningCode::PageNumberStartDropped), "{ws:?}");
+    assert_eq!(ws.len(), 2, "{ws:?}");
+
+    // A start of 1 is the Word default.
+    let ws = convert(&format!("{spec} pageNumber-pageStartNumStr=\"1\""));
+    assert_eq!(codes(&ws), vec![WarningCode::PageNumberFieldApproximated]);
+
+    // Attributes without a spec: the existing LOSS, and no start row on top of it.
+    let ws = convert(" pageNumber-foreStr=\"Sayfa \" pageNumber-pageStartNumStr=\"3\"");
+    assert_eq!(
+        codes(&ws),
+        vec![WarningCode::PageNumberFieldDropped],
+        "{ws:?}"
+    );
+}
+
 // ---------------------------------------------------------------- hardening: field-code leak (skeptic 3, P1)
 
 /// Ham bir DOCX paketi kur: yalnızca `word/document.xml`. Okuyucu bu tek parçayı

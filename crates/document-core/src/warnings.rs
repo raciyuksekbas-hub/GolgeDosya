@@ -74,6 +74,7 @@ pub enum WarningCode {
     FormContentLost,
     PageSizeChanged,
     PageNumberFieldApproximated,
+    PageNumberStartDropped,
 }
 
 impl WarningCode {
@@ -112,6 +113,7 @@ impl WarningCode {
             FormContentLost => "FORM_CONTENT_LOST",
             PageSizeChanged => "PAGE_SIZE_CHANGED",
             PageNumberFieldApproximated => "PAGE_NUMBER_FIELD_APPROXIMATED",
+            PageNumberStartDropped => "PAGE_NUMBER_START_DROPPED",
         }
     }
 
@@ -166,6 +168,12 @@ impl WarningCode {
             PageNumberFieldApproximated => {
                 "Sayfa numarası Word'ün otomatik sayfa numarasına çevrildi (ortalı, ayrı satırda)"
             }
+            // pageNumber-pageStartNumStr okunur ama Word'e yazılmaz: anlamı gerçek
+            // bir UYAP örneğiyle doğrulanmadan <w:pgNumType w:start> tahmin
+            // edilmez. Arayüz yalnız başlığı gösterir, bu yüzden sonuç başlıkta.
+            PageNumberStartDropped => {
+                "Sayfa numarası 1'den başlıyor; kaynaktaki başlangıç numarası aktarılmadı"
+            }
         }
     }
 
@@ -196,7 +204,8 @@ impl WarningCode {
             | FieldFlattened
             | TrackedChangesFlattened
             | RunFeatureDropped
-            | TableVerticalMergeFlattened => Approximation,
+            | TableVerticalMergeFlattened
+            | PageNumberStartDropped => Approximation,
 
             // Something visible is gone.
             FormContentLost

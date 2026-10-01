@@ -397,6 +397,21 @@ fn hf_part(
     if let Some(pn) = &hf.page_number {
         inner.push_str(&page_number_paragraph(pn));
         warn.warn(WarningCode::PageNumberFieldApproximated);
+        // The start number is parsed but never written: no UYAP specimen proves what
+        // `pageNumber-pageStartNumStr` means, so `<w:pgNumType w:start>` is not guessed.
+        // Word therefore counts from 1, and silence would claim the start survived.
+        if let Some(n) = pn.start_at.filter(|&n| n != 1) {
+            let place = if tag == "hdr" {
+                "Üst bilgi"
+            } else {
+                "Alt bilgi"
+            };
+            warn.push(
+                Warning::new(WarningCode::PageNumberStartDropped)
+                    .at(place)
+                    .detail(format!("kaynaktaki başlangıç numarası: {n}")),
+            );
+        }
     } else if !hf.page_number_attrs.is_empty() {
         warn.warn(WarningCode::PageNumberFieldDropped);
     }
