@@ -87,6 +87,20 @@ export function appendSources<T extends { path: string; file_name: string }>(exi
     return { next, skipped };
 }
 
+/** Listede bir belgeyi bir adım yukarı (-1) ya da aşağı (+1) taşır; sınırda liste aynen döner. */
+export function shiftSource<T>(list: readonly T[], index: number, delta: -1 | 1): T[] {
+    const target = index + delta;
+    if (index < 0 || index >= list.length || target < 0 || target >= list.length) return [...list];
+    const next = [...list];
+    [next[index], next[target]] = [next[target], next[index]];
+    return next;
+}
+
+/** Listeden bir belgeyi çıkarır. Kaynak dosyaya dokunulmaz; yalnız bu birleştirmeye girmez. */
+export function removeSource<T>(list: readonly T[], index: number): T[] {
+    return list.filter((_, i) => i !== index);
+}
+
 export const MERGE_NEEDS_MORE = 'Birleştirmek için en az bir belge daha ekleyin.';
 
 /**

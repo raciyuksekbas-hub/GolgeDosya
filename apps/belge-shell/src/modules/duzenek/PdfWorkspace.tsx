@@ -22,7 +22,7 @@
  * ya da henüz yoksa ne araç paneli ne de sayfa şeridi çizilir — kullanılamayan
  * araçları soluk göstermek yerine hata/boş durum tam genişliği alır.
  */
-import { rotatePages, previewGeometry, previewStageSize, nextViewport, workspaceSurfaces, appendSources, appendNote, mergeShortfall, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
+import { rotatePages, previewGeometry, previewStageSize, nextViewport, workspaceSurfaces, appendSources, appendNote, shiftSource, removeSource, mergeShortfall, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { noBenefitStatus } from './noBenefitMessage';
 import { copyDestination } from './copyDestination';
 import { describeOpenFailure, describeSaveFailure, logFailure, safeMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
@@ -430,7 +430,12 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const opened = initialPaths?.join('\u0000') ?? '';
     useEffect(() => { if (opened) void load(opened.split('\u0000')); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [opened]);
     const shiftPage = (index: number, delta: number) => { const next = [...order]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; setOrder(next); setReordered(true); };
-    const moveSource = (index: number) => { const next = [...sources]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; setSources(next); build(next); };
+    // Liste değişince son ekleme/kaydetme notu artık bu listeyi anlatmaz
+    // ("A.pdf zaten listede" dendikten sonra A çıkarılmış olabilir): susar.
+    const relist = (next: SourceFile[]) => { setSources(next); build(next); setStatus(''); setStatusTone('info'); };
+    const moveSource = (index: number, delta: -1 | 1) => relist(shiftSource(sources, index, delta));
+    // Yanlış eklenen belgeyi geri almanın yolu. Kaynak dosyaya dokunulmaz.
+    const dropSource = (index: number) => relist(removeSource(sources, index));
     const signature = editSignature(order, rotations, reordered);
     const dirty = hasUnsavedEdits(signature, savedSignature);
     useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
@@ -610,9 +615,17 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     {needMore && <p className="tool-hint">{needMore}</p>}
                     {sources.length > 0 && <ol className="source-list">{sources.map((s, i) => <li key={s.path}>
                         <span>{s.file_name} · {s.page_count} sayfa</span>
-                        {sources.length > 1 && <IconButton label={`${i + 1}. belgeyi yukarı taşı`} disabled={busy || i === 0} onClick={() => moveSource(i)}>
-                            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        </IconButton>}
+                        {sources.length > 1 && <div className="source-actions">
+                            <IconButton label={`${i + 1}. belgeyi yukarı taşı`} disabled={busy || i === 0} onClick={() => moveSource(i, -1)}>
+                                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </IconButton>
+                            <IconButton label={`${i + 1}. belgeyi aşağı taşı`} disabled={busy || i === sources.length - 1} onClick={() => moveSource(i, 1)}>
+                                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.5V12m-3.5-3.5L8 12l3.5-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </IconButton>
+                            <IconButton label={`${i + 1}. belgeyi listeden çıkar`} disabled={busy} onClick={() => dropSource(i)}>
+                                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7-7 7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                            </IconButton>
+                        </div>}
                     </li>)}</ol>}
                     {order.length > 0 && <>
                         <p className="tool-count">{order.length} kaynak sayfası{pageSelection ? ` · ${selected.length} işaretli` : ''} · Çıktı: {outputCount} sayfa</p>

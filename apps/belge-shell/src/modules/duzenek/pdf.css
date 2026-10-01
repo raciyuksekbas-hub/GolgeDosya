@@ -377,6 +377,8 @@
   color: var(--text-secondary);
 }
 .pdf-root .source-list li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Birleştir sırası: yukarı, aşağı, listeden çıkar — ad kısalır, düğmeler yerinde kalır. */
+.pdf-root .source-list .source-actions { display: flex; flex-shrink: 0; gap: 2px; }
 .pdf-root .approval {
   align-items: flex-start;
   font-size: var(--text-meta);

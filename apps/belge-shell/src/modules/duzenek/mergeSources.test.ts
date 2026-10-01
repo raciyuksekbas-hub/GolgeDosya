@@ -65,6 +65,22 @@ describe("appendSources — açık belge taban, yeniler sona", () => {
   });
 });
 
+describe("kaynak listesi düzeni", () => {
+  it("yukarı / aşağı taşı; sınırda liste aynı kalır", () => {
+    const shift = fn("shiftSource") as unknown as (l: Src[], i: number, d: -1 | 1) => Src[];
+    expect(names(shift([A, B, C], 0, 1))).toEqual(["B.pdf", "A.pdf", "C.pdf"]);
+    expect(names(shift([A, B, C], 2, -1))).toEqual(["A.pdf", "C.pdf", "B.pdf"]);
+    expect(names(shift([A, B, C], 0, -1))).toEqual(["A.pdf", "B.pdf", "C.pdf"]);
+    expect(names(shift([A, B, C], 2, 1))).toEqual(["A.pdf", "B.pdf", "C.pdf"]);
+  });
+
+  it("listeden çıkar yalnız o girdiyi düşürür", () => {
+    const remove = fn("removeSource") as unknown as (l: Src[], i: number) => Src[];
+    expect(names(remove([A, B, C], 1))).toEqual(["A.pdf", "C.pdf"]);
+    expect(names(remove([A, B], 0))).toEqual(["B.pdf"]);
+  });
+});
+
 describe("Birleştir en az iki belgeyle kaydeder", () => {
   it("tek belgede kaydetme kapalı ve nedeni söylenir", () => {
     const shortfall = fn("mergeShortfall") as unknown as (k: string, n: number) => string;
@@ -123,6 +139,18 @@ describe("bileşen bağlaması", () => {
     expect(load).toMatch(/const generation = \+\+loadGeneration\.current/);
     expect(load).toMatch(/if \(generation !== loadGeneration\.current\)\s*return;/);
     expect(load).toMatch(/const base = mode === 'append' \? sourcesRef\.current : \[\];\s*const \{ next, skipped \} = appendSources\(base, result\.sources\)/);
+  });
+
+  it("kaynak listesinde yukarı / aşağı taşı ve 'Listeden çıkar' var; etiket korunuyor", () => {
+    const list = source.slice(source.indexOf('className="source-list"'), source.indexOf("</ol>}"));
+    expect(list).toContain("belgeyi yukarı taşı");
+    expect(list).toContain("belgeyi aşağı taşı");
+    expect(list).toContain("listeden çıkar");
+    expect(list).toMatch(/sources\.length > 1 &&/);
+    expect(source).toContain("Birleştirilecek Belge Ekle");
+    // Liste değişince eski ekleme notu ("A.pdf zaten listede") susar.
+    expect(source).toMatch(/const relist = \(next: SourceFile\[\]\) => \{ setSources\(next\); build\(next\); setStatus\(''\);/);
+    expect(source).toMatch(/const dropSource = \(index: number\) => relist\(removeSource\(sources, index\)\)/);
   });
 
   it("panel metinleri ekleme davranışını anlatır", () => {
