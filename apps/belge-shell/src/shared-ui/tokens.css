@@ -88,6 +88,18 @@
   --success-rest: rgb(43 100 70 / 70%);
   --danger-rest: rgb(168 50 42 / 68%);
   --review-rest: rgb(44 90 134 / 68%);
+  /* Karşılaştır'da değişen sözcüğün şeridi (-mark), seçili satırdaki daha
+     güçlü şeridi (-mark-strong) ve değişen paragrafın çok hafif tonu (-row).
+     -quiet yıkamaları şerit olarak 1.13:1'di; "renkler tam seçilmiyor".
+     Şeridin üstündeki metin gövde rengindedir, böylece seçili satırda da AA
+     kalır. Değerler compareVisual.test.ts'te gerçek zemine karşı ölçülür. */
+  --success-mark: rgb(43 100 70 / 22%);
+  --danger-mark: rgb(168 50 42 / 22%);
+  --success-mark-strong: rgb(43 100 70 / 28%);
+  --danger-mark-strong: rgb(168 50 42 / 28%);
+  --success-row: rgb(43 100 70 / 5%);
+  --danger-row: rgb(168 50 42 / 5%);
+  --review-row: rgb(44 90 134 / 5%);
 
   --focus: #0a84ff;
 
@@ -212,6 +224,13 @@
   --success-rest: rgb(125 192 155 / 58%);
   --danger-rest: rgb(240 138 128 / 60%);
   --review-rest: rgb(134 180 222 / 58%);
+  --success-mark: rgb(125 192 155 / 20%);
+  --danger-mark: rgb(240 138 128 / 20%);
+  --success-mark-strong: rgb(125 192 155 / 26%);
+  --danger-mark-strong: rgb(240 138 128 / 26%);
+  --success-row: rgb(125 192 155 / 5%);
+  --danger-row: rgb(240 138 128 / 5%);
+  --review-row: rgb(134 180 222 / 5%);
 
   --focus: #4a9eff;
 }
