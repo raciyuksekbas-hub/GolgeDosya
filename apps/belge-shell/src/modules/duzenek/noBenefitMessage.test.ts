@@ -111,7 +111,12 @@ describe("kabuğa bağlanma", () => {
 
   it("kanıtsız iddialar kabuktan kalktı", () => {
     expect(workspace).not.toContain("zaten yeterince optimize");
-    expect(workspace).not.toContain("En az %3");
+    // Eski "%3" kuralı panelde küçük harfle kalmıştı ("en az %3 küçülen"):
+    // büyük/küçük harfe duyarlı koruma onu kaçırdı. Motor %2 + 100 KB ya da
+    // 500 KB kazancı da kaydediyor; panel sayı vermeden gerçeği söyler.
+    expect(workspace.toLocaleLowerCase("tr")).not.toContain("en az %3");
+    expect(workspace).not.toMatch(/%3(?![\d,])/);
+    expect(workspace).toContain("Küçülme çok azsa yeni dosya oluşturulmaz.");
     // Yeniden kodlanmayan görselin SEBEBİ sonuçta yok; uydurulmaz.
     expect(branch).not.toContain("renk uzayı");
   });
