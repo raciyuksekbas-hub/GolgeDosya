@@ -224,54 +224,24 @@ fn verify_output(fx: &Fixture, op: Op, source: &Document, out: &Document) -> Vec
                     }
                 }
                 if matches!(op, Op::Crop) {
-                    // Kırpma her kenardan 5 pt içeri alır; sonra marka payı
-                    // görsel alt kenarı DIŞARI genişletir. Alt kenar dönüşe göre
-                    // değişir, o yüzden dört kenardan üçü tam 5 pt içeride olmalı,
-                    // dördüncüsü (pay kenarı) ya 5 pt içeride ya 34 pt payla dışarıda.
-                    // Kırpma aracı var olan kutuyu (CropBox, yoksa MediaBox)
-                    // olduğu gibi 5 pt içeri alır; MediaBox ile kesişim ALMAZ.
+                    // Kırpma her kenardan 5 pt içeri alır. GölgeDosya markası
+                    // geometriye dokunmaz (işaret kırpılmış kutunun İÇİNE
+                    // bindirilir), dört kenar da tam 5 pt içeride olmalı.
+                    // v0.3.1'e kadar marka payı görsel alt kenarı 34 pt dışarı
+                    // genişletiyordu. Kırpma aracı var olan kutuyu (CropBox,
+                    // yoksa MediaBox) olduğu gibi 5 pt içeri alır; MediaBox ile
+                    // kesişim ALMAZ.
                     let visible = src_crop.unwrap_or(s);
-                    // Pay, GölgeDosya işaretiyle birlikte sayfaya göre ölçeklenir
-                    // (bkz. `stamp::brand_scale`): 34 pt × min(max(1, kısa kenar /
-                    // 612), genişlik / 72), kırpılmış kutunun GÖRÜNTÜLENEN
-                    // boyutlarıyla. A4/Letter'da 34 pt'dir. Eskiden sabitti: büyük
-                    // sayfada işaret okunmuyor, dar sayfada hiç basılmıyordu.
-                    let rotation = {
-                        let r = check::rotation(source, src_id).rem_euclid(360);
-                        if r % 90 == 0 {
-                            r
-                        } else {
-                            0
-                        }
-                    };
-                    let (cw, ch) = (
-                        visible[2] - visible[0] - 10.0,
-                        visible[3] - visible[1] - 10.0,
-                    );
-                    let (dw, dh) = if rotation == 90 || rotation == 270 {
-                        (ch, cw)
-                    } else {
-                        (cw, ch)
-                    };
-                    let gutter = 34.0 * (dw.min(dh) / 612.0).max(1.0).min(dw / 72.0);
                     // Kenar başına içe alma: sol/alt +5, sağ/üst −5.
                     let inset = [5.0, 5.0, -5.0, -5.0];
                     match out_crop {
                         Some(c) => {
-                            let mut cropped = 0;
-                            let mut guttered = 0;
-                            for k in 0..4 {
-                                let want = visible[k] + inset[k];
-                                let sign = if k < 2 { -1.0 } else { 1.0 }; // pay dışarı
-                                if (c[k] - want).abs() < 0.6 {
-                                    cropped += 1;
-                                } else if (c[k] - (want + sign * gutter)).abs() < 0.6 {
-                                    guttered += 1;
-                                }
-                            }
-                            if cropped < 3 || cropped + guttered != 4 {
+                            let cropped = (0..4)
+                                .filter(|&k| (c[k] - (visible[k] + inset[k])).abs() < 0.6)
+                                .count();
+                            if cropped != 4 {
                                 errors.push(format!(
-                                    "{} · Crop: çıktı s.{} CropBox {c:?} kırpma 5 pt + pay {gutter:.1} pt modeline uymuyor (görünür {visible:?})",
+                                    "{} · Crop: çıktı s.{} CropBox {c:?} dört kenardan 5 pt kırpma modeline uymuyor (görünür {visible:?})",
                                     fx.name,
                                     pos + 1
                                 ));

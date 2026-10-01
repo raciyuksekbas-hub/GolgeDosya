@@ -309,8 +309,10 @@ fn boxes(doc: &Document, page: u32) -> ([f32; 4], Option<[f32; 4]>) {
     (arr(b"MediaBox").unwrap(), arr(b"CropBox"))
 }
 
-/// Marka payı: her türetilmiş sayfanın altına eklenen şerit (stamp.rs).
-const BRAND_GUTTER: f32 = 8.0 * 2.0 + 8.0 + 10.0;
+/// Sayfa kutusu `[w, h]` ile aynı mı (0,01 pt tolerans)?
+fn same_size(m: [f32; 4], size: [f32; 2]) -> bool {
+    (m[2] - m[0] - size[0]).abs() < 0.01 && (m[3] - m[1] - size[1]).abs() < 0.01
+}
 
 fn run(
     lab: &Lab,
@@ -372,14 +374,13 @@ fn save_select_pages_publishes_reopenable_pdf_with_exact_order() {
         "seçim sırası korunmalı"
     );
     let (m, c) = boxes(&d, 2);
-    assert_eq!(
-        m[2], A4_LANDSCAPE[0],
-        "yatay sayfanın MediaBox genişliği korunmalı"
-    );
     assert!(
-        c.is_some(),
-        "türetilmiş sayfa görünür alanı (CropBox) taşımalı"
+        same_size(m, A4_LANDSCAPE),
+        "yatay sayfanın MediaBox'ı aynen korunmalı: {m:?}"
     );
+    // Marka geometriye dokunmaz: kaynakta CropBox yoksa çıktıda da yoktur
+    // (eskiden marka payı için her sayfaya CropBox yazılıyordu).
+    assert!(c.is_none(), "kaynakta olmayan CropBox eklendi: {c:?}");
 }
 
 #[test]
@@ -566,17 +567,13 @@ fn rotate_per_page_left_right_180_and_repeated() {
         [0, 180, 0]
     );
     // Geometri: dönüş bir öznitelik olarak taşınır, kutu yeniden örneklenmez.
-    // Marka payı ilk türetmede görsel alt kenara eklenir (o an 90° → x ekseni).
-    // Marka idempotenttir: ikinci türetmede işaret görünür alanda olduğu için
-    // yeni pay eklenmez; toplam alan = özgün + 1 pay. (2026-09-15'e kadar her
-    // türetme bir pay daha ekliyordu; bu test o birikimi kilitliyordu.)
-    let (m, _) = boxes(&d2, 2);
-    let area_growth = (m[2] - m[0]) * (m[3] - m[1]) - A4_LANDSCAPE[0] * A4_LANDSCAPE[1];
-    let expected = BRAND_GUTTER * A4_LANDSCAPE[1];
-    assert!(
-        (area_growth - expected).abs() < 1.0,
-        "beklenmeyen kutu büyümesi: {area_growth} vs {expected}"
-    );
+    // Marka sayfaya pay EKLEMEZ: iki türetmeden sonra da kutu özgün kutudur.
+    // (2026-09-15'e kadar her türetme bir pay ekliyordu; ardından tek pay
+    // kaldı; v0.3.2'den beri hiç pay yok.)
+    for (n, size) in [(1, A4), (2, A4_LANDSCAPE), (3, A4)] {
+        let (m, _) = boxes(&d2, n);
+        assert!(same_size(m, size), "sayfa {n}: kutu değişti: {m:?}");
+    }
 }
 
 #[test]
@@ -763,15 +760,8 @@ fn compress_device_rgb_flate_scan_compresses() {
     assert!(bytes * 100 < src_size * 97);
     let d = reopen(&out);
     let (m, _) = boxes(&d, 1);
-    // Marka payı ALT kenara eklenir (y0 aşağı iner); genişlik değişmez.
-    assert!(
-        (m[2] - m[0] - 595.).abs() < 0.01,
-        "genişlik değişmemeli: {m:?}"
-    );
-    assert!(
-        (m[3] - m[1] - (842. + BRAND_GUTTER)).abs() < 0.01,
-        "yalnız marka payı eklenir: {m:?}"
-    );
+    // Marka sayfa boyutunu değiştirmez.
+    assert!(same_size(m, [595., 842.]), "sayfa boyutu değişti: {m:?}");
     println!(
         "compress DeviceRGB Flate: {src_size} → {bytes} (%{})",
         100 - bytes * 100 / src_size
@@ -1068,23 +1058,12 @@ fn chain_a_open_rotate_reorder_delete_save_reopen_each_step() {
         [0, 90, 0],
         "döndürülen sayfa sıralama ve silmeden sonra hâlâ 90°"
     );
-    // 90° dönük sayfada marka payı görsel alt kenara, yani x eksenine gelir.
-    // Marka idempotenttir: üç türetme = TEK pay (işaret görünür kaldıkça
-    // sonraki türetmeler pay eklemez). 2026-09-15'e kadar üç pay birikiyordu.
+    // Üç türetme, dönük sayfa dahil: kutular özgün kutulardır. Marka pay
+    // eklemez (2026-09-15'e kadar üç pay birikiyordu, sonra tek pay kalıyordu).
     let (m, _) = boxes(&d, 2);
-    assert!(
-        (m[3] - m[1] - A4_LANDSCAPE[1]).abs() < 0.05,
-        "dönük sayfanın yüksekliği korunmalı: {m:?}"
-    );
-    assert!(
-        (m[2] - m[0] - (A4_LANDSCAPE[0] + BRAND_GUTTER)).abs() < 0.05,
-        "üç türetme = x ekseninde tek pay: {m:?}"
-    );
+    assert!(same_size(m, A4_LANDSCAPE), "dönük sayfanın kutusu: {m:?}");
     let (m1, _) = boxes(&d, 1);
-    assert!(
-        (m1[3] - m1[1] - (LETTER[1] + BRAND_GUTTER)).abs() < 0.05,
-        "üç türetme = tek marka payı: {m1:?}"
-    );
+    assert!(same_size(m1, LETTER), "kutu değişti: {m1:?}");
 }
 
 #[test]
@@ -1185,8 +1164,9 @@ fn colour_pdf(sizes: &[[f32; 2]]) -> Document {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn mae_top_left(reference: &image::RgbImage, candidate: &image::RgbImage) -> f64 {
-    // Çıktının altına marka payı eklenir; karşılaştırma önizlemenin kapladığı
-    // sol-üst bölgeyle sınırlıdır (son iki satır kenar yumuşatması nedeniyle atlanır).
+    // Karşılaştırma iki görüntünün ortak sol-üst bölgesiyle sınırlıdır (son
+    // iki satır kenar yumuşatması nedeniyle atlanır). Marka işareti sağ alt
+    // köşede, belgenin üstündedir; bu ortalama hata içinde küçük bir paydır.
     let w = reference.width().min(candidate.width());
     let h = reference.height().min(candidate.height()).saturating_sub(2);
     let mut delta = 0u64;
@@ -1297,7 +1277,8 @@ fn export_images_every_page_in_order_with_dpi_and_rotation() {
             let img = image::open(folder.join(&names[i])).unwrap().to_rgb8();
             let scale = dpi as f32 / 72.0;
             let (ew, eh) = if i == 3 { (*h, *w) } else { (*w, *h) };
-            // Genişlik sayfa kutusundan; yükseklik marka payı kadar büyük.
+            // Görsel tam olarak sayfa kutusu boyutunda: marka işareti sayfanın
+            // içine bindirilir, eskisi gibi 34 pt uzatmaz.
             assert_eq!(
                 img.width(),
                 (ew * scale).ceil() as u32,
@@ -1306,7 +1287,7 @@ fn export_images_every_page_in_order_with_dpi_and_rotation() {
             );
             assert_eq!(
                 img.height(),
-                ((eh + BRAND_GUTTER) * scale).ceil() as u32,
+                (eh * scale).ceil() as u32,
                 "{format} sayfa {} yükseklik",
                 i + 1
             );
@@ -1378,8 +1359,8 @@ fn images_to_pdf_png_jpeg_portrait_landscape_fit_a4() {
             "sayfa {n} A4 genişliğinde: {m:?}"
         );
         assert!(
-            (m[3] - m[1] - (A4[1] + BRAND_GUTTER)).abs() < 0.05,
-            "sayfa {n} A4 + marka payı: {m:?}"
+            (m[3] - m[1] - A4[1]).abs() < 0.05,
+            "sayfa {n} tam A4 (marka payı yok): {m:?}"
         );
     }
     // Çizim matrisi: dik görsel yüksekliği, yatay görsel genişliği doldurur.
@@ -1963,6 +1944,7 @@ fn assert_derivable(name: &str, doc: Document, annots_on_page_1: usize) {
 
 #[test]
 fn branding_does_not_refuse_annotations_that_the_gutter_cannot_reveal() {
+    // Marka pay eklemez; bunlar zaten hiçbir payla görünür hâle gelmez.
     // Bağlantı sağ kenarı aşıyor — pay ALTA eklenir, sağdaki taşma görünmez.
     assert_derivable(
         "link-sag",
@@ -2075,50 +2057,52 @@ fn branding_tolerates_annotation_entries_a_viewer_cannot_place() {
     );
 }
 
+/// Payın açacağı şeride düşen, GERÇEKTEN çizilen bir açıklama varsa pay
+/// ekleyen işaret (sayfa numarası, filigran, Ek damgası) türetmeyi durdurur:
+/// çıktı yazılmaz, kaynak değişmez. Kullanıcıya dönen cümle bu.
+fn refuses_text_marks(name: &str, doc: Document) {
+    let lab = Lab::new();
+    let mut doc = doc;
+    let src = lab.write(&format!("{name}.pdf"), &mut doc);
+    let hash = calculate_sha256(&src).unwrap();
+    let out = lab.path("x.pdf");
+    let err = run_tool_with_outcome(
+        std::slice::from_ref(&src),
+        &ToolOperation::Number { start: 1 },
+        &out,
+        false,
+    )
+    .expect_err(name)
+    .to_string();
+    assert!(
+        !out.exists(),
+        "{name}: reddedilen türetme çıktı bırakmamalı"
+    );
+    assert_eq!(calculate_sha256(&src).unwrap(), hash);
+    // Kabuk bu cümleyi "belge okunamadı" değil, gerçek sebep olarak çevirir.
+    assert!(
+        err.contains("damga payı eklenince görünür"),
+        "{name}: {err}"
+    );
+}
+
 #[test]
-fn branding_still_refuses_a_visible_annotation_the_gutter_would_reveal() {
-    // Değişmez korunuyor: payın açacağı şeride düşen, GERÇEKTEN çizilen bir
-    // açıklama varsa türetme durur, çıktı yazılmaz, kaynak değişmez.
-    let refuses = |name: &str, doc: Document| {
-        let lab = Lab::new();
-        let mut doc = doc;
-        let src = lab.write(&format!("{name}.pdf"), &mut doc);
-        let hash = calculate_sha256(&src).unwrap();
-        let out = lab.path("x.pdf");
-        let err = run_tool_with_outcome(
-            std::slice::from_ref(&src),
-            &ToolOperation::Reorder { pages: vec![1, 2] },
-            &out,
-            false,
-        )
-        .expect_err(name)
-        .to_string();
-        assert!(
-            !out.exists(),
-            "{name}: reddedilen türetme çıktı bırakmamalı"
-        );
-        assert_eq!(calculate_sha256(&src).unwrap(), hash);
-        // Kabuk bu cümleyi "belge okunamadı" değil, gerçek sebep olarak çevirir.
-        assert!(
-            err.contains("damga payı eklenince görünür"),
-            "{name}: {err}"
-        );
-    };
-    // Dik sayfa: pay altta.
-    refuses(
-        "kare-alt",
-        annotated(0, |d| {
+fn text_marks_still_refuse_a_visible_annotation_their_gutter_would_reveal() {
+    // GölgeDosya markası artık pay EKLEMEZ: bu açıklamalar görünür kutunun
+    // dışında kalır, marka işlemi onları ne açar ne reddeder (eskiden marka
+    // payı da bu yüzden reddediyordu). Sayfa numarası ise alta 60 pt pay
+    // ekler: değişmez orada korunur.
+    let kare_alt = |rotate| {
+        annotated(rotate, |d| {
             vec![Object::Reference(visible_square(
                 d,
                 [72., -4., 300., 12.],
                 4,
             ))]
             .into()
-        }),
-    );
-    // 90° dönük sayfa: görsel alt kenar x ekseninde, pay SAĞA (x1) eklenir.
-    refuses(
-        "dik90-kare-sag",
+        })
+    };
+    let kare_sag = || {
         annotated(90, |d| {
             vec![Object::Reference(visible_square(
                 d,
@@ -2126,21 +2110,27 @@ fn branding_still_refuses_a_visible_annotation_the_gutter_would_reveal() {
                 4,
             ))]
             .into()
-        }),
+        })
+    };
+    // Dik sayfa: pay altta.
+    refuses_text_marks("kare-alt", kare_alt(0));
+    // 90° dönük sayfa: görsel alt kenar x ekseninde, pay SAĞA (x1) eklenir.
+    refuses_text_marks("dik90-kare-sag", kare_sag());
+    // Marka bunların hiçbirini reddetmez.
+    assert_derivable("marka-kare-alt", kare_alt(0), 1);
+    assert_derivable("marka-dik90-kare-sag", kare_sag(), 1);
+    // Aynı dönük sayfada alt kenarı aşan kare sayfa numarasının pay
+    // şeridinde değildir: o da geçer.
+    let lab = Lab::new();
+    let src = lab.write("dik90-kare-alt.pdf", &mut kare_alt(90));
+    let (o, _) = run(
+        &lab,
+        &[src],
+        ToolOperation::Number { start: 1 },
+        "numara.pdf",
+        false,
     );
-    // Aynı dönük sayfada alt kenarı aşan kare pay şeridinde değildir: geçer.
-    assert_derivable(
-        "dik90-kare-alt",
-        annotated(90, |d| {
-            vec![Object::Reference(visible_square(
-                d,
-                [72., -4., 300., 12.],
-                4,
-            ))]
-            .into()
-        }),
-        1,
-    );
+    published(&o);
 }
 
 #[test]
@@ -2162,10 +2152,7 @@ fn branding_places_mark_on_nonconforming_rotation_instead_of_refusing() {
     let d = reopen(&out);
     assert_eq!(rotation(&d, 1), 45, "sayfanın /Rotate değeri korunmalı");
     let (m, _) = boxes(&d, 1);
-    assert!(
-        (m[3] - m[1] - (A4[1] + BRAND_GUTTER)).abs() < 0.05,
-        "pay alta eklenmeli: {m:?}"
-    );
+    assert!(same_size(m, A4), "kutu değişmemeli: {m:?}");
 }
 
 /// Çıktıdaki tek görselin piksellerini kaynak piksellerle karşılaştırır.
@@ -2320,7 +2307,8 @@ fn compress_skips_image_with_unexplained_length_instead_of_failing_document() {
 #[test]
 fn branding_ignores_closed_popup_but_guards_open_popup_on_rotated_page() {
     // Önizleme ve Acrobat: not simgesi sayfada, popup'ı sayfanın SAĞINDA,
-    // kutunun dışında. 90° dönük sayfada pay tam o kenara (sağa) eklenir.
+    // kutunun dışında. 90° dönük sayfada sayfa numarasının payı tam o kenara
+    // (sağa) eklenir; marka pay eklemez.
     fn note_with_popup(d: &mut Document, open: Option<bool>) -> Object {
         let popup_id = d.new_object_id();
         let note = d.add_object(dictionary! {"Type"=>"Annot","Subtype"=>"Text",
@@ -2345,24 +2333,18 @@ fn branding_ignores_closed_popup_but_guards_open_popup_on_rotated_page() {
         annotated(90, |d| note_with_popup(d, Some(false))),
         2,
     );
-    // Açık popup pay şeridine düşüyor: görünür hâle gelirdi — değişmez korunur.
-    let lab = Lab::new();
-    let mut doc = annotated(90, |d| note_with_popup(d, Some(true)));
-    let src = lab.write("acik-popup.pdf", &mut doc);
-    let before = calculate_sha256(&src).unwrap();
-    let err = run_tool_with_outcome(
-        std::slice::from_ref(&src),
-        &ToolOperation::Reorder { pages: vec![1, 2] },
-        &lab.path("kopya.pdf"),
-        false,
-    )
-    .unwrap_err();
-    assert!(
-        err.to_string().contains("damga payı eklenince görünür"),
-        "{err}"
+    // Açık popup: marka pay eklemediği için görünür hâle gelmez, türetme
+    // geçer. Pay ekleyen sayfa numarası ise onu açacaktı — değişmez orada
+    // korunur.
+    assert_derivable(
+        "acik-popup-dondurulmus",
+        annotated(90, |d| note_with_popup(d, Some(true))),
+        2,
     );
-    assert!(!lab.path("kopya.pdf").exists());
-    assert_eq!(calculate_sha256(&src).unwrap(), before);
+    refuses_text_marks(
+        "acik-popup-numara",
+        annotated(90, |d| note_with_popup(d, Some(true))),
+    );
 }
 
 // ================= ARTIMLI GÜNCELLENMİŞ BELGE — BAYAT /Prev OFSETİ (2026-09-14)
@@ -3666,7 +3648,7 @@ fn assert_shared_resources_stay_single(book: Book) {
             &keep.iter().map(|p| all[&(*p as u32)]).collect::<Vec<_>>(),
         );
         let got = page_census(&d, &d.get_pages().into_values().collect::<Vec<_>>());
-        // Boyut: seçilen sayfaların akış baytları + sayfa başına sözlük/marka payı.
+        // Boyut: seçilen sayfaların akış baytları + sayfa başına sözlük ve marka işareti.
         let bound = wanted.stream_bytes + 12_000 + 700 * keep.len();
         if std::env::var("SIZE_REPORT").is_ok() {
             println!(
@@ -5097,7 +5079,8 @@ fn branding_is_idempotent_across_chained_derivations() {
         dictionary! {"Font"=>dictionary!{"F1"=>font_dict()},"XObject"=>dictionary!{"Im1"=>scan}},
     );
     let src = lab.write("kaynak.pdf", &mut d);
-    let branded_box = [0.0, -BRAND_GUTTER, A4[0], A4[1]];
+    // Marka pay eklemez: her adımda kutu özgün A4 kutusudur, CropBox yoktur.
+    let branded_box = [0.0, 0.0, A4[0], A4[1]];
 
     let check = |name: &str, doc: &Document| {
         assert_eq!(brand_form_count(doc), 1, "{name}: marka formu birikti");
@@ -5114,11 +5097,7 @@ fn branding_is_idempotent_across_chained_derivations() {
                     "{name}/s.{page}: MediaBox {media:?}"
                 );
             }
-            assert_eq!(
-                crop.map(|c| c.map(|v| (v * 100.).round())),
-                Some(media.map(|v| (v * 100.).round())),
-                "{name}/s.{page}"
-            );
+            assert_eq!(crop, None, "{name}/s.{page}: CropBox eklendi");
         }
     };
 
@@ -5184,16 +5163,13 @@ fn branding_is_idempotent_across_chained_derivations() {
     for page in 1..=merged.get_pages().len() as u32 {
         assert_eq!(brand_draws(&merged, page), 1, "birlestir/s.{page}");
         let (media, _) = boxes(&merged, page);
-        assert!(
-            (media[1] + BRAND_GUTTER).abs() < 0.01,
-            "birlestir/s.{page}: {media:?}"
-        );
+        assert!(same_size(media, A4), "birlestir/s.{page}: {media:?}");
     }
     // İşareti görünür alanın dışında bırakan kırpma: yeni işaret eklenir ve
     // GÖRÜNMEZ kalan eski işaret akışı sökülür. Eskiden gizli çizim dosyada
     // kalıyor, sayfa iki işaret çizimi taşıyordu; ürün kuralı artık "tam bir
-    // işaret" (bkz. `pdf_branding_invariant.rs`). Kullanıcının kırpması geri
-    // ALINMAZ: pay, kırpılmış kutunun altına eklenir.
+    // işaret" (bkz. `pdf_branding_invariant.rs`). Kullanıcının kırpması
+    // AYNEN kalır: yeni işaret kırpılmış kutunun içine bindirilir.
     let (o, k) = run(
         &lab,
         std::slice::from_ref(&a),
@@ -5211,10 +5187,10 @@ fn branding_is_idempotent_across_chained_derivations() {
         );
         let (_, crop) = boxes(&cropped, page);
         let crop = crop.unwrap();
-        assert!(
-            (crop[1] - (-BRAND_GUTTER + 20.0 - BRAND_GUTTER)).abs() < 0.01,
-            "kirp/s.{page}: {crop:?}"
-        );
+        let expected = [20.0, 20.0, A4[0] - 20.0, A4[1] - 20.0];
+        for (value, e) in crop.iter().zip(expected) {
+            assert!((value - e).abs() < 0.01, "kirp/s.{page}: {crop:?}");
+        }
     }
     assert_eq!(
         brand_form_count(&cropped),

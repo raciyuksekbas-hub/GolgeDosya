@@ -253,28 +253,17 @@ fn page_geometry(path: &Path) -> Vec<(i64, [f32; 4], Option<[f32; 4]>)> {
 
 /// Sıkıştırma çıktısının sayfa geometrisi korunmuş mu?
 ///
-/// Sayfa sayısı ve dönüş BİREBİR. Kutu: GölgeDosya ilk kez markaladığı
-/// sayfanın ALTINA bir marka bandı ekler ve görünür kutuyu ona göre
-/// genişletir — mevcut, bilinçli marka davranışı; kaynak zaten markalıysa
-/// hiç eklenmez. Bu yüzden sol, sağ ve üst kenar birebir kalır; alt kenar
-/// ancak aşağı doğru uzayabilir, içerik alanı asla kırpılmaz.
+/// Sayfa sayısı, dönüş, MediaBox ve CropBox BİREBİR. GölgeDosya markası
+/// geometriye dokunmaz: işaret sayfanın içine bindirilir. (v0.3.1'e kadar
+/// ilk markalamada sayfanın altına bir marka bandı ekleniyordu; bu test o
+/// zaman yalnız alt kenarın aşağı uzamasına izin veriyordu.)
 fn assert_page_area_preserved(out: &Path, src: &Path) {
     let (after, before) = (page_geometry(out), page_geometry(src));
     assert_eq!(after.len(), before.len(), "sayfa sayısı");
-    for ((rot_a, media_a, crop_a), (rot_b, media_b, _)) in after.iter().zip(&before) {
+    for ((rot_a, media_a, crop_a), (rot_b, media_b, crop_b)) in after.iter().zip(&before) {
         assert_eq!(rot_a, rot_b, "dönüş");
-        assert_eq!(
-            [media_a[0], media_a[2], media_a[3]],
-            [media_b[0], media_b[2], media_b[3]],
-            "sol/sağ/üst kenar"
-        );
-        assert!(
-            media_a[1] <= media_b[1],
-            "alt kenar yalnız aşağı uzayabilir"
-        );
-        if let Some(crop) = crop_a {
-            assert_eq!(crop, media_a, "görünür kutu sayfanın tamamı");
-        }
+        assert_eq!(media_a, media_b, "MediaBox");
+        assert_eq!(crop_a, crop_b, "CropBox");
     }
 }
 

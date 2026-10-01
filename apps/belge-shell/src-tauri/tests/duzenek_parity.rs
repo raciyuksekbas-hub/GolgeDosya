@@ -76,9 +76,6 @@ fn make_pdf(pages: usize) -> tempfile::NamedTempFile {
 /// Fikstürün sayfa ölçüsü (A4, punto).
 const PAGE_W: f64 = 595.28;
 const PAGE_H: f64 = 841.89;
-/// Marka bandının içerik dışına eklediği pay: `margin_pt * 2 + font_size + 10`
-/// (stamp.rs:109). Varsayılan yapılandırmada 34 punto.
-const GUTTER: f64 = 34.0;
 
 fn sha256(path: &Path) -> String {
     let mut h = Sha256::new();
@@ -242,47 +239,19 @@ fn rotate_left_and_right_land_on_the_expected_angles() {
         assert_eq!(m.rotations[0], expected, "{delta}° yanlış açıya indi");
         assert_eq!(m.rotations[1], 0, "işaretsiz sayfa döndürülmüş");
 
-        // Döndürme /Rotate ile yapılır: sayfanın kendi ölçüsü değişmez. Ama
-        // marka bandı içeriğin DIŞINA bir pay ekler ve bu payın hangi kenara
-        // düştüğü sayfanın dönüşüne göre seçilir (stamp.rs:114-119) — böylece
-        // bant, sayfa döndürülse de görsel olarak altta kalır. İki sayfanın
-        // kutuları bu yüzden aynı OLMAZ; aynı olan, payın büyüklüğü ve özgün
-        // sayfa alanının hiç kırpılmamasıdır.
+        // Döndürme /Rotate ile yapılır: sayfanın kendi ölçüsü değişmez. Marka
+        // da geometriye dokunmaz (işaret sayfanın içine bindirilir); döndürülen
+        // ve döndürülmeyen sayfanın kutusu özgün A4 kutusudur. Eskiden marka
+        // bandı görsel alt kenara 34 pt pay ekliyordu.
         for (page, b) in m.boxes.iter().enumerate() {
             assert_eq!(b.len(), 4, "sayfa {page}: MediaBox okunamadı");
-            let grown_x = (b[2] - b[0]) - PAGE_W;
-            let grown_y = (b[3] - b[1]) - PAGE_H;
-            assert!(
-                b[0] <= 0.0 && b[1] <= 0.0 && b[2] >= PAGE_W && b[3] >= PAGE_H,
-                "sayfa {page}: özgün sayfa alanı kırpıldı: {b:?}"
-            );
-            // Tam bir kenar büyür, diğeri hiç.
-            let (a, c) = (grown_x.abs(), grown_y.abs());
-            assert!(
-                (a < 0.01 && c > 0.01) || (c < 0.01 && a > 0.01),
-                "sayfa {page}: pay iki eksende birden büyümüş: {b:?}"
-            );
-            assert!(
-                (a.max(c) - GUTTER).abs() < 0.01,
-                "sayfa {page}: pay {} bekleniyordu, {} bulundu",
-                GUTTER,
-                a.max(c)
-            );
+            for (got, want) in b.iter().zip([0.0, 0.0, PAGE_W, PAGE_H]) {
+                assert!(
+                    (got - want).abs() < 0.01,
+                    "sayfa {page}: kutu değişti: {b:?}"
+                );
+            }
         }
-        // Döndürülen sayfada pay yatay eksene, döndürülmeyende dikey eksene düşer.
-        let rotated_grew_horizontally = ((m.boxes[0][2] - m.boxes[0][0]) - PAGE_W).abs() > 0.01;
-        let upright_grew_vertically = ((m.boxes[1][3] - m.boxes[1][1]) - PAGE_H).abs() > 0.01;
-        assert!(
-            upright_grew_vertically,
-            "dönmemiş sayfada pay dikeyde beklenirdi: {:?}",
-            m.boxes[1]
-        );
-        assert_eq!(
-            rotated_grew_horizontally,
-            expected == 90 || expected == 270,
-            "{expected}° sayfada pay yanlış kenara düştü: {:?}",
-            m.boxes[0]
-        );
     }
 }
 
@@ -668,7 +637,7 @@ fn branding_cost_per_page_does_not_grow_with_page_count() {
             *after as f64 / *pages as f64
         );
     }
-    // Sabit marka payı bir kez ödeniyorsa toplam boyut, sayfa sayısında
+    // Sabit marka maliyeti bir kez ödeniyorsa toplam boyut, sayfa sayısında
     // DOĞRUSAL bir terim artı sabit bir terimdir; yani ek sayfa başına maliyet
     // sabit kalır. Marka sayfa başına yeniden gömülseydi bu marjinal maliyet
     // 1→10 ile 10→100 arasında belirgin biçimde artardı.

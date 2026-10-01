@@ -608,24 +608,26 @@ mod render {
         assert_golden(&src, 1, &p, 150, 0, "150 DPI");
     }
 
-    /// Tam piksel sınırındaki sayfa bir piksel FAZLA yuvarlanmaz. Gerçek A4
-    /// ondalıklı (595,28 × 841,89 pt); görsel dışa aktarma 34 pt pay ekler ve
-    /// yatay sayfada yükseklik 629,28 pt × 150/72 = tam 1311,0 olur. Windows'un
-    /// ilk native koşusu burada 1312 verdi (f32 yuvarlama); macOS 1311.
+    /// Tam piksel sınırındaki sayfa bir piksel FAZLA yuvarlanmaz. Ondalıklı
+    /// bir yükseklik: 629,28 pt × 150/72 = tam 1311,0. Windows'un ilk native
+    /// koşusu burada 1312 verdi (f32 yuvarlama); macOS 1311. (Bu ölçü eskiden
+    /// yatay A4'e görsel dışa aktarmanın eklediği 34 pt'lik marka payıyla
+    /// ulaşılıyordu; marka artık sayfayı uzatmadığı için sayfa doğrudan bu
+    /// yükseklikte kurulur.)
     #[test]
     fn a_page_on_an_exact_pixel_boundary_is_not_rounded_up() {
         let dir = tempfile::tempdir().unwrap();
-        let src = dir.path().join("a4-yatay.pdf");
+        let src = dir.path().join("sinir.pdf");
         vector_pdf(
             &src,
-            &[vpage(841.89, 595.28, &[fill(40., 40., 100., 100., BLACK)])],
+            &[vpage(841.89, 629.28, &[fill(40., 40., 100., 100., BLACK)])],
         );
         let out = dir.path().join("cikti");
         std::fs::create_dir_all(&out).unwrap();
         let folder = raster::pdf_to_images(&src, &out, "jpg", 150, false).unwrap();
         let img = image::open(folder.join("sayfa-0001.jpg")).unwrap();
         // Beklenen değer, dosyadaki ONDALIK metinden (f64) hesaplanır.
-        let (w, h) = (841.89f64, 595.28f64 + 34.);
+        let (w, h) = (841.89f64, 629.28f64);
         assert_eq!(img.width(), (w * 150. / 72.).ceil() as u32, "genişlik");
         assert_eq!(
             img.height(),
@@ -797,14 +799,14 @@ mod render {
                 "{name}: sayfa içeriği yok (koyu oran {dark:.2})"
             );
             assert!(cx < 0.5, "{name}: içerik yanlış yönde (x={cx:.2})");
-            // İşaret payı (sayfanın altı) boş değil: GölgeDosya işareti görünür.
+            // Sağ alt köşe boş değil: GölgeDosya işareti sayfanın üstünde görünür.
             let band_y = got.height() - 16;
             let marked = (got.width() * 2 / 3..got.width() - 8)
                 .filter(|x| got.get_pixel(*x, band_y).0.iter().any(|c| *c < 235))
                 .count();
             assert!(
                 marked > 0,
-                "{name}: işaret payında GölgeDosya işareti görünmüyor"
+                "{name}: sağ alt köşede GölgeDosya işareti görünmüyor"
             );
         }
     }
@@ -827,13 +829,21 @@ mod render {
         for (i, p) in pages.iter().enumerate() {
             let file = folder.join(format!("sayfa-{:04}.png", i + 1));
             let got = image::open(&file).unwrap().to_rgb8();
-            // Görsel dışa aktarma alta işaret payı ekler; sayfa içeriği üstte.
-            assert_eq!(got.width(), 595);
-            assert_eq!(got.height(), 842 + 34, "s.{}: pay dahil yükseklik", i + 1);
-            let top = image::imageops::crop_imm(&got, 0, 0, 595, 842).to_image();
+            // Görsel tam sayfa boyutunda: marka işareti sayfanın içine, sağ
+            // alt köşeye bindirilir (eskiden alta 34 pt pay ekleniyordu).
+            assert_eq!(got.dimensions(), (595, 842), "s.{}: boyut", i + 1);
+            // İşaret köşesi dışında görüntü altın görüntüyle aynı.
+            let corner = |x: u32, y: u32| x >= 595 - 80 && y >= 842 - 36;
+            let mask =
+                RgbImage::from_fn(595, 842, |x, y| image::Rgb([u8::from(corner(x, y)), 0, 0]));
             let (want, _) = golden(p, 72, 0);
-            let err = mae(&want, &top, None);
+            let err = mae(&want, &got, Some(&mask));
             assert!(err < GOLDEN_LIMIT, "s.{}: MAE {err:.2}", i + 1);
+            let marked = got
+                .enumerate_pixels()
+                .filter(|(x, y, px)| corner(*x, *y) && px.0.iter().any(|c| *c < 235))
+                .count();
+            assert!(marked > 30, "s.{}: köşede işaret yok ({marked} px)", i + 1);
         }
     }
 

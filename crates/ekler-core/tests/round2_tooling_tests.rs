@@ -93,7 +93,7 @@ fn logo_is_not_added_to_byte_identical_signed_original() {
 }
 #[test]
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-fn preview_and_brand_gutter_preserve_source_pixels() {
+fn preview_and_brand_overlay_preserve_source_pixels() {
     let dir = tempfile::tempdir().unwrap();
     let src = source("vector.pdf");
     let hash = calculate_sha256(&src).unwrap();
@@ -105,25 +105,37 @@ fn preview_and_brand_gutter_preserve_source_pixels() {
     d.save(&out).unwrap();
     let bytes = raster::preview_page(&out, 1, 72, 0).unwrap();
     let output = ::image::load_from_memory(&bytes).unwrap().to_rgb8();
-    assert_eq!(output.width(), original.width());
-    assert_eq!(output.height(), original.height() + 34);
+    // The mark is overlaid in the bottom-right corner; the page does not grow.
+    assert_eq!(output.dimensions(), original.dimensions());
+    let (w, h) = output.dimensions();
+    let corner = |x: u32, y: u32| x + 80 >= w && y + 36 >= h;
     let mut delta = 0u64;
-    for (y, row) in original.rows().enumerate() {
-        for (x, p) in row.enumerate() {
-            for c in 0..3 {
-                delta += p[c].abs_diff(output.get_pixel(x as u32, y as u32)[c]) as u64;
-            }
+    let mut n = 0u64;
+    for (x, y, p) in original.enumerate_pixels() {
+        if corner(x, y) {
+            continue;
         }
+        for c in 0..3 {
+            delta += p[c].abs_diff(output.get_pixel(x, y)[c]) as u64;
+        }
+        n += 3;
     }
-    assert!(delta as f64 / (original.width() * original.height() * 3) as f64 <= 0.5);
-    let mark_pixels = (original.height()..output.height())
-        .flat_map(|y| (0..output.width()).map(move |x| (x, y)))
-        .filter(|&(x, y)| output.get_pixel(x, y).0.iter().any(|v| *v < 245))
+    assert!(delta as f64 / n as f64 <= 0.5);
+    let mark_pixels = output
+        .enumerate_pixels()
+        .filter(|(x, y, p)| {
+            corner(*x, *y)
+                && p.0
+                    .iter()
+                    .zip(original.get_pixel(*x, *y).0)
+                    .any(|(a, b)| a.abs_diff(b) > 10)
+        })
         .count();
     assert!(mark_pixels > 30);
-    let min_brand = (original.height()..output.height())
-        .flat_map(|y| (0..output.width()).map(move |x| (x, y)))
-        .flat_map(|(x, y)| output.get_pixel(x, y).0)
+    let min_brand = output
+        .enumerate_pixels()
+        .filter(|(x, y, p)| corner(*x, *y) && **p != *original.get_pixel(*x, *y))
+        .flat_map(|(_, _, p)| p.0)
         .min()
         .unwrap();
     assert!(

@@ -133,7 +133,9 @@ fn native_pdf_raster_has_expected_rotated_crop_and_visible_content() {
     nested_fixture().save(&path).unwrap();
     let out = ekler_core::raster::pdf_to_images(&path, d.path(), "png", 72, false).unwrap();
     let img = ::image::open(out.join("sayfa-0001.png")).unwrap().to_rgb8();
-    assert_eq!(img.dimensions(), (200, 314)); // 34 pt required derived-logo gutter
+    // The brand mark is overlaid inside the page; the export is exactly the
+    // visible page size (it used to grow by a 34 pt logo gutter: 200x314).
+    assert_eq!(img.dimensions(), (200, 280));
     let colored = img
         .pixels()
         .filter(|p| p[0].abs_diff(p[1]) > 100 || p[1].abs_diff(p[2]) > 100)

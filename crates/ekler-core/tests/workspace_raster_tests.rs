@@ -14,7 +14,8 @@ fn check(format: &str) {
     ] {
         let mut d = Document::with_version("1.5");
         let pages = d.new_object_id();
-        // A full-bleed colored rectangle makes content/gutter overlap measurable.
+        // A full-bleed colored rectangle: the overlaid mark must be visible on
+        // it and must not change any pixel outside its corner.
         let content = d.add_object(Stream::new(
             dictionary! {},
             format!("0.2 0.5 0.7 rg 0 0 {w} {h} re f").into_bytes(),
@@ -35,11 +36,10 @@ fn check(format: &str) {
         let original = image::load_from_memory(&raster::preview_page(&src, 1, dpi, 0).unwrap())
             .unwrap()
             .to_rgb8();
-        assert_eq!(image.width(), original.width());
-        assert_eq!(
-            image.height(),
-            ((h + 34) as f64 * dpi as f64 / 72.).ceil() as u32
-        );
+        // The export is exactly the page: the mark is overlaid in the visual
+        // bottom-right corner (it used to add a 34 pt strip below the page).
+        assert_eq!(image.dimensions(), original.dimensions());
+        assert_eq!(image.height(), (h as f64 * dpi as f64 / 72.).ceil() as u32);
         if let Some(ref dest) = evidence {
             std::fs::create_dir_all(dest).unwrap();
             std::fs::copy(&src, dest.join(format!("{name}.pdf"))).unwrap();
@@ -52,26 +52,42 @@ fn check(format: &str) {
             original.get_pixel(10, 10)[0] < 100,
             "DPI enlarged canvas without scaling page content"
         );
-        let mut delta = 0u64;
-        for y in 0..original.height().saturating_sub(2) {
-            for x in 0..original.width() {
+        // Raster mark size: 9.4 % of the page width in pixels, 32..240 px,
+        // inset 12/56 of its width, height 72/290 of its width.
+        let (iw, ih) = image.dimensions();
+        let mw = (f64::from(iw) * 0.094).clamp(32., 240.);
+        let (inset, mh) = (mw * 12. / 56., mw * 72. / 290.);
+        let cx = (f64::from(iw) - inset - mw - 6.).max(0.) as u32;
+        let cy = (f64::from(ih) - inset - mh - 6.).max(0.) as u32;
+        let corner = |x: u32, y: u32| x >= cx && y >= cy;
+        let (mut delta, mut n) = (0u64, 0u64);
+        for y in 0..ih.saturating_sub(2) {
+            for x in 0..iw {
+                if corner(x, y) {
+                    continue;
+                }
                 for c in 0..3 {
                     delta += original.get_pixel(x, y)[c].abs_diff(image.get_pixel(x, y)[c]) as u64;
                 }
+                n += 3;
             }
         }
-        let mae = delta as f64 / (original.width() * original.height() * 3) as f64;
+        let mae = delta as f64 / n as f64;
         assert!(
             mae < if format == "png" { 0.6 } else { 3.0 },
-            "Content altered: {mae}"
+            "Content altered outside the mark corner: {mae}"
         );
-        let marks: Vec<_> = (original.height() + 8..image.height())
-            .flat_map(|y| (0..image.width()).map(move |x| (x, y)))
-            .filter(|&(x, y)| image.get_pixel(x, y).0.iter().any(|v| *v < 245))
+        let differs = |x: u32, y: u32| {
+            let (a, b) = (original.get_pixel(x, y), image.get_pixel(x, y));
+            (0..3).map(|c| u32::from(a[c].abs_diff(b[c]))).sum::<u32>() > 30
+        };
+        let marks: Vec<_> = (cy..ih)
+            .flat_map(|y| (cx..iw).map(move |x| (x, y)))
+            .filter(|&(x, y)| differs(x, y))
             .collect();
         assert!(marks.len() > 8, "No visible mark: {name}/{format}");
         assert!(
-            marks.iter().all(|(x, _)| *x > image.width() / 2),
+            marks.iter().all(|(x, _)| *x > iw / 2),
             "Mark outside right safe area"
         );
         let span = marks.iter().map(|(x, _)| x).max().unwrap()

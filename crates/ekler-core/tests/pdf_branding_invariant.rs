@@ -802,7 +802,9 @@ fn an_old_undersized_mark_is_upgraded_not_duplicated() {
 }
 
 /// Kabul edilmiş işaret standart sayfalarda DEĞİŞMEZ: A4 ve Letter'da işaret
-/// 56 pt, pay 34 pt kalır (dikey ve yatay).
+/// 56 pt (dikey ve yatay). Sayfa BÜYÜMEZ: işaret belgenin üstüne bindirilir,
+/// eskisi gibi alta 34 pt'lik bir pay eklenmez (saha: "büyütmesin aşağıya
+/// doğru evrakı").
 #[test]
 fn the_accepted_mark_is_unchanged_on_standard_pages() {
     let dir = tempfile::tempdir().unwrap();
@@ -826,10 +828,15 @@ fn the_accepted_mark_is_unchanged_on_standard_pages() {
             p.draws[0].width
         );
         let id = *doc.get_pages().values().next().unwrap();
-        let crop = boxed(&doc, id, b"CropBox").unwrap();
-        assert!(
-            ((crop[3] - crop[1]) - (h + 34.)).abs() < 0.01,
-            "{w}x{h}: pay değişmiş"
+        assert_eq!(
+            boxed(&doc, id, b"MediaBox").unwrap(),
+            [0., 0., w, h],
+            "{w}x{h}: sayfa boyutu değişti"
+        );
+        assert_eq!(
+            boxed(&doc, id, b"CropBox"),
+            None,
+            "{w}x{h}: kaynakta olmayan CropBox eklendi"
         );
     }
 }

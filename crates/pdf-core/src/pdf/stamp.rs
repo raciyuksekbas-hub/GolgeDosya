@@ -95,7 +95,7 @@ pub fn apply_stamp_to_document(
         if let Some(&page_id) = pages.get(&i) {
             let page_num = start_page_num + (i as usize - 1);
             let stamp_text = format!("Ek-{} / {}. Sayfa", exhibit_order, page_num);
-            apply_stamp_to_page(doc, page_id, &stamp_text, font_id, config, None)?;
+            apply_stamp_to_page(doc, page_id, &stamp_text, font_id, config)?;
         }
     }
 
@@ -107,34 +107,67 @@ struct BrandResources {
     streams: std::collections::HashMap<Vec<u8>, lopdf::ObjectId>,
     raster_dpi: Option<u32>,
 }
-fn add_mark_stream(
+/// Marka akışını ekler; aynı baytlı akış (sarmal, işaret) belgede bir kez
+/// tutulur ve sayfalar onu paylaşır.
+fn add_brand_stream(
     doc: &mut LopdfDoc,
     content: Vec<u8>,
-    brand: &mut Option<&mut BrandResources>,
+    brand: &mut BrandResources,
 ) -> lopdf::ObjectId {
-    if let Some(resources) = brand.as_deref_mut() {
-        if let Some(id) = resources.streams.get(&content) {
-            return *id;
-        }
-        let id = doc.add_object(Stream::new(Dictionary::new(), content.clone()));
-        resources.streams.insert(content, id);
-        id
+    if let Some(id) = brand.streams.get(&content) {
+        return *id;
+    }
+    let id = doc.add_object(Stream::new(Dictionary::new(), content.clone()));
+    brand.streams.insert(content, id);
+    id
+}
+
+/// /Rotate, damganın ve işaretin yerleşimi için: 0, 90, 180 ya da 270.
+///
+/// Spec /Rotate'in 90'ın katı olmasını şart koşar. Uymayan üretici değerinde
+/// pdf.js sayfayı döndürülmemiş sayar; belgeyi reddetmek yerine aynısı
+/// yapılır. Sayfanın kendi /Rotate değerine dokunulmaz.
+fn placement_rotation(doc: &LopdfDoc, resolved: &Dictionary) -> i64 {
+    let rotation = resolved
+        .get(b"Rotate")
+        .ok()
+        .and_then(|o| doc.dereference(o).ok())
+        .and_then(|(_, o)| o.as_i64().ok())
+        .unwrap_or(0)
+        .rem_euclid(360);
+    if rotation % 90 == 0 {
+        rotation
     } else {
-        doc.add_object(Stream::new(Dictionary::new(), content))
+        0
     }
 }
 
+/// Görsel (döndürülmüş) uzaydan sayfa kullanıcı uzayına dönüşüm: görsel sol
+/// alt köşe orijin, x sağa, y yukarı. `bx` kutu `[x0 y0 x1 y1]`.
+fn display_matrix(rotation: i64, bx: [f32; 4]) -> Result<[f32; 6]> {
+    let [x0, y0, x1, y1] = bx;
+    Ok(match rotation {
+        0 => [1., 0., 0., 1., x0, y0],
+        90 => [0., 1., -1., 0., x1, y0],
+        180 => [-1., 0., 0., -1., x1, y1],
+        270 => [0., -1., 1., 0., x0, y1],
+        _ => return Err(EklerError::InvalidPdf("Geçersiz sayfa dönüşü".into())),
+    })
+}
+
+/// Ek damgası, filigran ve sayfa numarası: kullanıcının İSTEDİĞİ işaretler.
+/// Bu yol sayfaya pay ekler (işaret kaynak piksele binmez). GölgeDosya
+/// markası bu yoldan GEÇMEZ; o, geometriye dokunmayan
+/// `place_brand_overlay` ile basılır.
 fn apply_stamp_to_page(
     doc: &mut LopdfDoc,
     page_id: lopdf::ObjectId,
     stamp_text: &str,
     font_id: lopdf::ObjectId,
     config: &StampConfig,
-    mut brand: Option<&mut BrandResources>,
 ) -> Result<bool> {
     // Dönüş: `true` işaret eklendi, `false` sayfa (çok küçük olduğu için)
     // güvenle atlandı. Gerçek hatalar `Err`.
-    let brand_form = brand.as_ref().map(|b| b.form);
     let resolved = super::resolved_page_dictionary(doc, page_id)?;
     let bounds = resolved
         .get(b"CropBox")
@@ -153,41 +186,13 @@ fn apply_stamp_to_page(
     // edilir (aynı dikdörtgen, kanonik köşeler).
     let (rx0, ry0, rx1, ry1) = (number(0)?, number(1)?, number(2)?, number(3)?);
     let (mut x0, mut y0, mut x1, mut y1) = (rx0.min(rx1), ry0.min(ry1), rx0.max(rx1), ry0.max(ry1));
-    let rotation = resolved
-        .get(b"Rotate")
-        .ok()
-        .and_then(|o| doc.dereference(o).ok())
-        .and_then(|(_, o)| o.as_i64().ok())
-        .unwrap_or(0)
-        .rem_euclid(360);
-    // Spec /Rotate'in 90'ın katı olmasını şart koşar. Uymayan üretici
-    // değerinde pdf.js sayfayı döndürülmemiş sayar; belgeyi reddetmek yerine
-    // aynısı yapılır. Sayfanın kendi /Rotate değerine dokunulmaz, yalnız
-    // damganın yerleşimi bu kuralla hesaplanır.
-    let rotation = if rotation % 90 == 0 { rotation } else { 0 };
+    let rotation = placement_rotation(doc, &resolved);
     let original_box = (x0, y0, x1, y1);
 
-    // PDF çıktısındaki GölgeDosya işareti sayfanın boyutuyla ölçeklenir; bkz.
-    // `brand_scale`. Raster önizlemenin kendi ölçüsü var, metin damgaları
-    // (filigran, sayfa numarası) kullanıcının istediği punto ile basılır.
-    let pdf_brand = brand.as_ref().is_some_and(|b| b.raster_dpi.is_none());
-    let scale = if pdf_brand {
-        let (w, h) = if rotation == 90 || rotation == 270 {
-            (y1 - y0, x1 - x0)
-        } else {
-            (x1 - x0, y1 - y0)
-        };
-        brand_scale(w, h)
-    } else {
-        1.0
-    };
-    if !(scale.is_finite() && scale > MIN_BRAND_SCALE) {
-        return Err(EklerError::InvalidPdf(
-            "Sayfa GölgeDosya işaretini taşıyamayacak kadar küçük".into(),
-        ));
-    }
-    let margin = config.margin_pt * scale;
-    let gutter = (config.margin_pt * 2.0 + config.font_size + 10.0) * scale;
+    // Metin damgaları (Ek damgası, filigran, sayfa numarası) kullanıcının
+    // istediği punto ile basılır.
+    let margin = config.margin_pt;
+    let gutter = config.margin_pt * 2.0 + config.font_size + 10.0;
     let top = matches!(
         config.position,
         StampPosition::TopRight | StampPosition::TopLeft
@@ -210,23 +215,15 @@ fn apply_stamp_to_page(
     // kenardan 8 pt'ye sabitleniyordu: "Ek-1 / 1. Sayfa" kutusunda sağda 38 pt,
     // solda 8 pt boşluk kalıyordu. Artık kutu metnin gerçek genişliği + 8 pt
     // iç boşluk, metin kutunun ortasında. Marka işareti bu yoldan geçmez.
-    let text_w = brand_form
-        .is_none()
-        .then(|| helvetica_bold_width(stamp_text, config.font_size));
-    let badge_w = match text_w {
-        None => BRAND_MARK_WIDTH * scale,
-        Some(w) => (w + 16.0).max(40.0),
-    };
-    let badge_h = (config.font_size + 10.0) * scale;
+    let text_w = helvetica_bold_width(stamp_text, config.font_size);
+    let badge_w = (text_w + 16.0).max(40.0);
+    let badge_h = config.font_size + 10.0;
     // Sığmazlık denetimi SAYFA DEĞİŞTİRİLMEDEN önce yapılır: sığmıyorsa sayfaya
     // hiç dokunulmaz. Filigran ve sayfa numarası isteğe bağlı işaretlerdir;
     // tek bir küçük sayfa bütün işlemi düşürmemeli, sayfa işaretsiz atlanır.
-    //
-    // GölgeDosya işareti İSTEĞE BAĞLI DEĞİLDİR (ürün kuralı: her PDF çıktısı
-    // işareti taşır). Eskiden o da buradan sessizce atlanıyordu. PDF işareti
-    // için `brand_scale` sayfaya sığacak ölçeği zaten seçti; bu dal ona
-    // uğramaz.
-    if !pdf_brand && (page_w < badge_w + margin * 2.0 || page_h < badge_h + margin * 2.0) {
+    // (GölgeDosya işareti isteğe bağlı değildir; o `place_brand_overlay`'den
+    // geçer ve sayfaya sığacak kadar küçülür.)
+    if page_w < badge_w + margin * 2.0 || page_h < badge_h + margin * 2.0 {
         return Ok(false);
     }
 
@@ -282,13 +279,7 @@ fn apply_stamp_to_page(
         ],
     );
     page.set("MediaBox", Object::Array(expanded_media));
-    let matrix: [f32; 6] = match rotation {
-        0 => [1., 0., 0., 1., x0, y0],
-        90 => [0., 1., -1., 0., x1, y0],
-        180 => [-1., 0., 0., -1., x1, y1],
-        270 => [0., -1., 1., 0., x0, y1],
-        _ => return Err(EklerError::InvalidPdf("Geçersiz sayfa dönüşü".into())),
-    };
+    let matrix = display_matrix(rotation, [x0, y0, x1, y1])?;
     // Copy resource dictionaries per page; never overwrite a source font binding.
     let mut resources = resolved
         .get(b"Resources")
@@ -308,16 +299,14 @@ fn apply_stamp_to_page(
     while fonts.has(font_name.as_bytes()) {
         font_name.push('_');
     }
-    if brand_form.is_none() {
-        fonts.set(font_name.clone(), font_id);
-        resources.set("Font", fonts);
-    }
+    fonts.set(font_name.clone(), font_id);
+    resources.set("Font", fonts);
     doc.get_object_mut(page_id)
         .and_then(|o| o.as_dict_mut())
         .map_err(pdf_error)?
         .set("Resources", resources);
 
-    let (badge_x, badge_y, mut text_x, text_y) = match config.position {
+    let (badge_x, badge_y, _, text_y) = match config.position {
         StampPosition::TopRight => {
             let x = page_w - margin - badge_w;
             let y = page_h - margin - badge_h;
@@ -340,9 +329,7 @@ fn apply_stamp_to_page(
         }
     };
 
-    if let Some(w) = text_w {
-        text_x = badge_x + (badge_w - w) / 2.0;
-    }
+    let text_x = badge_x + (badge_w - text_w) / 2.0;
 
     let mut ops = vec![
         Operation::new("q", vec![]),
@@ -407,75 +394,34 @@ fn apply_stamp_to_page(
         Operation::new("Q", vec![]),
     ]);
 
-    if let Some(form_id) = brand_form {
-        let mark_width = if let Some(dpi) = brand.as_ref().and_then(|b| b.raster_dpi) {
-            (page_w * dpi as f32 / 72. * 0.094).clamp(32., 240.) * 72. / dpi as f32
-        } else {
-            BRAND_MARK_WIDTH * scale
-        };
-        let mark_width = mark_width
-            .min((page_w - margin * 2.).max(1.))
-            .min((gutter - margin * 2.).max(1.) * 290. / 72.);
-        let page = doc.get_dictionary_mut(page_id).map_err(pdf_error)?;
-        let resources = page
-            .get_mut(b"Resources")
-            .and_then(|o| o.as_dict_mut())
-            .map_err(pdf_error)?;
-        let mut objects = Dictionary::new();
-        // Existing XObjects may be indirect. Add a unique top-level binding by resolving below.
-        if let Ok(Object::Dictionary(existing)) = resources.get(b"XObject") {
-            objects = existing.clone();
-        }
-        // The resolved resource graph was copied above; preserve indirect dictionaries too.
-        let existing = resources.get(b"XObject").ok().cloned();
-        if let Some(Object::Reference(id)) = existing {
-            objects = doc.get_dictionary(id).map_err(pdf_error)?.clone();
-        }
-        let mut name = "GolgeDosyaBrand".to_string();
-        while objects.has(name.as_bytes()) {
-            name.push('_');
-        }
-        objects.set(name.clone(), form_id);
-        doc.get_dictionary_mut(page_id)
-            .map_err(pdf_error)?
-            .get_mut(b"Resources")
-            .and_then(|o| o.as_dict_mut())
-            .map_err(pdf_error)?
-            .set("XObject", objects);
-        ops = vec![
-            Operation::new("q", vec![]),
-            Operation::new("cm", matrix.into_iter().map(Object::Real).collect()),
-            Operation::new(
-                "cm",
-                vec![
-                    (mark_width / 290.0).into(),
-                    0.into(),
-                    0.into(),
-                    (mark_width / 290.0).into(),
-                    (page_w - margin - mark_width).into(),
-                    margin.into(),
-                ],
-            ),
-            Operation::new("Do", vec![Object::Name(name.into_bytes())]),
-            Operation::new("Q", vec![]),
-        ];
-    }
     let stamp_content = Content { operations: ops };
-    let stamp_stream_id = add_mark_stream(
-        doc,
+    let stamp_stream_id = doc.add_object(Stream::new(
+        Dictionary::new(),
         stamp_content
             .encode()
             .map_err(|e| EklerError::InvalidPdf(e.to_string()))?,
-        &mut brand,
-    );
-    // Reuse identical wrappers as well as the vector asset; source streams stay intact.
+    ));
+    // Source streams stay intact; they are clipped to the old box and wrapped.
     let (ox0, oy0, ox1, oy1) = original_box;
-    let prefix = add_mark_stream(
-        doc,
+    let prefix = doc.add_object(Stream::new(
+        Dictionary::new(),
         format!("q\n{ox0} {oy0} {} {} re W n\n", ox1 - ox0, oy1 - oy0).into_bytes(),
-        &mut brand,
-    );
-    let suffix = add_mark_stream(doc, b"\nQ\n".to_vec(), &mut brand);
+    ));
+    let suffix = doc.add_object(Stream::new(Dictionary::new(), b"\nQ\n".to_vec()));
+    wrap_contents(doc, page_id, &resolved, prefix, suffix, stamp_stream_id)?;
+    Ok(true)
+}
+
+/// Sayfanın içerik akışlarını `prefix … suffix` ile sarar ve `overlay`
+/// akışını en sona, belgenin üstüne ekler. Kaynak akışlar değişmez.
+fn wrap_contents(
+    doc: &mut LopdfDoc,
+    page_id: lopdf::ObjectId,
+    resolved: &Dictionary,
+    prefix: lopdf::ObjectId,
+    suffix: lopdf::ObjectId,
+    overlay: lopdf::ObjectId,
+) -> Result<()> {
     let old = resolved.get(b"Contents").ok().cloned();
     let mut contents = vec![Object::Reference(prefix)];
     if let Some(old) = old {
@@ -493,15 +439,12 @@ fn apply_stamp_to_page(
             _ => contents.push(old),
         }
     }
-    contents.extend([
-        Object::Reference(suffix),
-        Object::Reference(stamp_stream_id),
-    ]);
+    contents.extend([Object::Reference(suffix), Object::Reference(overlay)]);
     doc.get_object_mut(page_id)
         .and_then(|o| o.as_dict_mut())
         .map_err(pdf_error)?
         .set("Contents", contents);
-    Ok(true)
+    Ok(())
 }
 fn pdf_error(e: lopdf::Error) -> EklerError {
     EklerError::InvalidPdf(e.to_string())
@@ -692,7 +635,7 @@ pub fn apply_text_marks(doc: &mut LopdfDoc, text: Option<&str>, start: usize) ->
         let mark = text
             .map(str::to_string)
             .unwrap_or_else(|| format!("{}", start + i));
-        apply_stamp_to_page(doc, id, &mark, font, &config, None)?;
+        apply_stamp_to_page(doc, id, &mark, font, &config)?;
     }
     Ok(())
 }
@@ -743,11 +686,15 @@ const PRIOR_GOLGEDOSYA_LOGOS: [&[u8]; 2] = [SUPERSEDED_BRAND_LOGO, KAT_2026_09_2
 const BRAND_FORM_CONTENT: &[u8] = b"q /BrandAlpha gs /Mark Do Q";
 const BRAND_BBOX: [f32; 4] = [0., 0., 290., 72.];
 
-/// Kabul edilmiş işaretin genişliği: 56 pt, sayfa payı 34 pt.
+/// Kabul edilmiş işaretin genişliği: 56 pt (A4/Letter).
 const BRAND_MARK_WIDTH: f32 = 56.0;
+/// İşaretin görünür kutunun sağ ve alt kenarından uzaklığı, standart sayfada.
+/// Ofis yazıcılarının çoğu kenardan 4–5 mm'yi basamaz; 12 pt (≈4,2 mm)
+/// işaretin "gerçek boyut" baskıda kesilmemesi içindir. İşaretle orantılıdır.
+const BRAND_INSET: f32 = 12.0;
 /// Bu kısa kenara kadar (Letter, 612 pt; A4 595 pt) işaret kabul edilmiş
-/// boyutunda, BAYT BAYT aynı basılır. Daha büyük sayfada işaret, payı ve
-/// kenar boşluğuyla birlikte sayfayla orantılı büyür.
+/// boyutunda basılır. Daha büyük sayfada işaret, kenar boşluğuyla birlikte
+/// sayfayla orantılı büyür.
 ///
 /// Saha bulgusu: işaret sabit 56 pt basılıyordu. Telefonla çekilmiş belgeler
 /// 1414–1851 pt genişlikte (1 px = 1 pt) geliyor; işaret sayfanın %3'üne,
@@ -757,21 +704,145 @@ const BRAND_MARK_WIDTH: f32 = 56.0;
 const BRAND_REFERENCE_SHORT_SIDE: f32 = 612.0;
 /// Doğrulamanın okunurluk eşiği: görünür kutunun kısa kenarına oranla işaret
 /// genişliği. Kabul edilmiş işaret A4'te %9,4, en kötü standart sayfada
-/// (yatay Letter/Legal, pay dahil) %8,7'dir; sahadaki okunmaz işaret %3–4.
+/// (Letter/Legal) %9,2'dir; v0.3.x'in paylı çıktısında yatay Letter %8,7.
+/// Sahadaki okunmaz işaret %3–4.
 pub const MIN_BRAND_MARK_RATIO: f32 = 0.08;
 /// Bundan küçük ölçek, işaretin fiziksel olarak basılamadığı (genişliği
-/// ~4 pt'nin altında) dejenere bir sayfa demektir.
+/// ~3 pt'nin altında) dejenere bir sayfa demektir.
 const MIN_BRAND_SCALE: f32 = 0.05;
 
 /// PDF işaretinin sayfaya göre ölçeği.
 ///
 /// Büyük sayfada `kısa kenar / 612` ile büyür, standart sayfada 1'dir. İşaret
-/// taşıyamayacak kadar dar sayfada (işaret + iki kenar boşluğu = 72 pt)
-/// sığacak kadar KÜÇÜLÜR: eskiden bu sayfalar sessizce işaretsiz kalıyordu.
+/// taşıyamayacak kadar dar ya da KISA sayfada sığacak kadar küçülür: işaret
+/// artık sayfanın içine bindirildiği için yükseklik de sınırdır (eskiden
+/// işaret alta eklenen payda durduğundan yalnız genişliğe bakılıyordu).
 fn brand_scale(display_w: f32, display_h: f32) -> f32 {
     let grow = (display_w.min(display_h) / BRAND_REFERENCE_SHORT_SIDE).max(1.0);
-    let fit = display_w / 72.0;
-    grow.min(fit)
+    grow.min(brand_fit_width(display_w, display_h) / BRAND_MARK_WIDTH)
+}
+
+/// Görsel boyutu `w × h` olan kutuya, iki yandaki orantılı kenar boşluğuyla
+/// birlikte sığan en geniş işaret (pt).
+fn brand_fit_width(display_w: f32, display_h: f32) -> f32 {
+    let inset = BRAND_INSET / BRAND_MARK_WIDTH;
+    let aspect = (BRAND_BBOX[3] - BRAND_BBOX[1]) / (BRAND_BBOX[2] - BRAND_BBOX[0]);
+    (display_w / (1.0 + 2.0 * inset)).min(display_h / (aspect + 2.0 * inset))
+}
+
+/// GölgeDosya işaretini sayfanın ÜSTÜNE bindirir; belge geometrisine dokunmaz.
+///
+/// Ürün kuralı: marka belge geometrisini DEĞİŞTİRMEZ. MediaBox, CropBox,
+/// /Rotate, /Annots, sayfa sayısı ve içeriğin konumu aynen kalır. Eskiden
+/// işaret görsel alt kenara eklenen 34 pt'lik bir payda duruyordu; A4 sayfa
+/// 595×876 pt'ye, PNG dışa aktarma 34 pt uzuna çıkıyordu (saha: "büyütmesin
+/// aşağıya doğru evrakı").
+///
+/// İşaret görünür kutunun (CropBox ∩ MediaBox) içinde, sayfanın /Rotate ile
+/// görüntülenen hâlinin sağ alt köşesine, dik basılır. Saydamdır (marka
+/// formunun ExtGState'i, %24, normal karışım) ve belge içeriğinin üstünde
+/// çizilir. Kaynak içerik `q … Q` ile sarılır ki işaret temiz grafik
+/// durumundan başlasın; kırpma dikdörtgeni görünür kutunun kendisidir,
+/// görünen hiçbir şeyi kesmez.
+///
+/// Dönüş: `true` işaret basıldı; `false` raster dışa aktarmada sayfa işareti
+/// taşıyamayacak kadar küçük olduğu için atlandı. PDF çıktısında bu durum
+/// hatadır: her PDF çıktısı işareti taşır.
+fn place_brand_overlay(
+    doc: &mut LopdfDoc,
+    page_id: lopdf::ObjectId,
+    brand: &mut BrandResources,
+) -> Result<bool> {
+    let resolved = super::resolved_page_dictionary(doc, page_id)?;
+    let visible = visible_box(doc, &resolved)
+        .ok_or_else(|| EklerError::InvalidPdf("Geçersiz sayfa kutusu".into()))?;
+    let rotation = placement_rotation(doc, &resolved);
+    let (w, h) = (visible[2] - visible[0], visible[3] - visible[1]);
+    let (page_w, page_h) = if rotation == 90 || rotation == 270 {
+        (h, w)
+    } else {
+        (w, h)
+    };
+    // Raster dışa aktarmanın kendi ölçüsü var: piksel olarak sayfa genişliğinin
+    // %9,4'ü (A4'te 56 pt), 32–240 px arası.
+    let wanted = match brand.raster_dpi {
+        Some(dpi) => (page_w * dpi as f32 / 72. * 0.094).clamp(32., 240.) * 72. / dpi as f32,
+        None => BRAND_MARK_WIDTH * brand_scale(page_w, page_h),
+    };
+    let mark_width = wanted.min(brand_fit_width(page_w, page_h));
+    if !(mark_width.is_finite() && mark_width > BRAND_MARK_WIDTH * MIN_BRAND_SCALE) {
+        if brand.raster_dpi.is_some() {
+            return Ok(false);
+        }
+        return Err(EklerError::InvalidPdf(
+            "Sayfa GölgeDosya işaretini taşıyamayacak kadar küçük".into(),
+        ));
+    }
+    let inset = mark_width * BRAND_INSET / BRAND_MARK_WIDTH;
+    let matrix = display_matrix(rotation, visible)?;
+
+    // Kaynakları sayfaya kopyala (kalıtımla gelenler dahil) ve formu benzersiz
+    // bir adla bağla; belgenin kendi XObject adlarının üstüne yazılmaz.
+    let mut resources = resolved
+        .get(b"Resources")
+        .ok()
+        .map(|o| doc.dereference(o).and_then(|(_, o)| o.as_dict()).cloned())
+        .transpose()
+        .map_err(pdf_error)?
+        .unwrap_or_default();
+    let mut objects = resources
+        .get(b"XObject")
+        .ok()
+        .map(|o| doc.dereference(o).and_then(|(_, o)| o.as_dict()).cloned())
+        .transpose()
+        .map_err(pdf_error)?
+        .unwrap_or_default();
+    let mut name = "GolgeDosyaBrand".to_string();
+    while objects.has(name.as_bytes()) {
+        name.push('_');
+    }
+    objects.set(name.clone(), brand.form);
+    resources.set("XObject", objects);
+    doc.get_object_mut(page_id)
+        .and_then(|o| o.as_dict_mut())
+        .map_err(pdf_error)?
+        .set("Resources", resources);
+
+    let k = mark_width / (BRAND_BBOX[2] - BRAND_BBOX[0]);
+    let ops = vec![
+        Operation::new("q", vec![]),
+        Operation::new("cm", matrix.into_iter().map(Object::Real).collect()),
+        Operation::new(
+            "cm",
+            vec![
+                k.into(),
+                0.into(),
+                0.into(),
+                k.into(),
+                (page_w - inset - mark_width).into(),
+                inset.into(),
+            ],
+        ),
+        Operation::new("Do", vec![Object::Name(name.into_bytes())]),
+        Operation::new("Q", vec![]),
+    ];
+    let overlay = add_brand_stream(
+        doc,
+        Content { operations: ops }
+            .encode()
+            .map_err(|e| EklerError::InvalidPdf(e.to_string()))?,
+        brand,
+    );
+    let [vx0, vy0, vx1, vy1] = visible;
+    let prefix = add_brand_stream(
+        doc,
+        format!("q\n{vx0} {vy0} {} {} re W n\n", vx1 - vx0, vy1 - vy0).into_bytes(),
+        brand,
+    );
+    let suffix = add_brand_stream(doc, b"\nQ\n".to_vec(), brand);
+    let resolved = super::resolved_page_dictionary(doc, page_id)?;
+    wrap_contents(doc, page_id, &resolved, prefix, suffix, overlay)?;
+    Ok(true)
 }
 
 /// Marka kelime işareti için base-14 Helvetica-Bold. Damga yolunun zaten
@@ -827,19 +898,16 @@ fn upgrade_legacy_brand_marks(doc: &mut LopdfDoc) -> Result<()> {
 }
 
 fn apply_branding_for_output(doc: &mut LopdfDoc, raster_dpi: Option<u32>) -> Result<()> {
-    let config = StampConfig {
-        enabled: true,
-        position: StampPosition::BottomRight,
-        font_size: 8.0,
-        margin_pt: 8.0,
-        show_badge: false,
-    };
     // Marka idempotenttir. Daha önce GölgeDosya'nın türettiği bir belgede
-    // işareti görünür alanda duran sayfaya ikinci pay ve ikinci logo eklenmez;
-    // yeni işaret gerekirse var olan marka formu yeniden kullanılır. Eskiden
-    // türetilmiş kopyadan türetilen her kopya sayfayı 34 pt büyütüp bir logo
-    // daha ekliyordu (sırala → döndür → sil: iki kat pay, üç logo, altı form).
-    // Kırpma işareti görünür alanın dışında bıraktıysa sayfa yeniden işaretlenir.
+    // işareti görünür alanda duran sayfaya ikinci logo eklenmez; yeni işaret
+    // gerekirse var olan marka formu yeniden kullanılır. Eskiden türetilmiş
+    // kopyadan türetilen her kopya bir logo daha ekliyordu (sırala → döndür →
+    // sil: üç logo, altı form). Kırpma işareti görünür alanın dışında
+    // bıraktıysa sayfa yeniden işaretlenir.
+    //
+    // v0.3.0/0.3.1 çıktıları işareti alta eklenmiş 34 pt'lik bir payda taşır.
+    // O pay artık belgenin kendi geometrisidir: korunur, geri alınmaz ve
+    // ikinci bir pay eklenmez.
     // Eski DüzenEk işareti taşıyan belgeler ÖNCE yükseltilir: aksi hâlde işaret
     // tanınmaz, sayfaya ikinci bir işaret eklenir ve çift filigran oluşur.
     //
@@ -888,8 +956,7 @@ fn apply_branding_for_output(doc: &mut LopdfDoc, raster_dpi: Option<u32>) -> Res
         raster_dpi,
     };
     for id in pending {
-        let stamped =
-            apply_stamp_to_page(doc, id, "GölgeDosya", (0, 0), &config, Some(&mut resources))?;
+        let stamped = place_brand_overlay(doc, id, &mut resources)?;
         if !stamped && raster_dpi.is_none() {
             return Err(EklerError::InvalidPdf(
                 "GölgeDosya işareti sayfaya basılamadı".into(),
@@ -961,11 +1028,15 @@ struct BrandDraw {
     width: f32,
 }
 
-/// Görünür kutu (CropBox, yoksa MediaBox), köşeleri normalize.
-fn visible_box(doc: &LopdfDoc, page: &Dictionary) -> Option<[f32; 4]> {
-    let number = |o: &Object| o.as_float().ok();
-    page.get(b"CropBox")
-        .or_else(|_| page.get(b"MediaBox"))
+/// Sayfa kutusu (`CropBox`, `MediaBox` …), köşeleri normalize.
+fn page_box(doc: &LopdfDoc, page: &Dictionary, key: &[u8]) -> Option<[f32; 4]> {
+    let number = |o: &Object| {
+        doc.dereference(o)
+            .ok()
+            .and_then(|(_, o)| o.as_float().ok())
+            .filter(|n| n.is_finite())
+    };
+    page.get(key)
         .ok()
         .and_then(|b| doc.dereference(b).ok())
         .and_then(|(_, b)| b.as_array().ok())
@@ -984,6 +1055,30 @@ fn visible_box(doc: &LopdfDoc, page: &Dictionary) -> Option<[f32; 4]> {
                 v[1].max(v[3]),
             ])
         })
+}
+
+/// Görünür kutu: CropBox ∩ MediaBox (ISO 32000-1 §14.11.2: görüntüleyici
+/// CropBox'ı MediaBox'a kırpar), CropBox yoksa MediaBox. Kesişim boşsa
+/// (bozuk üretici kutusu) CropBox'ın kendisi.
+fn visible_box(doc: &LopdfDoc, page: &Dictionary) -> Option<[f32; 4]> {
+    let media = page_box(doc, page, b"MediaBox");
+    let Some(crop) = page_box(doc, page, b"CropBox") else {
+        return media;
+    };
+    let Some(m) = media else {
+        return Some(crop);
+    };
+    let both = [
+        crop[0].max(m[0]),
+        crop[1].max(m[1]),
+        crop[2].min(m[2]),
+        crop[3].min(m[3]),
+    ];
+    Some(if both[0] < both[2] && both[1] < both[3] {
+        both
+    } else {
+        crop
+    })
 }
 
 /// Sayfanın içerik akışları, sırayla. `/Contents` dolaylı bir diziye çözülebilir.
@@ -1127,10 +1222,13 @@ fn page_mark_is_canonical(
 /// Belge içeriği hiçbir koşulda değişmez; kalıba uymayan bir çizim yerinde
 /// bırakılır ve `verify_canonical_branding` onu yakalar.
 ///
-/// İşaret en dış sarmalsa — ilk akış `q x y w h re W n`, sondan ikinci `Q`,
-/// son akış işaret — ve görünür kutu sarmalın kırptığı kutudan YALNIZ bir
-/// kenarda genişse, sarmal da açılır ve kutu işaretlenmeden önceki hâline
-/// döner. Yeni işaret böylece eski payın altına ikinci bir pay eklemez.
+/// Sayfa kutularına DOKUNULMAZ. Eskiden işaret en dış sarmalsa sarmal da
+/// açılıyor ve CropBox işaretlenmeden önceki hâline geri yazılıyordu (yeni
+/// işaret eski payın altına ikinci bir pay eklemesin diye). Marka artık pay
+/// eklemediği için bu gerekmez; v0.3.x çıktısının payı girdinin kendi
+/// geometrisidir ve aynen korunur. Sarmal (`q … re W n … Q`) da yerinde
+/// kalır: içeriği o gün görünen alana kırpar, kaldırılırsa paya taşan
+/// kaynak çizimi görünür hâle gelebilirdi.
 fn detach_brand_stamps(
     doc: &mut LopdfDoc,
     page_id: lopdf::ObjectId,
@@ -1159,73 +1257,18 @@ fn detach_brand_stamps(
         }
         _ => false,
     };
-    let stamps: Vec<usize> = items
-        .iter()
-        .enumerate()
-        .filter(|(_, item)| stream_operations(doc, item).is_some_and(|ops| is_stamp(&ops)))
-        .map(|(i, _)| i)
+    let before = items.len();
+    let kept: Vec<Object> = items
+        .into_iter()
+        .filter(|item| !stream_operations(doc, item).is_some_and(|ops| is_stamp(&ops)))
         .collect();
-    if stamps.is_empty() {
+    if kept.len() == before {
         return Ok(());
     }
-    let last = items.len() - 1;
-    let clip = if stamps == [last] && items.len() >= 3 {
-        let prefix = stream_operations(doc, &items[0]).unwrap_or_default();
-        let suffix = stream_operations(doc, &items[last - 1]).unwrap_or_default();
-        let rect = match prefix.as_slice() {
-            [q, re, w, n]
-                if q.operator == "q"
-                    && re.operator == "re"
-                    && w.operator == "W"
-                    && n.operator == "n" =>
-            {
-                let v: Vec<f32> = re
-                    .operands
-                    .iter()
-                    .filter_map(|o| o.as_float().ok())
-                    .collect();
-                (v.len() == 4).then(|| {
-                    let (xa, ya, xb, yb) = (v[0], v[1], v[0] + v[2], v[1] + v[3]);
-                    [xa.min(xb), ya.min(yb), xa.max(xb), ya.max(yb)]
-                })
-            }
-            _ => None,
-        };
-        rect.filter(|_| suffix.len() == 1 && suffix[0].operator == "Q")
-    } else {
-        None
-    };
-    let unwrap = match (clip, visible_box(doc, &page)) {
-        (Some(c), Some(v)) => {
-            const EPS: f32 = 0.01;
-            let contains = v[0] <= c[0] + EPS
-                && v[1] <= c[1] + EPS
-                && v[2] >= c[2] - EPS
-                && v[3] >= c[3] - EPS;
-            let equal_edges = (0..4).filter(|i| (c[*i] - v[*i]).abs() < EPS).count();
-            (contains && equal_edges == 3).then_some(c)
-        }
-        _ => None,
-    };
-    let mut kept: Vec<Object> = items
-        .into_iter()
-        .enumerate()
-        .filter(|(i, _)| !stamps.contains(i))
-        .map(|(_, o)| o)
-        .collect();
-    let page = doc
-        .get_object_mut(page_id)
+    doc.get_object_mut(page_id)
         .and_then(|o| o.as_dict_mut())
-        .map_err(pdf_error)?;
-    if let Some(c) = unwrap {
-        kept.pop();
-        kept.remove(0);
-        page.set(
-            "CropBox",
-            c.iter().map(|v| Object::Real(*v)).collect::<Vec<_>>(),
-        );
-    }
-    page.set("Contents", kept);
+        .map_err(pdf_error)?
+        .set("Contents", kept);
     Ok(())
 }
 
