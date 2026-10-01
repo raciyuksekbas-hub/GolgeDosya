@@ -10,6 +10,7 @@
  * `toFixed` ile Rust'ın `{:.1}`'i tam yarım değerlerde farklı yuvarlar.
  * İki uç aynı örnek tablosuyla sınanır.
  */
+import { humanSize } from '../../shared-ui/sizeText';
 
 const TAIL = 'küçültülebildi. Bu değer anlamlı küçülme eşiğinin altında kaldığı için çıktı oluşturulmadı.';
 
@@ -41,19 +42,26 @@ export function noBenefitMessage(sourceBytes: number, candidateBytes: number): s
     return `${size} (%${tenths(percentTenths)}) ${TAIL}`;
 }
 
-/** Alt bilgi boyutu: 1 MB'ın altında KB, üstünde iki ondalıklı MB. */
-export function sizeLabel(bytes: number): string {
-    const MB = 1024 * 1024;
-    if (bytes < MB)
-        return `${roundedDiv(bytes, 1024)} KB`;
-    const hundredths = roundedDiv(bytes * 100, MB);
-    return `${Math.floor(hundredths / 100)},${String(hundredths % 100).padStart(2, '0')} MB`;
-}
-
 export interface NoBenefitOutcome {
     source_bytes?: number;
     candidate_bytes?: number;
     previously_processed?: boolean;
+}
+
+/**
+ * Alt bilgi: belgenin boyutu ve — gerçekten küçülebildiyse — sıkıştırılsaydı
+ * ne olacağı. "Kaynak: 1 KB · Olası çıktı: 2 KB" gibi, adayın BÜYÜDÜĞÜ bir
+ * karşılaştırma yazılmaz; okuyanın sonucu kendisinin çıkarması gerekiyordu.
+ */
+export function noBenefitDetail(sourceBytes: number, candidateBytes: number): string {
+    // Motor kaynağı ölçmediyse boyut uydurulmaz.
+    if (!(sourceBytes > 0))
+        return '';
+    const source = humanSize(sourceBytes);
+    const candidate = humanSize(candidateBytes);
+    if (candidateBytes > 0 && candidateBytes < sourceBytes && candidate !== source)
+        return `Belgenin boyutu: ${source} · Sıkıştırılsaydı: yaklaşık ${candidate}`;
+    return `Belgenin boyutu: ${source}`;
 }
 
 /** Durum alanına yazılacak bütün metin: sonuç · alt bilgi · (varsa) bağlam. */
@@ -62,8 +70,8 @@ export function noBenefitStatus(outcome: NoBenefitOutcome): string {
     const candidate = outcome.candidate_bytes ?? 0;
     const lines = [
         noBenefitMessage(source, candidate),
-        `Kaynak: ${sizeLabel(source)} · Olası çıktı: ${sizeLabel(candidate)}`,
-    ];
+        noBenefitDetail(source, candidate),
+    ].filter(Boolean);
     if (outcome.previously_processed)
         lines.push(PREVIOUSLY_PROCESSED);
     return lines.join('\n');
