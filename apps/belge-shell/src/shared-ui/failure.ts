@@ -200,6 +200,15 @@ const SAVE_CATEGORIES: { match: RegExp; detail: string }[] = [
     detail: "Sayfa, zorunlu marka işaretinin sığamayacağı kadar küçük; kopya oluşturulmadı.",
   },
   {
+    // Görünür bir açıklamanın görünümü belgede kayıtlı değil ve kurulamıyor.
+    // Vurgu, not ve form değerleri artık görsele çizilir; ret yalnız bu dar
+    // durumda kalır.
+    match: /görünümü belgede kayıtlı değil/i,
+    detail:
+      "Bu belgedeki bir açıklamanın görünümü belgede kayıtlı değil; görünüm kaybını önlemek için görsele dönüştürülmedi.",
+  },
+  {
+    // v0.3.1 motorunun toptan reddi (geçiş güvenliği için tanınmaya devam eder).
     match: /görsel dönüşümü bu sürümde desteklenmiyor/i,
     detail: "Açıklama ya da form alanı içeren sayfalar bu sürümde görsele dönüştürülemiyor.",
   },

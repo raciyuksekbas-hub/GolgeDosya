@@ -68,11 +68,16 @@ describe("kaydetme hatalarının sunumu", () => {
       "Error: Bozuk veya geçersiz PDF dosyası: Görünür alan dışına taşan açıklama/form alanı damga payı eklenince görünür hâle gelecekti; gizli görünümü açmamak için işlem durduruldu",
       "Error: Bozuk veya geçersiz PDF dosyası: Damga bu sayfaya sığmıyor; boyut/kenar boşluğunu azaltın",
       "Error: Desteklenmeyen dosya biçimi: Açıklama veya form içeren PDF'nin görsel dönüşümü bu sürümde desteklenmiyor; görünüm kaybını önlemek için işlem durduruldu",
+      "Error: Desteklenmeyen dosya biçimi: Bu belgedeki bir açıklamanın görünümü belgede kayıtlı değil; görünüm kaybını önlemek için görsele dönüştürülmedi.",
     ];
     const details = readable.map(describeSaveFailure);
     expect(details[0]).toMatch(/açıklama/);
     expect(details[1]).toMatch(/marka işaretinin sığamayacağı/);
     expect(details[2]).toMatch(/görsele dönüştürülemiyor/);
+    // Dar ret: genel "açıklama içeren sayfalar dönüştürülemiyor" DEĞİL.
+    expect(details[3]).toBe(
+      "Bu belgedeki bir açıklamanın görünümü belgede kayıtlı değil; görünüm kaybını önlemek için görsele dönüştürülmedi.",
+    );
     for (const d of details) {
       expect(d).not.toMatch(/okunamadı|farklı bir kopya/i);
       expect(d).not.toBe(SAVE_FAILURE_FALLBACK);
