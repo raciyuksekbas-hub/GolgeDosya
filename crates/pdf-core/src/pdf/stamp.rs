@@ -723,9 +723,23 @@ const LEGACY_BRAND_LOGO: &[u8] = include_bytes!("../../assets/brand-logo-legacy.
 /// tanınmazsa üzerlerine ikinci bir işaret eklenir.
 const SUPERSEDED_BRAND_LOGO: &[u8] =
     include_bytes!("../../assets/brand-logo-superseded-2026-09-16.ops");
+/// v0.3.0 ve v0.3.1'in bastığı "Kat" işareti (2026-09-20). Tek farkı kelime
+/// işaretinin taban çizgisi: `76 27 Td`. Büyük harf bandının ortası simgenin
+/// ortasından 3,6 birim yukarıda kalıyordu (saha: "simge ile yazı ortada
+/// değil"). Sahadaki bütün v0.3.x çıktıları bu baytları taşır; tanınmazsa
+/// üzerlerine ikinci bir işaret basılır ve Sıkıştır onları "daha önce
+/// işlenmemiş" sayar.
+const KAT_2026_09_20_BRAND_LOGO: &[u8] = include_bytes!("../../assets/brand-logo-2026-09-20.ops");
 
 /// Artık üretilmeyen ama TANINMASI gereken bütün marka çizimleri.
-const OUTDATED_BRAND_LOGOS: [&[u8]; 2] = [LEGACY_BRAND_LOGO, SUPERSEDED_BRAND_LOGO];
+const OUTDATED_BRAND_LOGOS: [&[u8]; 3] = [
+    LEGACY_BRAND_LOGO,
+    SUPERSEDED_BRAND_LOGO,
+    KAT_2026_09_20_BRAND_LOGO,
+];
+/// GölgeDosya'nın KENDİ ürettiği eski çizimler. Bağımsız DüzenEk'in çizimi
+/// (`LEGACY_BRAND_LOGO`) burada yoktur: o belgeyi GölgeDosya işlemedi.
+const PRIOR_GOLGEDOSYA_LOGOS: [&[u8]; 2] = [SUPERSEDED_BRAND_LOGO, KAT_2026_09_20_BRAND_LOGO];
 const BRAND_FORM_CONTENT: &[u8] = b"q /BrandAlpha gs /Mark Do Q";
 const BRAND_BBOX: [f32; 4] = [0., 0., 290., 72.];
 
@@ -911,7 +925,8 @@ pub fn is_golgedosya_output(doc: &LopdfDoc) -> bool {
         || doc.objects.values().any(|obj| {
             obj.as_stream().is_ok_and(|s| {
                 s.dict.get(b"Subtype").and_then(|t| t.as_name()).ok() == Some(b"Form")
-                    && stream_data(s).as_deref() == Some(SUPERSEDED_BRAND_LOGO)
+                    && stream_data(s)
+                        .is_some_and(|d| PRIOR_GOLGEDOSYA_LOGOS.contains(&d.as_slice()))
             })
         })
 }

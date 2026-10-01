@@ -27,6 +27,9 @@ const CANONICAL_LOGO: &[u8] = include_bytes!("../../pdf-core/assets/brand-logo.o
 const LEGACY_LOGO: &[u8] = include_bytes!("../../pdf-core/assets/brand-logo-legacy.ops");
 const SUPERSEDED_LOGO: &[u8] =
     include_bytes!("../../pdf-core/assets/brand-logo-superseded-2026-09-16.ops");
+/// v0.3.0/0.3.1'in "Kat" çizimi; kelime işareti simgeye hizalanmadan önce.
+const KAT_2026_09_20_LOGO: &[u8] =
+    include_bytes!("../../pdf-core/assets/brand-logo-2026-09-20.ops");
 const BRAND_FORM: &[u8] = b"q /BrandAlpha gs /Mark Do Q";
 const BRAND_BBOX_W: f32 = 290.;
 
@@ -126,7 +129,7 @@ fn outdated_drawings(doc: &Document) -> usize {
         .filter(|s| is_form(s))
         .filter(|s| {
             let d = data(s);
-            d == LEGACY_LOGO || d == SUPERSEDED_LOGO
+            d == LEGACY_LOGO || d == SUPERSEDED_LOGO || d == KAT_2026_09_20_LOGO
         })
         .count()
 }
@@ -781,6 +784,7 @@ fn an_old_undersized_mark_is_upgraded_not_duplicated() {
     let dir = tempfile::tempdir().unwrap();
     for (name, logo) in [
         ("canonical", CANONICAL_LOGO),
+        ("kat-2026-09-20", KAT_2026_09_20_LOGO),
         ("superseded", SUPERSEDED_LOGO),
         ("legacy", LEGACY_LOGO),
     ] {

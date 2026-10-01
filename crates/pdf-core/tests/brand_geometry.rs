@@ -109,10 +109,72 @@ fn superseded_drawings_are_still_recognised_for_upgrade() {
     for name in [
         "brand-logo-legacy.ops",
         "brand-logo-superseded-2026-09-16.ops",
+        "brand-logo-2026-09-20.ops",
     ] {
         assert!(dir.join(name).exists(), "{name} tanıma için tutulmalı");
     }
     let stamp = std::fs::read_to_string(repo_root().join("crates/pdf-core/src/pdf/stamp.rs"))
         .expect("stamp.rs");
-    assert!(stamp.contains("OUTDATED_BRAND_LOGOS: [&[u8]; 2]"));
+    assert!(stamp.contains("OUTDATED_BRAND_LOGOS: [&[u8]; 3]"));
+}
+
+/// Simgenin dikey ortası (yuvarlatılmış sayfanın kutusu: `12 12 40 48 re`).
+fn icon_centre(ops: &str) -> f64 {
+    let line = ops
+        .lines()
+        .find(|l| l.trim_end().ends_with(" re"))
+        .expect("simge kutusu");
+    let v: Vec<f64> = line
+        .split_whitespace()
+        .take(4)
+        .map(|n| n.parse().unwrap())
+        .collect();
+    v[1] + v[3] / 2.0
+}
+
+/// Kelime işaretinin büyük harf bandının ortası: taban çizgisi + yarım büyük
+/// harf yüksekliği. Helvetica-Bold AFM: CapHeight 718/1000.
+fn cap_band_centre(ops: &str) -> f64 {
+    let size: f64 = ops
+        .lines()
+        .find(|l| l.trim_end().ends_with(" Tf"))
+        .and_then(|l| l.split_whitespace().nth(1))
+        .expect("Tf")
+        .parse()
+        .unwrap();
+    let baseline: f64 = ops
+        .lines()
+        .find(|l| l.trim_end().ends_with(" Td"))
+        .and_then(|l| l.split_whitespace().nth(1))
+        .expect("Td")
+        .parse()
+        .unwrap();
+    baseline + 0.718 * size / 2.0
+}
+
+/// SAHA: "Bu filigranda simge ile yazı ortada değil." Kanonik yatay logo
+/// (`apps/belge-shell/brand/horizontal.svg`) büyük harf bandını simgenin
+/// ortasına oturtur. PDF çiziminde taban çizgisi 27'deydi: bant ortası 39,6,
+/// simge ortası 36; yazı simgeye göre 3,6 birim (%7,5) yukarıdaydı.
+#[test]
+fn the_word_mark_cap_band_is_centred_on_the_icon() {
+    let ops = pdf_mark_ops();
+    let (icon, cap) = (icon_centre(&ops), cap_band_centre(&ops));
+    assert!(
+        (cap - icon).abs() <= 0.3,
+        "büyük harf bandı ortası {cap:.2}, simge ortası {icon:.2}: yazı simgeyle hizasız"
+    );
+    // Kanonik SVG'de de kural aynı (y aşağı): simge 8..56, taban 41,5, 27 px.
+    let svg = std::fs::read_to_string(repo_root().join("apps/belge-shell/brand/horizontal.svg"))
+        .expect("horizontal.svg");
+    assert!(svg.contains(r#"y="8" width="40" height="48""#) && svg.contains(r#"y="41.5""#));
+    assert!(((41.5 - 0.718 * 27.0 / 2.0) - 32.0f64).abs() <= 0.3);
+    // Hizalama yalnız taban çizgisini değiştirir: simge, renk, punto aynı.
+    let old = include_str!("../assets/brand-logo-2026-09-20.ops");
+    assert_eq!(icon_centre(old), icon);
+    assert_eq!(
+        old.replace("76 27 Td", "76 23.4 Td"),
+        ops,
+        "hizalama dışında bir değişiklik var"
+    );
 }

@@ -63,6 +63,40 @@ fn the_superseded_post_merge_brand_is_recognised() {
 }
 
 #[test]
+fn the_v031_brand_is_recognised() {
+    // v0.3.0 ve v0.3.1'in bastığı "Kat" çizimi (taban çizgisi hizalanmadan
+    // önce). Sahadaki bütün v0.3.x çıktıları bunu taşır; tanınmazsa Sıkıştır
+    // "kazanç yok" dediğinde "daha önce işlenmiş" bağlamı kaybolur.
+    let d = with_form(include_bytes!("../assets/brand-logo-2026-09-20.ops"));
+    assert!(is_golgedosya_output(&d));
+}
+
+/// Sahadaki bir v0.3.1 çıktısının marka yapısı BİREBİR: saydamlık formu
+/// (`q /BrandAlpha gs /Mark Do Q`) ve onun çizdiği "Kat" vektörü. Kelime
+/// işareti hizalanınca bu vektörün baytları artık canonical değil; Sıkıştır
+/// yine de "daha önce GölgeDosya'dan geçmiş" demeli.
+#[test]
+fn a_real_v031_output_is_still_recognised_after_the_alignment_fix() {
+    let mut d = plain();
+    let font = d.add_object(dictionary! {"Type"=>"Font","Subtype"=>"Type1",
+    "BaseFont"=>"Helvetica-Bold","Encoding"=>"WinAnsiEncoding"});
+    let bbox = || vec![0.into(), 0.into(), 290.into(), 72.into()];
+    let vector = d.add_object(Stream::new(
+        dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>bbox(),
+        "Group"=>dictionary!{"S"=>"Transparency","I"=>true,"CS"=>"DeviceRGB"},
+        "Resources"=>dictionary!{"Font"=>dictionary!{"BrandFont"=>font}}},
+        include_bytes!("../assets/brand-logo-2026-09-20.ops").to_vec(),
+    ));
+    d.add_object(Stream::new(
+        dictionary! {"Type"=>"XObject","Subtype"=>"Form","BBox"=>bbox(),
+        "Resources"=>dictionary!{"XObject"=>dictionary!{"Mark"=>vector},
+        "ExtGState"=>dictionary!{"BrandAlpha"=>dictionary!{"Type"=>"ExtGState","ca"=>0.24f32,"CA"=>0.24f32}}}},
+        b"q /BrandAlpha gs /Mark Do Q".to_vec(),
+    ));
+    assert!(is_golgedosya_output(&d));
+}
+
+#[test]
 fn the_standalone_duzenek_brand_is_not_claimed() {
     // Bağımsız DüzenEk'in işareti: o belgeyi GölgeDosya İŞLEMEDİ.
     let d = with_form(include_bytes!("../assets/brand-logo-legacy.ops"));
