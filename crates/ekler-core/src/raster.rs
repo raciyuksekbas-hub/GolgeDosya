@@ -40,16 +40,19 @@ pub fn pdf_to_images(
                 source,
             })?;
         let bytes = std::fs::read(source).map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
-        let checked = load_pdf_tolerant(&bytes, "source.pdf")?.document;
-        for id in checked.get_pages().values() {
-            let page = checked
-                .get_dictionary(*id)
-                .map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
-            if page.has(b"Annots") {
-                return Err(EklerError::UnsupportedFormat("Açıklama veya form içeren PDF'nin görsel dönüşümü bu sürümde desteklenmiyor; görünüm kaybını önlemek için işlem durduruldu".into()));
-            }
+        let mut working = load_pdf_tolerant(&bytes, "source.pdf")?.document;
+        // CoreGraphics açıklama görünümlerini (/AP) çizmez. Görüntüleyicinin
+        // gösterdiği vurgu, not ve form değerleri çalışma kopyasının içeriğine
+        // çizilir; kaynak dosyaya dokunulmaz. Marka payından ÖNCE: katman
+        // görünür kutuya kırpılır, pay kutu dışındaki bir görünümü açamaz.
+        // Görünümü belgede kayıtlı olmayan ve kurulamayan görünür bir açıklama
+        // varsa görsel, o açıklama eksik üretilmez.
+        let flattened = crate::pdf::flatten::flatten_annotations_for_render(&mut working);
+        if flattened.missing_appearance > 0 {
+            return Err(EklerError::UnsupportedFormat(
+                crate::pdf::flatten::MISSING_APPEARANCE_MESSAGE.into(),
+            ));
         }
-        let mut working = checked;
         crate::pdf::stamp::apply_raster_branding(&mut working, dpi)?;
         let mut bytes = Vec::new();
         working
@@ -587,6 +590,10 @@ pub fn preview_page(source: &Path, page: usize, dpi: u32, rotation: i32) -> Resu
         let raw = std::fs::read(source).map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
         let doc = load_pdf_tolerant(&raw, "önizleme.pdf")?.document;
         let mut selected = crate::pdf::extract_page_range(&doc, page, page)?;
+        // Dışa aktarmayla AYNI açıklama geçişi; önizleme ile çıktı aynı şeyi
+        // gösterir. Önizleme açıklama yüzünden düşmez: görünümü kurulamayan
+        // açıklama burada yalnız çizilmez (dışa aktarma onu açıkça reddeder).
+        crate::pdf::flatten::flatten_annotations_for_render(&mut selected);
         for id in selected.get_pages().into_values() {
             // Dönüşü ARAÇLARLA AYNI biçimde oku. Burada ham `as_i64` vardı:
             // `/Rotate` dolaylı bir başvuru (`12 0 R`) ya da ondalık (`90.0`)

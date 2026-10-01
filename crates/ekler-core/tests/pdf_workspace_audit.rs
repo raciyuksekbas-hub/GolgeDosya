@@ -1323,18 +1323,29 @@ fn export_images_every_page_in_order_with_dpi_and_rotation() {
     }
 }
 
+/// İçindekiler bağlantısı (kenarlıksız, görünümsüz) hiçbir şey çizmez; eskiden
+/// `/Annots` taşıdığı için bütün PDF reddediliyordu. Artık üç sayfa da
+/// dışa aktarılır. Görünümü kurulamayan açıklamanın dar reddi ve "yarım
+/// klasör bırakmaz" değişmezi `raster_annotations.rs`'te.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[test]
-fn export_images_refuses_annotated_pages_without_partial_output() {
+fn export_images_keeps_pages_with_a_link_only_annotation() {
     use ekler_core::raster;
     let lab = Lab::new();
     let mut doc = vector_pdf(&[A4, A4, A4]);
     add_cross_page_link(&mut doc, 1, 3);
     let src = lab.write("ek.pdf", &mut doc);
-    let before = std::fs::read_dir(lab.dir.path()).unwrap().count();
-    assert!(raster::pdf_to_images(&src, lab.dir.path(), "png", 72, false).is_err());
-    let after = std::fs::read_dir(lab.dir.path()).unwrap().count();
-    assert_eq!(before, after, "reddedilen dışa aktarma klasör bırakmamalı");
+    let hash = calculate_sha256(&src).unwrap();
+    let folder = raster::pdf_to_images(&src, lab.dir.path(), "png", 72, false)
+        .unwrap_or_else(|e| panic!("yalnız bağlantı taşıyan PDF dönüştürülemedi: {e}"));
+    for i in 1..=3 {
+        assert!(
+            folder.join(format!("sayfa-{i:04}.png")).is_file(),
+            "sayfa {i} yok"
+        );
+    }
+    assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 3);
+    assert_eq!(calculate_sha256(&src).unwrap(), hash);
 }
 
 // ============================================================ IMAGES → PDF (§19)
