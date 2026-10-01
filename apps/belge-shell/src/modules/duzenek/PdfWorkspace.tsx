@@ -25,6 +25,7 @@
 import { rotatePages, previewGeometry, previewStageSize, nextViewport, workspaceSurfaces, appendSources, appendNote, shiftSource, removeSource, mergeShortfall, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { noBenefitStatus } from './noBenefitMessage';
 import { savedStatus } from './savedMessage';
+import { humanSize } from '../../shared-ui/sizeText';
 import { copyDestination } from './copyDestination';
 import { describeOpenFailure, describeSaveFailure, logFailure, safeMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
 import React, { useState, useEffect, useRef } from 'react';
@@ -105,6 +106,22 @@ const TOOL_FACTS: Record<Kind, { affects: string; output: string }> = {
     number: { affects: 'Belgenin bütün sayfaları.', output: 'Numaralandırılmış yeni PDF.' },
     raster: { affects: 'Belgenin bütün sayfaları.', output: 'Seçtiğiniz klasöre sayfa başına bir görsel dosyası.' },
 };
+
+/**
+ * Sıkıştırma ön ayarları. `value`, motorun `OptimizationLevel` adıdır ve
+ * değişmez. Etiket ne elde edileceğini söyler; piksel ve JPEG kalitesi
+ * avukata bir şey anlatmıyordu, yalnız ipucunda durur.
+ */
+export const COMPRESSION_PRESETS = [
+    { value: 'gentle_compression', label: 'Hafif — görüntü kalitesi en yüksek', detail: 'En fazla 2400 px, JPEG kalitesi 80' },
+    { value: 'balanced_compression', label: 'Dengeli — çoğu belge için önerilir', detail: 'En fazla 2000 px, JPEG kalitesi 72' },
+    { value: 'aggressive_compression', label: 'Güçlü — en küçük dosya', detail: 'En fazla 1600 px, JPEG kalitesi 65' },
+] as const;
+
+/** Kaynak listesindeki satır: ad, sayfa ve boyut ("dilekce.pdf · 30 sayfa · 9,8 MB"). */
+export function sourceLine(s: Pick<SourceFile, 'file_name' | 'page_count' | 'size_bytes'>): string {
+    return [s.file_name, `${s.page_count} sayfa`, s.size_bytes > 0 ? humanSize(s.size_bytes) : ''].filter(Boolean).join(' · ');
+}
 
 type Page = {
     source: SourceFile;
@@ -573,7 +590,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     };
     const PAGE_TOOLS: Kind[] = ['select', 'reorder', 'delete', 'rotate'];
     const settingField = kind === 'compress'
-        ? <label>Görsel kalitesi<select value={level} onChange={e => setLevel(e.target.value)}><option value="gentle_compression">Nazik — 2400 px / kalite 80</option><option value="balanced_compression">Dengeli — 2000 px / kalite 72</option><option value="aggressive_compression">Güçlü — 1600 px / kalite 65</option></select></label>
+        ? <label>Görsel kalitesi<select value={level} onChange={e => setLevel(e.target.value)}>{COMPRESSION_PRESETS.map(p => <option key={p.value} value={p.value} title={p.detail}>{p.label}</option>)}</select></label>
         : kind === 'crop'
         ? <label>Her kenardan kırpılacak mesafe (mm)<input type="number" min={0} value={margin} onChange={e => setMargin(Number(e.target.value))}/></label>
         : kind === 'watermark'
@@ -625,7 +642,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                         </Button>}
                     {needMore && <p className="tool-hint">{needMore}</p>}
                     {sources.length > 0 && <ol className="source-list">{sources.map((s, i) => <li key={s.path}>
-                        <span>{s.file_name} · {s.page_count} sayfa</span>
+                        <span>{sourceLine(s)}</span>
                         {sources.length > 1 && <div className="source-actions">
                             <IconButton label={`${i + 1}. belgeyi yukarı taşı`} disabled={busy || i === 0} onClick={() => moveSource(i, -1)}>
                                 <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>

@@ -16,7 +16,7 @@ import postcss from "postcss";
 import { describe, expect, it } from "vitest";
 import { PdfWorkspace } from "./PdfWorkspace";
 import { previewGeometry, rotatePages, workspaceSurfaces } from "./pdfWorkspaceState";
-import { PreviewPlaceholder } from "./PdfWorkspace";
+import { PreviewPlaceholder, COMPRESSION_PRESETS, sourceLine } from "./PdfWorkspace";
 import { describeOpenFailure, plainMessage, OPEN_FAILURE_FALLBACK } from "../../shared-ui/failure";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -448,5 +448,37 @@ describe("kabuğa bağlanma", () => {
       "PDF → PNG/JPG",
     ])
       expect(source).toContain(label);
+  });
+});
+
+// Sahadan: "Bu sayısal değerlerin çoğumuz için hiçbir anlamı yok." Ön ayar
+// adları "Dengeli — 2000 px / kalite 72" idi; kaynak listesinde boyut yoktu.
+describe("sıkıştırma paneli insan diliyle", () => {
+  it("ön ayar etiketleri ne elde edileceğini söyler; teknik ayrıntı ipucunda", () => {
+    expect(COMPRESSION_PRESETS.map((p) => p.label)).toEqual([
+      "Hafif — görüntü kalitesi en yüksek",
+      "Dengeli — çoğu belge için önerilir",
+      "Güçlü — en küçük dosya",
+    ]);
+    for (const p of COMPRESSION_PRESETS) {
+      expect(p.label).not.toMatch(/px|kalite \d|\d/);
+      expect(p.detail).toMatch(/\d+ px/);
+    }
+    // Motorun OptimizationLevel adları değişmez.
+    expect(COMPRESSION_PRESETS.map((p) => p.value)).toEqual([
+      "gentle_compression",
+      "balanced_compression",
+      "aggressive_compression",
+    ]);
+    expect(source).toMatch(/<option key=\{p\.value\} value=\{p\.value\} title=\{p\.detail\}>\{p\.label\}<\/option>/);
+    expect(source).not.toMatch(/>Nazik — \d/);
+  });
+
+  it("kaynak listesi belgenin boyutunu gösterir", () => {
+    expect(sourceLine({ file_name: "dilekce-ekleri.pdf", page_count: 30, size_bytes: 10_276_045 })).toBe(
+      "dilekce-ekleri.pdf · 30 sayfa · 9,8 MB",
+    );
+    expect(sourceLine({ file_name: "ek-1.pdf", page_count: 2, size_bytes: 816_361 })).toBe("ek-1.pdf · 2 sayfa · 797 KB");
+    expect(source).toContain("<span>{sourceLine(s)}</span>");
   });
 });
