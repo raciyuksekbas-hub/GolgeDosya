@@ -49,6 +49,12 @@ export type FragmentKind = "equal" | "added" | "removed";
 export interface DiffFragment {
   kind: FragmentKind;
   text: string;
+  /**
+   * Kaynakta önceki parçayla arasında boşluk yoksa `false`: "18.500" ile
+   * ardından gelen "." bitişik yazılmıştır ve panel araya boşluk koymaz.
+   * Yoksa (undefined) parçalar bir boşlukla ayrılır — eski sözleşme.
+   */
+  spaceBefore?: false;
 }
 
 export type ChangeKind = "added" | "removed" | "modified";

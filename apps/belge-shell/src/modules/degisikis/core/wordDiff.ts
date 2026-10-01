@@ -6,19 +6,44 @@ export function tokenize(text: string): string[] {
   return text.match(TOKEN_RE) ?? [];
 }
 
-function joinTokens(tokens: string[]): string {
-  return tokens.reduce((result, token, index) => {
-    if (index === 0) return token;
-    const previous = tokens[index - 1];
-    const noSpaceBefore = /^[,.;:!?%)\]}»”’]$/u.test(token);
-    const noSpaceAfterPrevious = /^[([{«“‘]$/u.test(previous);
-    return result + (noSpaceBefore || noSpaceAfterPrevious ? "" : " ") + token;
-  }, "");
+/**
+ * Sözcük birimi ve kaynaktaki yeri.
+ *
+ * Parça metni sözcüklerin tahminle yeniden birleştirilmesiyle DEĞİL, kaynak
+ * metinden kesilerek kurulur. Eskiden "T.C." "T. C.", "A.Ş.'nin"
+ * "A. Ş. ' nin", "%18" "% 18" diye yeniden yazılıyordu; hukuk metninde tutar,
+ * kısaltma ve atıf belgede nasıl yazılmışsa öyle görünmeli.
+ */
+interface SourceToken {
+  text: string;
+  start: number;
+  end: number;
+}
+
+function sourceTokens(text: string): SourceToken[] {
+  return Array.from(text.matchAll(TOKEN_RE), (match) => ({
+    text: match[0],
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+}
+
+/** Ardışık sözcüklerin kaynaktaki metni (aradaki boşluklar dahil). */
+function sourceSpan(text: string, tokens: SourceToken[], from: number, to: number): string {
+  return from > to ? "" : text.slice(tokens[from].start, tokens[to].end);
 }
 
 interface Operation {
   kind: DiffFragment["kind"];
-  token: string;
+  /** Temel metindeki sözcük sırası (eklenen sözcükte yok). */
+  base?: number;
+  /** Değişik metindeki sözcük sırası (çıkarılan sözcükte yok). */
+  revised?: number;
+}
+
+interface Side {
+  text: string;
+  tokens: SourceToken[];
 }
 
 export interface WordDiffHunk {
@@ -32,14 +57,24 @@ export interface WordDiffResult {
   hunks: WordDiffHunk[];
 }
 
-function compact(parts: Operation[]): DiffFragment[] {
-  const groups: Array<{ kind: DiffFragment["kind"]; tokens: string[] }> = [];
+/**
+ * Aynı türden ardışık sözcükler tek parça olur. Bir taraftaki ardışık
+ * sözcükler kaynakta da ardışıktır; parça metni kaynaktan kesilir. Parçanın
+ * önünde kaynakta boşluk yoksa `spaceBefore: false` taşır ("18.500" + ".").
+ */
+function compact(side: Side, parts: Operation[], index: (operation: Operation) => number): DiffFragment[] {
+  const groups: Array<{ kind: DiffFragment["kind"]; from: number; to: number }> = [];
   for (const part of parts) {
+    const at = index(part);
     const last = groups.at(-1);
-    if (last?.kind === part.kind) last.tokens.push(part.token);
-    else groups.push({ kind: part.kind, tokens: [part.token] });
+    if (last?.kind === part.kind) last.to = at;
+    else groups.push({ kind: part.kind, from: at, to: at });
   }
-  return groups.map((group) => ({ kind: group.kind, text: joinTokens(group.tokens) }));
+  return groups.map((group) => {
+    const fragment: DiffFragment = { kind: group.kind, text: sourceSpan(side.text, side.tokens, group.from, group.to) };
+    if (group.from > 0 && side.tokens[group.from - 1].end === side.tokens[group.from].start) fragment.spaceBefore = false;
+    return fragment;
+  });
 }
 
 function diffOperations(base: string[], revised: string[]): Operation[] {
@@ -54,11 +89,11 @@ function diffOperations(base: string[], revised: string[]): Operation[] {
 
   const baseMiddle = base.slice(prefix, base.length - suffix);
   const revisedMiddle = revised.slice(prefix, revised.length - suffix);
-  const operations: Operation[] = base.slice(0, prefix).map((token) => ({ kind: "equal", token }));
+  const operations: Operation[] = base.slice(0, prefix).map((_, index) => ({ kind: "equal", base: index, revised: index }));
 
   if (baseMiddle.length * revisedMiddle.length > 160_000) {
-    operations.push(...baseMiddle.map((token): Operation => ({ kind: "removed", token })));
-    operations.push(...revisedMiddle.map((token): Operation => ({ kind: "added", token })));
+    operations.push(...baseMiddle.map((_, index): Operation => ({ kind: "removed", base: prefix + index })));
+    operations.push(...revisedMiddle.map((_, index): Operation => ({ kind: "added", revised: prefix + index })));
   } else {
     const cols = revisedMiddle.length + 1;
     const matrix = new Uint16Array((baseMiddle.length + 1) * cols);
@@ -76,47 +111,57 @@ function diffOperations(base: string[], revised: string[]): Operation[] {
     let j = revisedMiddle.length;
     while (i > 0 || j > 0) {
       if (i > 0 && j > 0 && baseMiddle[i - 1] === revisedMiddle[j - 1]) {
-        middle.push({ kind: "equal", token: baseMiddle[i - 1] });
+        middle.push({ kind: "equal", base: prefix + i - 1, revised: prefix + j - 1 });
         i--;
         j--;
       } else if (j > 0 && (i === 0 || matrix[i * cols + j - 1] >= matrix[(i - 1) * cols + j])) {
-        middle.push({ kind: "added", token: revisedMiddle[j - 1] });
+        middle.push({ kind: "added", revised: prefix + j - 1 });
         j--;
       } else {
-        middle.push({ kind: "removed", token: baseMiddle[i - 1] });
+        middle.push({ kind: "removed", base: prefix + i - 1 });
         i--;
       }
     }
     operations.push(...middle.reverse());
   }
 
-  for (let index = suffix; index > 0; index--) operations.push({ kind: "equal", token: base[base.length - index] });
+  for (let index = suffix; index > 0; index--) {
+    operations.push({ kind: "equal", base: base.length - index, revised: revised.length - index });
+  }
   return operations;
 }
 
-function changeHunks(operations: Operation[]): WordDiffHunk[] {
+/** Bir hunk'ın çıkarılan ve eklenen sözcükleri kendi tarafında ardışıktır. */
+function changeHunks(base: Side, revised: Side, operations: Operation[]): WordDiffHunk[] {
   const result: WordDiffHunk[] = [];
-  let removed: string[] = [];
-  let added: string[] = [];
+  let removed: number[] = [];
+  let added: number[] = [];
   const flush = () => {
-    if (removed.length || added.length) result.push({ removed: joinTokens(removed), added: joinTokens(added) });
+    if (removed.length || added.length) {
+      result.push({
+        removed: removed.length ? sourceSpan(base.text, base.tokens, removed[0], removed.at(-1)!) : "",
+        added: added.length ? sourceSpan(revised.text, revised.tokens, added[0], added.at(-1)!) : "",
+      });
+    }
     removed = [];
     added = [];
   };
   for (const operation of operations) {
     if (operation.kind === "equal") flush();
-    else if (operation.kind === "removed") removed.push(operation.token);
-    else added.push(operation.token);
+    else if (operation.kind === "removed") removed.push(operation.base!);
+    else added.push(operation.revised!);
   }
   flush();
   return result;
 }
 
 export function wordDiff(baseText: string, revisedText: string): WordDiffResult {
-  const operations = diffOperations(tokenize(baseText), tokenize(revisedText));
+  const base: Side = { text: baseText, tokens: sourceTokens(baseText) };
+  const revised: Side = { text: revisedText, tokens: sourceTokens(revisedText) };
+  const operations = diffOperations(base.tokens.map((token) => token.text), revised.tokens.map((token) => token.text));
   return {
-    base: compact(operations.filter((operation) => operation.kind !== "added")),
-    revised: compact(operations.filter((operation) => operation.kind !== "removed")),
-    hunks: changeHunks(operations),
+    base: compact(base, operations.filter((operation) => operation.kind !== "added"), (operation) => operation.base!),
+    revised: compact(revised, operations.filter((operation) => operation.kind !== "removed"), (operation) => operation.revised!),
+    hunks: changeHunks(base, revised, operations),
   };
 }

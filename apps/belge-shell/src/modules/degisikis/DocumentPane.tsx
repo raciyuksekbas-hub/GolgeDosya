@@ -76,6 +76,16 @@ export function PaneHeader({ doc, side, onReplace }: {
 }
 
 /**
+ * Bir parçadan sonra gelen ayraç: yalnız kaynakta boşluk varsa boşluk.
+ * "18.500" ile ardından gelen "." bitişik yazılmışsa bitişik kalır; eskiden
+ * her parçanın arasına boşluk girdiği için panel "18.500 ." gösteriyordu.
+ */
+function separatorAfter(fragments: DiffFragment[], index: number): string {
+  const next = fragments[index + 1];
+  return next && next.spaceBefore !== false ? " " : "";
+}
+
+/**
  * Eklenen ve çıkarılan sözcükler ANLAMLI etiketlerle çizilir.
  *
  * Görünüş değişmez: sınıflar aynı kaldığı için `.fragment.added` /
@@ -96,7 +106,7 @@ function FragmentText({ fragments }: { fragments: DiffFragment[] }) {
         return (
           <Fragment key={`${fragment.kind}-${index}`}>
             <Tag className={`fragment ${fragment.kind}`}>{fragment.text}</Tag>
-            {index < fragments.length - 1 ? " " : ""}
+            {separatorAfter(fragments, index)}
           </Fragment>
         );
       })}

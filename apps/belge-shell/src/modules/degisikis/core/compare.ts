@@ -1136,6 +1136,19 @@ function prefixSummary(base: StructuralText, revised: StructuralText): string[] 
   ];
 }
 
+/**
+ * Önek ile gövde kaynakta bitişikse ("1.Kira", "1 | Kira") gövdenin ilk
+ * parçası bitişik işaretlenir; panel araya kaynakta olmayan boşluğu koymaz.
+ */
+function gluedToPrefix(fragments: DiffFragment[], glued: boolean): DiffFragment[] {
+  if (!glued || !fragments.length) return fragments;
+  return [{ ...fragments[0], spaceBefore: false }, ...fragments.slice(1)];
+}
+
+function bodyGluedToPrefix(text: string, structure: StructuralText): boolean {
+  return !!structure.prefix && !/\s$/u.test(text.slice(0, text.length - structure.body.length));
+}
+
 function prefixedDiff(baseText: string, revisedText: string, ignoredOrdinalPrefix?: Pair["ignoredOrdinalPrefix"]): {
   base: DiffFragment[];
   revised: DiffFragment[];
@@ -1147,8 +1160,8 @@ function prefixedDiff(baseText: string, revisedText: string, ignoredOrdinalPrefi
     const revisedBody = revisedText.slice(ignoredOrdinalPrefix.revised.length);
     const body = wordDiff(baseBody, revisedBody);
     return {
-      base: [{ kind: "equal", text: ignoredOrdinalPrefix.base }, ...body.base],
-      revised: [{ kind: "equal", text: ignoredOrdinalPrefix.revised }, ...body.revised],
+      base: [{ kind: "equal", text: ignoredOrdinalPrefix.base }, ...gluedToPrefix(body.base, !/^\s/u.test(baseBody))],
+      revised: [{ kind: "equal", text: ignoredOrdinalPrefix.revised }, ...gluedToPrefix(body.revised, !/^\s/u.test(revisedBody))],
       summary: summarizeBodyDiff(body.base, body.revised).slice(0, 3),
       hunks: body.hunks,
     };
@@ -1164,8 +1177,8 @@ function prefixedDiff(baseText: string, revisedText: string, ignoredOrdinalPrefi
     ? [{ kind: samePrefix ? "equal" : "added", text: revisedStructure.prefix.raw }]
     : [];
   return {
-    base: [...basePrefix, ...body.base],
-    revised: [...revisedPrefix, ...body.revised],
+    base: [...basePrefix, ...gluedToPrefix(body.base, bodyGluedToPrefix(baseText, baseStructure))],
+    revised: [...revisedPrefix, ...gluedToPrefix(body.revised, bodyGluedToPrefix(revisedText, revisedStructure))],
     summary: [...prefixSummary(baseStructure, revisedStructure), ...summarizeBodyDiff(body.base, body.revised)].slice(0, 3),
     hunks: body.hunks,
   };
@@ -1186,7 +1199,11 @@ function localSentences(block: DocumentBlock): LocalSentence[] {
   const result: LocalSentence[] = [];
   let pending: LocalSentence | undefined;
   units.forEach((unit, blockIndex) => {
-    const parts = (unit.text.match(/[^.!?;]+(?:[.!?;]+|$)/gu) ?? []).map((sentence) => sentence.trim()).filter(Boolean);
+    // Cümle yalnız noktalamadan SONRA boşluk gelen yerde biter. Eskiden her
+    // noktada bölünüyordu: "18.500" "18." + "500", "A.Ş.'nin" "A." + "Ş." +
+    // "'nin" oluyor; panel parçaları boşlukla birleştirip "18. 500"
+    // gösteriyor, özet de tutarı "000" → "500" diye yazıyordu.
+    const parts = unit.text.split(/(?<=[.!?;])\s+/u).map((sentence) => sentence.trim()).filter(Boolean);
     parts.forEach((text) => {
       const sentence = pending
         ? { ...pending, text: `${pending.text} ${text}`, sourceBlockIds: [...new Set([...pending.sourceBlockIds, unit.id])] }
@@ -1313,10 +1330,15 @@ function alignAtomicSentences(base: DocumentBlock, revised: DocumentBlock): Atom
   return result.reverse();
 }
 
+// Cümleler arasındaki ayraç parçası kaynaktaki boşluğun KENDİSİDİR; panel
+// yanına ikinci, üçüncü bir boşluk koymasın diye iki yanı bitişik işaretlenir.
 function appendFragments(target: DiffFragment[], fragments: DiffFragment[]): void {
   if (!fragments.length) return;
-  if (target.length) target.push({ kind: "equal", text: " " });
-  target.push(...fragments);
+  if (!target.length) {
+    target.push(...fragments);
+    return;
+  }
+  target.push({ kind: "equal", text: " ", spaceBefore: false }, { ...fragments[0], spaceBefore: false }, ...fragments.slice(1));
 }
 
 function appendProvenancedHunk(target: ProvenancedHunk[], hunk: ProvenancedHunk): void {
