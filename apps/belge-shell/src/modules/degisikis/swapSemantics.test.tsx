@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ChangeInspector } from "./ChangeInspector";
+import { inspectorToggleLabel } from "../../shell/inspectorRule";
 import { compareDocuments } from "./core/compare";
 import { makeBlocks } from "./core/normalize";
 import { buildComparisonViewModel, summarize } from "./viewModels/comparisonViewModel";
@@ -75,8 +76,15 @@ describe("Fark paneli erişilebilirliği", () => {
       resolve(import.meta.dirname, "../../shell/Layout.tsx"),
       "utf8",
     );
-    expect(layout).toContain('label={inspectorOpen ? "Ayrıntıları Gizle" : "Ayrıntıları Göster"}');
-    expect(layout).toContain("pressed={inspectorOpen}");
+    // Düğmenin adı panelin türünden gelir. Karşılaştır'ın Fark paneli
+    // "details" türüdür: adı "Ayrıntıları Gizle/Göster" olarak kalır.
+    // (Düzenle'nin Araçlar paneli "Araçları Gizle/Göster" der.)
+    expect(layout).toContain("label={inspectorToggleLabel(inspectorKind, panelOpen)}");
+    expect(layout).toContain("pressed={panelOpen}");
+    expect(inspectorToggleLabel("details", true)).toBe("Ayrıntıları Gizle");
+    expect(inspectorToggleLabel("details", false)).toBe("Ayrıntıları Göster");
+    const compare = readFileSync(resolve(import.meta.dirname, "CompareWorkspace.tsx"), "utf8");
+    expect(compare).toMatch(/<InspectorPanel title="Farklar" scope="compare-root">/);
   });
 
   it("panel kendi başlığını ve kapatma düğmesini çizmez", () => {

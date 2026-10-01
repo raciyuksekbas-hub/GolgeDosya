@@ -120,8 +120,10 @@ describe("yerleşim sözleşmesi", () => {
   });
 
   it("araçlar panelde, kaydetme barda, sonuç workspace'te", () => {
-    // Araç grupları kabuğun sağ paneline çizilir.
-    expect(source).toMatch(/<InspectorPanel title="Araçlar" scope="pdf-root">/);
+    // Araç grupları kabuğun sağ paneline çizilir. Panel "tools" türündedir:
+    // 1280 eşiğine bağlı "Ayrıntılar" değil, workspace'e yer kaldıkça açık
+    // gelen ve düğmesi "Araçları Göster/Gizle" diyen panel (shell/inspectorRule).
+    expect(source).toMatch(/<InspectorPanel title="Araçlar" scope="pdf-root" kind="tools">/);
     expect(source).toMatch(/<div className="pdf-controls"/);
     // Kaydetme eylemleri yardımcı barda.
     const bar = source.slice(source.indexOf("<ToolbarActions>"), source.indexOf("</ToolbarActions>"));
@@ -185,7 +187,7 @@ describe("durum sözleşmesi", () => {
     // Bileşen üç yüzeyi de bu karara bağlar.
     expect(source).toContain("const surfaces = workspaceSurfaces(docState, order.length);");
     expect(source).toMatch(/\{surfaces\.tools && <ToolbarActions>/);
-    expect(source).toMatch(/\{surfaces\.tools && <InspectorPanel title="Araçlar" scope="pdf-root">/);
+    expect(source).toMatch(/\{surfaces\.tools && <InspectorPanel title="Araçlar" scope="pdf-root" kind="tools">/);
     expect(source).toMatch(
       /data-pages=\{surfaces\.strip\}>\s*\{surfaces\.strip && <aside className="thumbnail-list"/,
     );

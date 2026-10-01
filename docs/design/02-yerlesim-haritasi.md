@@ -39,6 +39,14 @@ Kurallar:
   o kipin gerçek içeriği varken çizilir. ≥1280 açık gelir; altında varsayılan
   kapalı ve **her genişlikte** bardaki "Ayrıntılar" ikon düğmesiyle açılır
   (aria-pressed). Kapalıyken içerik bağlı kalır (durum kaybolmaz).
+  **İstisna — Düzenle'nin "Araçlar" paneli** (`kind="tools"`): araçların,
+  birleştirilecek belge listesinin ve imza onayının tek yeri olduğu için 1280
+  eşiğine bağlı değildir. Panel açıldığında workspace'te en az 560 px kalıyorsa
+  açık gelir (%100'de pencere ≥ ~1092 px; 1366×768 @%125 büyütülmüş pencere
+  dahil), kalmıyorsa kapalı. Düğmesi "Araçları Göster/Gizle" der. Kullanıcı
+  düğmeyle açar ya da kapatırsa o karar kipten ayrılana kadar geçerlidir.
+  Durumu Ayrıntılar panelinden ayrıdır; Karşılaştır/Denetle'ye taşınmaz
+  (`apps/belge-shell/src/shell/inspectorRule.ts`).
 - Workspace başlığı yoktur Home'da; başlık tier'ı (`--text-title`) yalnız gerçek
   içerik başlığı olan yerde kullanılır.
 - Kenar çubuğu: kimlik bloğu (tek renkli işaret + ad) → dört kip → (varsa)
@@ -298,6 +306,8 @@ PNG'nin tek renk olmadığı piksel kontrolüyle doğrulanır (bkz. §8).
 
 Metin ölçeği %150 ve %200'de aynı dört boyut tekrar alınır. Hiçbir boyutta
 yatay kaydırma yok; uzun dosya adı barda kısaltılır; eylemler sarmaz.
+Düzenle'de "Araçlar" paneli yukarıdaki 560 px kuralına uyar: %100'de 1024 ve
+900'de kapalı, %200'de 1280'de kapalı, 1440'ta açık.
 
 ## 8. Görsel kabul yöntemi
 

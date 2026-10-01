@@ -521,7 +521,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             </Button>
         </ToolbarActions>}
 
-        {surfaces.tools && <InspectorPanel title="Araçlar" scope="pdf-root">
+        {surfaces.tools && <InspectorPanel title="Araçlar" scope="pdf-root" kind="tools">
             <div className="pdf-controls" aria-label="PDF işlem kontrolleri">
                 <ToolGroups kind={kind} busy={busy} onPick={pick}/>
 

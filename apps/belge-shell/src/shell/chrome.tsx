@@ -19,6 +19,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import type { InspectorKind } from "./inspectorRule";
 
 /** Sunucu tarafı render'da `useLayoutEffect` uyarı basar; orada etki zaten yok. */
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
@@ -27,8 +28,10 @@ export interface Chrome {
   toolbarSlot: HTMLElement | null;
   statusSlot: HTMLElement | null;
   inspectorSlot: HTMLElement | null;
-  /** Panelde içerik var mı? `InspectorPanel` bağlanınca/ayrılınca bildirir. */
-  setHasInspector: (has: boolean) => void;
+  /** Panelde içerik var mı, varsa hangi tür? `InspectorPanel` bağlanınca/ayrılınca bildirir. */
+  setInspectorKind: (kind: InspectorKind | null) => void;
+  /** Paneli açar: kaydetmeyi bekleten bir onay yalnız paneldeyse. */
+  revealInspector: () => void;
   /** Barda kipe ait eylem var mı? Portalla geldiği için kabuk kendi göremez. */
   setHasActions: (has: boolean) => void;
 }
@@ -75,20 +78,25 @@ export function ToolbarStatus({ children }: { children: ReactNode }) {
 export function InspectorPanel({
   title,
   scope,
+  kind = "details",
   children,
 }: {
   title: string;
   /** Modülün kapsam sınıfı (`pdf-root`, `compare-root`): portal dışında da
       modülün kendi CSS'i geçerli kalsın diye panel sarmalayıcısına eklenir. */
   scope?: string;
+  /** "details": ikincil bağlam, 1280 px altında kapalı gelir. "tools": kipin
+      araçlarının tek yeri; workspace'e yer kaldıkça açık gelir
+      (`inspectorRule.ts`). */
+  kind?: InspectorKind;
   children: ReactNode;
 }) {
   const chrome = useContext(ChromeContext);
   useIsomorphicLayoutEffect(() => {
     if (!chrome) return;
-    chrome.setHasInspector(true);
-    return () => chrome.setHasInspector(false);
-  }, [chrome]);
+    chrome.setInspectorKind(kind);
+    return () => chrome.setInspectorKind(null);
+  }, [chrome, kind]);
 
   const panel = (
     <aside className={`inspector${scope ? ` ${scope}` : ""}`} aria-label={title}>
@@ -102,6 +110,13 @@ export function InspectorPanel({
   if (!chrome.inspectorSlot) return null;
   return createPortal(panel, chrome.inspectorSlot);
 }
+
+/** Paneli açan işlev; kabuk yokken (testler) hiçbir şey yapmaz. */
+export function useRevealInspector(): () => void {
+  const chrome = useContext(ChromeContext);
+  return chrome ? chrome.revealInspector : noop;
+}
+const noop = () => {};
 
 /** Panel içinde ikinci ve sonraki bölümler; ilk bölümün başlığı panelin kendisidir. */
 export function InspectorSection({ title, children }: { title: string; children: ReactNode }) {

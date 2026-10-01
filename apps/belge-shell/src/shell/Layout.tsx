@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { FeatureState, PrefTab } from "./types";
 import { Sidebar } from "./Sidebar";
 import { Announcer } from "../shared-ui/Announcer";
@@ -6,6 +6,13 @@ import { IconButton } from "../shared-ui/primitives";
 import { IconPanel } from "./icons";
 import { ChromeProvider } from "./chrome";
 import { useFullscreen } from "./useFullscreen";
+import {
+  activeToolsChoice,
+  inspectorShown,
+  inspectorToggleLabel,
+  type InspectorKind,
+  type ToolsChoice,
+} from "./inspectorRule";
 
 interface Props {
   features: FeatureState[];
@@ -21,8 +28,12 @@ interface Props {
   children: ReactNode;
 }
 
-/** Panel bu genişliğin altında varsayılan olarak kapalı gelir. */
+/** Ayrıntılar paneli bu genişliğin altında varsayılan olarak kapalı gelir.
+    Düzenle'nin Araçlar paneli bu eşiğe bağlı değildir (`inspectorRule.ts`). */
 const WIDE = "(min-width: 1280px)";
+
+/** Sunucu tarafı render'da `useLayoutEffect` uyarı basar; orada etki zaten yok. */
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 /**
  * Pencere iskeleti — dört yüzey.
@@ -47,13 +58,35 @@ export function Layout({
   const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null);
   const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null);
   const [inspectorSlot, setInspectorSlot] = useState<HTMLElement | null>(null);
-  const [hasInspector, setHasInspector] = useState(false);
+  const [inspectorKind, setInspectorKind] = useState<InspectorKind | null>(null);
   const [hasActions, setHasActions] = useState(false);
   const [wide, setWide] = useState(() =>
     typeof window === "undefined" ? true : window.matchMedia(WIDE).matches,
   );
   const [inspectorOpen, setInspectorOpen] = useState(wide);
   const fullscreen = useFullscreen();
+  // Araçlar paneli: kullanıcının bu kipte düğmeyle verdiği karar. Ayrıntılar
+  // panelinin durumundan AYRI tutulur; tek `Layout` bütün kiplere hizmet
+  // ettiği için Düzenle'de açılan panel Karşılaştır'a taşınmamalı.
+  const [toolsChoice, setToolsChoice] = useState<ToolsChoice | null>(null);
+  // Kipten ayrılınca elle verilen karar düşer; geri dönüldüğünde kural işler.
+  if (toolsChoice && toolsChoice.route !== current) setToolsChoice(null);
+  // İçerik sütununun (pencere − kenar çubuğu) ölçüsü. Panel açılıp kapanınca
+  // değişmez; kenar çubuğu metin ölçeğiyle genişlediğinde değişir.
+  const [content, setContent] = useState<HTMLElement | null>(null);
+  const [contentWidth, setContentWidth] = useState<number | null>(null);
+  useIsomorphicLayoutEffect(() => {
+    if (!content) return;
+    const measure = () => setContentWidth(content.getBoundingClientRect().width);
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [content]);
 
   // Dar pencerede panel kendiliğinden kapanır, genişleyince geri gelir.
   // Kullanıcının elle açması/kapatması bir sonraki eşik geçişine kadar geçerli.
@@ -68,12 +101,33 @@ export function Layout({
     return () => query.removeEventListener("change", onChange);
   }, []);
 
+  const kindRef = useRef(inspectorKind);
+  const routeRef = useRef(current);
+  useIsomorphicLayoutEffect(() => {
+    kindRef.current = inspectorKind;
+    routeRef.current = current;
+  });
+  const revealInspector = useCallback(() => {
+    if (kindRef.current === "tools") setToolsChoice({ route: routeRef.current, open: true });
+    else setInspectorOpen(true);
+  }, []);
+
   const chrome = useMemo(
-    () => ({ toolbarSlot, statusSlot, inspectorSlot, setHasInspector, setHasActions }),
-    [toolbarSlot, statusSlot, inspectorSlot],
+    () => ({ toolbarSlot, statusSlot, inspectorSlot, setInspectorKind, setHasActions, revealInspector }),
+    [toolbarSlot, statusSlot, inspectorSlot, revealInspector],
   );
 
-  const showInspector = hasInspector && inspectorOpen;
+  const hasInspector = inspectorKind !== null;
+  const panelOpen = inspectorShown({
+    kind: inspectorKind,
+    detailsOpen: inspectorOpen,
+    toolsChoice: activeToolsChoice(toolsChoice, current),
+    contentWidth,
+  });
+  const togglePanel = () => {
+    if (inspectorKind === "tools") setToolsChoice({ route: current, open: !panelOpen });
+    else setInspectorOpen((v) => !v);
+  };
   /**
    * Bar gerçekten boş mu?
    *
@@ -98,7 +152,7 @@ export function Layout({
           onOpenSettings={onOpenSettings}
           onHome={onHome}
         />
-        <section className="content">
+        <section className="content" ref={setContent}>
           {/* Başlık çubuğu bandı: trafik ışıklarının satırı pencerenin
               tamamında ayrılır, yalnız kenar çubuğunda değil. Yardımcı bar
               onun altında başlar ve kimlik bloğuyla hizalanır. */}
@@ -113,9 +167,9 @@ export function Layout({
             <div className="toolbar-shell">
               {hasInspector ? (
                 <IconButton
-                  label={inspectorOpen ? "Ayrıntıları Gizle" : "Ayrıntıları Göster"}
-                  pressed={inspectorOpen}
-                  onClick={() => setInspectorOpen((v) => !v)}
+                  label={inspectorToggleLabel(inspectorKind, panelOpen)}
+                  pressed={panelOpen}
+                  onClick={togglePanel}
                 >
                   <IconPanel />
                 </IconButton>
@@ -126,7 +180,7 @@ export function Layout({
           <main id="icerik" className="content-body" tabIndex={-1}>
             {children}
           </main>
-          <div className="inspector-slot" ref={setInspectorSlot} hidden={!showInspector} />
+          <div className="inspector-slot" ref={setInspectorSlot} hidden={!panelOpen} />
         </section>
         <Announcer />
       </div>
