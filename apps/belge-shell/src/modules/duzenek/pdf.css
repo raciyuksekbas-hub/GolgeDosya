@@ -117,17 +117,28 @@
   overflow: hidden;
 }
 
-/* Belgenin üstündeki kompakt şerit: günlük sayfa araçları, döndürme, zoom. */
+/* Belgenin üstündeki kompakt şerit: günlük sayfa araçları, döndürme, zoom.
+   Sığmadığında (dar pencere, büyük metin, açık Araçlar paneli) öğeler alt
+   satıra iner; hiçbiri daralıp kırpılmaz. Eskiden segment `min-width: 0`
+   gibi davranıp küçülüyordu: 1280 px'te %150 metinle "Döndür", dar pencerede
+   dört aracın dördü birden görünmez oluyordu. */
 .pdf-root .pdf-strip {
   display: flex;
   flex: none;
-  gap: var(--space-3);
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
   align-items: center;
   min-height: 40px;
-  padding: 0 var(--space-4);
+  padding: var(--space-1) var(--space-4);
 }
+/* Yakınlaştırmayı sağa itmek boşluk öğesinin değil kendi kenar payının işi:
+   alt satıra inse de sağda kalır, tek satırda da 16 px'lik boşluk öğesi
+   şeridi gereksiz yere ikinci satıra itmez. */
+.pdf-root .pdf-strip .toolbar-spacer { display: none; }
+.pdf-root .pdf-strip .zoom { margin-left: auto; }
 .pdf-root .tool-segment {
   display: flex;
+  flex: none;
   overflow: hidden;
   background: var(--surface-hover);
   border: 0;
