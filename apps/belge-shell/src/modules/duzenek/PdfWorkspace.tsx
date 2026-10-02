@@ -22,7 +22,7 @@
  * ya da henüz yoksa ne araç paneli ne de sayfa şeridi çizilir — kullanılamayan
  * araçları soluk göstermek yerine hata/boş durum tam genişliği alır.
  */
-import { rotatePages, previewGeometry, previewStageSize, nextViewport, previewDpi, previewRetryDpi, workspaceSurfaces, appendSources, appendNote, shiftSource, removeSource, mergeShortfall, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
+import { rotatePages, previewGeometry, previewStageSize, nextViewport, previewDpi, previewRetryDpi, workspaceSurfaces, appendSources, appendNote, shiftSource, removeSource, mergeShortfall, dragHint, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { noBenefitStatus } from './noBenefitMessage';
 import { savedStatus } from './savedMessage';
 import { humanSize } from '../../shared-ui/sizeText';
@@ -642,10 +642,11 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         changes: (keys, gap) => !sameOrder(moveKeys(order, keys, gap), order),
         onDrop: (keys, gap) => applyMove(moveKeys(order, keys, gap), order.filter(p => keys.includes(p.key)), 'drop'),
         // Belge Birleştir'de açılır; sayfayı sürükleyen kullanıcıya sıralamanın
-        // nerede olduğu söylenir. Ekrandaki bir sonucun üstüne yazılmaz.
+        // nerede olduğu söylenir — yalnız Sırala açık sayfaları aynen tutacaksa
+        // (bkz. dragHint). Ekrandaki bir sonucun üstüne yazılmaz.
         onRefused: () => {
-            if (kind === 'reorder' || busy || status) return;
-            const hint = 'Sayfaları sürükleyerek sıralamak için Sırala aracını seçin.';
+            const hint = dragHint(kind, sources.length);
+            if (!hint || busy || status) return;
             setStatus(hint); setStatusTone('info');
             announce(hint);
         },

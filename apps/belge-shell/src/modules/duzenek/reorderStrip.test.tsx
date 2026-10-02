@@ -12,6 +12,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { PageThumbnail, PreviewStage } from "./PdfWorkspace";
 import { DRAG_THRESHOLD, dragGesture, REFUSE_DISTANCE } from "./useStripDrag";
+import * as workspaceState from "./pdfWorkspaceState";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
@@ -129,6 +130,23 @@ describe("tıklama mı sürükleme mi", () => {
     expect(dragGesture(4, false)).toBe("pending");
     expect(dragGesture(REFUSE_DISTANCE - 1, false)).toBe("pending");
     expect(dragGesture(REFUSE_DISTANCE, false)).toBe("refuse");
+  });
+  it("sürükleme ipucu yalnız Sırala'nın açık sayfaları aynen tutacağı yerde: tek belge, Görseller değil", () => {
+    // Birleştir'de A+B+C varken ipucuna uyup Sırala'ya geçen kullanıcı B ve C'yi
+    // kaybediyordu; Görseller'de seçilen görseller düşüyordu.
+    const f = (workspaceState as Record<string, unknown>).dragHint;
+    expect(typeof f, "dragHint pdfWorkspaceState'te tanımlı olmalı").toBe("function");
+    const hint = f as (kind: string, sourceCount: number) => string;
+    const text = "Sayfaları sürükleyerek sıralamak için Sırala aracını seçin.";
+    for (const kind of ["merge", "select", "delete", "rotate", "compress", "crop", "watermark", "number", "raster"]) expect(hint(kind, 1), kind).toBe(text);
+    expect(hint("merge", 2)).toBe("");
+    expect(hint("merge", 3)).toBe("");
+    expect(hint("images", 1)).toBe("");
+    expect(hint("images", 4)).toBe("");
+    expect(hint("reorder", 1)).toBe("");
+    const refused = source.slice(source.indexOf("onRefused: () => {"), source.indexOf("const relist = "));
+    expect(refused).toContain("dragHint(kind, sources.length)");
+    expect(refused).not.toContain("'Sayfaları sürükleyerek");
   });
   it("tıklama yalnız gerçek bir sürüklemeden sonra yutulur", () => {
     // Birleştir'de titrek bir tıklama önizlenen sayfayı yine değiştirmeli.

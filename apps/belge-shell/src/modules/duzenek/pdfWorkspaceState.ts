@@ -155,6 +155,20 @@ export function mergeShortfall(kind: string, sourceCount: number): string {
 }
 
 /**
+ * Sırala dışında sayfa sürükleyen kullanıcıya verilecek ipucu; boş dize: ipucu yok.
+ *
+ * Sırala tek belgeyle çalışır. Birleştir'de birden çok belge varken ona geçmek
+ * eklenen belgeleri kapatır, Görseller → PDF'te seçilen görselleri bırakır:
+ * ipucuna uyan kullanıcı düzenlemeye çalıştığı işi kaybediyordu. İpucu yalnız
+ * Sırala'nın açık sayfaları aynen tutacağı yerde verilir.
+ */
+export function dragHint(kind: string, sourceCount: number): string {
+    return kind !== 'reorder' && kind !== 'images' && sourceCount === 1
+        ? 'Sayfaları sürükleyerek sıralamak için Sırala aracını seçin.'
+        : '';
+}
+
+/**
  * Ekleme sonucunun tek satırı.
  *
  * Ekleme AÇMA değildir: "açıldı" ya da "Belge açılamadı" demek, açık belgenin
