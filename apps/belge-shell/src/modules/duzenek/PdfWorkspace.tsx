@@ -27,7 +27,7 @@ import { noBenefitStatus } from './noBenefitMessage';
 import { savedStatus } from './savedMessage';
 import { humanSize } from '../../shared-ui/sizeText';
 import { copyDestination } from './copyDestination';
-import { describeOpenFailure, describeSaveFailure, logFailure, safeMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
+import { describeOpenFailure, describePreviewFailure, describeSaveFailure, logFailure, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -224,7 +224,7 @@ type PreviewGeometry = ReturnType<typeof previewGeometry>;
 export const PreviewStage = React.forwardRef<HTMLDivElement, {
     large: boolean; geometry: PreviewGeometry | null; bitmap: {url: string} | null; error: string; rotation: number; label: string;
 }>(function PreviewStage({ large, geometry, bitmap, error, rotation, label }, ref) {
-    const message = safeMessage(error, 'Bu sayfanın önizlemesi oluşturulamadı.');
+    const message = describePreviewFailure(error, 'Bu sayfanın önizlemesi oluşturulamadı.');
     // Bekleme, dev bir kutunun ortasındaki tek kelime değil: küçük bir
     // döner ve kısa bir etiket. Hata olursa kategorisinin tek cümlesi
     // gösterilir; ham motor metni kullanıcı yüzeyine çıkmaz.

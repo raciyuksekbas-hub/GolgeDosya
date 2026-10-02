@@ -10,7 +10,9 @@
 // Sınır güvenlik denetimidir ve değişmez. Ön yüz onu aşmamayı öğrenir:
 // sayfanın boyu bilinince dpi bütçeye göre sınırlanır; boy bilinmeden istenen
 // ilk render başarısız olursa bir kez 96 dpi ile yeniden denenir.
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { PreviewStage } from "./PdfWorkspace";
 import { previewDpi, previewGeometry, previewRetryDpi } from "./pdfWorkspaceState";
 
 /** raster.rs: genişlik × yükseklik > 40 000 000 ise "Görsel boyutu güvenli sınırı aşıyor". */
@@ -173,3 +175,25 @@ describe("previewRetryDpi: başarısız ilk büyük render bir kez, bütçeye s�
   });
 });
 
+describe("önizleme sahnesi yerel boyut sınırını 'bozuk' diye anlatmaz", () => {
+  const native = "Bozuk veya geçersiz PDF dosyası: Görsel boyutu güvenli sınırı aşıyor";
+  it("sayfa hiç çizilemediyse: sakin cümle, 'bozuk' yok", () => {
+    const html = renderToStaticMarkup(<PreviewStage large geometry={null} bitmap={null} error={native} rotation={0} label="sayfa 1" />);
+    expect(html).toContain("önizleme için çok büyük");
+    expect(html).toContain("belge sağlam");
+    expect(html).not.toMatch(/bozuk|geçersiz|güvenli sınırı/i);
+  });
+  it("sayfa çizilmişken: aynı cümle, yerleşim dışı tek şerit olarak", () => {
+    const geometry = previewGeometry(200, 280, 0, 592, 547, "fit-page");
+    const html = renderToStaticMarkup(<PreviewStage large geometry={geometry} bitmap={{ url: "blob:x" }} error={native} rotation={0} label="sayfa 1" />);
+    const paragraphs = html.match(/<p [^>]*>/g) ?? [];
+    expect(paragraphs).toHaveLength(1);
+    expect(paragraphs[0]).toContain('class="pdf-wait pdf-wait-overlay"');
+    expect(html).not.toMatch(/bozuk|geçersiz/i);
+  });
+  it("küçük resimde de aynı", () => {
+    const html = renderToStaticMarkup(<PreviewStage large={false} geometry={null} bitmap={null} error={native} rotation={0} label="sayfa 1" />);
+    expect(html).toContain("önizleme için çok büyük");
+    expect(html).not.toMatch(/bozuk|geçersiz/i);
+  });
+});

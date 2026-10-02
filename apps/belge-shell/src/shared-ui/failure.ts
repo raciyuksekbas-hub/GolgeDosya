@@ -159,6 +159,27 @@ export function safeMessage(raw: unknown, fallback: string): string {
 }
 
 /**
+ * "bozuk" sözcüğü bilerek yok: küçük resimde cümle dört satırda kesilir ve
+ * "…belge bozuk…" diye okunurdu. Görsele dönüştürme (150 DPI) bu boydaki
+ * sayfayı da reddeder; bu yüzden "işlemler" değil "sayfa işlemleri" denir.
+ */
+export const PREVIEW_TOO_LARGE = "Bu sayfa önizleme için çok büyük; belge sağlam, sayfa işlemleri etkilenmez.";
+
+/**
+ * Önizleme hatasının kullanıcı cümlesi.
+ *
+ * Yerel motor önizleme bitmap'inin 40 MP güvenlik sınırını "Bozuk veya
+ * geçersiz PDF dosyası: Görsel boyutu güvenli sınırı aşıyor" diye bildirir.
+ * Metin teknik görünmediği için olduğu gibi çıkıyor, geçerli bir A0 paftası
+ * için kullanıcı "Bozuk" okuyordu. Yalnız bu ret, yalnız önizlemede sakin
+ * cümleye çevrilir; pdf-core'un aynı kalıplı yapısal retleri ("akışının
+ * açılmış boyutu…") gerçek ret olarak kalır. Gerisi `safeMessage` kuralıdır.
+ */
+export function describePreviewFailure(raw: unknown, fallback: string): string {
+  return /görsel boyutu güvenli sınırı aşıyor/i.test(plainMessage(raw)) ? PREVIEW_TOO_LARGE : safeMessage(raw, fallback);
+}
+
+/**
  * Kaydetme ve dışa aktarma kategorileri.
  *
  * Bu yoldaki hatalar güvenlik denetimlerini de taşır — kaynak bütünlüğü, sayfa
