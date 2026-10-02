@@ -203,8 +203,9 @@ describe("yalnız boşluk farkı değişiklik sayılmaz", () => {
     expect(paneRows(comparison, "base")).toEqual([base.join(" ")]);
     expect(paneRows(comparison, "revised")).toEqual([revised]);
     expect(comparison.changes.flatMap((change) => change.summary)).toEqual(["“17.500” → “18.500”"]);
-    expect(paneHtml(comparison, "base")).toContain('<del class="fragment removed">17.500 </del>');
-    expect(paneHtml(comparison, "revised")).toContain('<ins class="fragment added">18.500 </ins>');
+    // Ayraç boşluğu işaretin dışında durur (şerit sözcükten sonraki boşluğa taşmaz).
+    expect(paneHtml(comparison, "base")).toContain('<del class="fragment removed">17.500</del> ');
+    expect(paneHtml(comparison, "revised")).toContain('<ins class="fragment added">18.500</ins> ');
   });
 });
 
