@@ -7,12 +7,22 @@ import { logFailure, safeMessage } from "../../shared-ui/failure";
 import { fileNameOf } from "../../shell/modes";
 
 /**
- * Çıktı klasörü satırı — saf sunum.
+ * Dönüştür'ün çıktı klasörü satırı — saf sunum.
+ *
+ * Satır eskiden yalnız "Çıktı klasörü" diyordu ve Ayarlar > Genel'de bütün
+ * uygulamanın tercihi gibi duruyordu; ama onu yalnız Dönüştür okur. Kullanıcı
+ * klasörü değiştirip Düzenle'de kaydedince dosya başka yere gidiyordu ("kayıt
+ * klasörleri arasında birlik yok"). Etiket artık neyin buraya yazıldığını,
+ * ipucu da öteki araçların ne yaptığını söyler. Tercihin anlamı DEĞİŞMEDİ.
  *
  * Tercihler penceresinin tek grid'ine oturur: etiket ve mevcut değer solda,
  * kontrol sağ kolonda. Tam yol ipucunda durur; tercihler penceresinde dokuz
  * satıra sarılan bir yol, klasörün adından daha az bilgi taşıyor.
  */
+/** Satırın kapsamı: yalnız Dönüştür buraya yazar. */
+export const OUTPUT_FOLDER_HINT =
+  "Yalnız Dönüştür buraya kaydeder. Öteki araçlar kaydederken belgenin klasörünü önerir.";
+
 export function OutputFolderRow({
   folder,
   error,
@@ -30,7 +40,7 @@ export function OutputFolderRow({
     <>
       <div className="field">
         <div className="field-label">
-          Çıktı klasörü
+          Dönüştürülen belgeler
           <span title={folder.path}>
             {name}
             {folder.is_default ? " · varsayılan" : ""}
@@ -38,6 +48,7 @@ export function OutputFolderRow({
         </div>
         <Button onClick={onChoose}>Değiştir</Button>
       </div>
+      <p className="prefs-hint">{OUTPUT_FOLDER_HINT}</p>
       {error ? (
         <p className="prefs-hint">
           <Status tone="error">{error}</Status>

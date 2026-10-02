@@ -176,8 +176,9 @@ export function PreferencesSheet({
 
           {tab === "genel" ? (
             <>
-              {/* Çıktı klasörü gerçek, çalışan bir tercihtir; motor yoksa
-                  satır hiç çizilmez. Uydurma tercih eklenmedi. */}
+              {/* Dönüştür'ün çıktı klasörü gerçek, çalışan bir tercihtir;
+                  motor yoksa satır hiç çizilmez. Öteki araçlar bu tercihi
+                  okumaz (satırın ipucu bunu söyler). */}
               <div className="prefs-group">
                 <OutputFolderField />
               </div>

@@ -569,12 +569,15 @@ test("aynı kavramın tek adı var", () => {
   assert.ok(visible(settings).includes("Son belgeler"), "tercihlerde 'Son belgeler' görünmeli");
 
   // Çıktı klasörü de tek ad: akışta "Çıktı", tercihlerde "Çıktı klasörü" iki
-  // ayrı şey gibi okunuyordu.
+  // ayrı şey gibi okunuyordu. Tercihlerdeki satır ise YALNIZ Dönüştür'ündür;
+  // genel bir "Çıktı klasörü" gibi durunca kullanıcı onun Düzenle'yi de
+  // yönettiğini sanıyordu ("kayıt klasörleri arasında birlik yok"). Etiket
+  // neyin yazıldığını söyler, ipucu aynı terimi Dönüştür'e bağlar.
   const convert = readFileSync("src/modules/tavzih/ConvertWorkspace.tsx", "utf8");
   const folder = readFileSync("src/modules/tavzih/OutputFolderField.tsx", "utf8");
-  for (const [name, src] of [["akış", convert], ["tercihler", folder]]) {
-    assert.ok(visible(src).includes("Çıktı klasörü"), `${name} "Çıktı klasörü" demeli`);
-  }
+  assert.ok(visible(convert).includes("Çıktı klasörü"), `akış "Çıktı klasörü" demeli`);
+  assert.ok(visible(folder).includes("Dönüştürülen belgeler"), "tercih satırı Dönüştür'ün olduğunu söylemeli");
+  assert.match(folder, /OUTPUT_FOLDER_HINT =\s*"Yalnız Dönüştür buraya kaydeder\./u);
 
   // Kaydın yeri de tek adla gösterilir. Dönüştür "Klasörde Göster", Ekler
   // "Klasörü Aç" diyordu; Düzenle ve Denetle'de eylem hiç yoktu. Ad tek
