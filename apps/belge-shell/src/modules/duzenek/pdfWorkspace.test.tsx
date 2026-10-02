@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import { PdfWorkspace } from "./PdfWorkspace";
 import { previewGeometry, rotatePages, workspaceSurfaces } from "./pdfWorkspaceState";
 import { PreviewPlaceholder, COMPRESSION_PRESETS, sourceLine } from "./PdfWorkspace";
+import * as workspace from "./PdfWorkspace";
 import { describeOpenFailure, plainMessage, OPEN_FAILURE_FALLBACK } from "../../shared-ui/failure";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -484,9 +485,37 @@ describe("sıkıştırma paneli insan diliyle", () => {
 });
 
 describe("önizleme notu gerçeği söyler (0.3.2)", () => {
+  const note = (kind: string) => {
+    const f = (workspace as Record<string, unknown>).previewNote;
+    expect(typeof f, "previewNote PdfWorkspace'ten dışa açılmalı").toBe("function");
+    return (f as (kind: string) => string)(kind);
+  };
+  const BRAND_ONLY = "Kaynak sayfanın önizlemesi. Yeni PDF’nin her sayfasının sağ alt köşesine, sayfa boyutu değişmeden, saydam GölgeDosya işareti eklenir.";
+
   it("marka sayfa boyutunu değiştirmez; pay ya da eksik açıklama iddiası yok", () => {
-    expect(source).toContain("sayfa boyutu değişmeden, saydam GölgeDosya işareti eklenir.");
+    for (const kind of ["merge", "select", "reorder", "delete", "rotate", "compress", "crop"]) expect(note(kind), kind).toBe(BRAND_ONLY);
     expect(source).not.toContain("logo payı");
     expect(source).not.toContain("Açıklama/form görünümleri bu önizlemede eksik olabilir");
+  });
+
+  it("Filigran ve Sayfa numarası hâlâ alta 60 pt pay ekler: 'sayfa boyutu değişmeden' denmez, sayfanın uzadığı söylenir", () => {
+    // stamp.rs apply_text_marks: margin 20·2 + punto 10 + 10 = 60 pt, alta (ADR §10).
+    for (const kind of ["watermark", "number"]) {
+      const text = note(kind);
+      expect(text, kind).not.toContain("sayfa boyutu değişmeden");
+      expect(text, kind).toContain("altına eklenen yaklaşık 2 cm’lik (60 pt) bir şeride basılır");
+      expect(text, kind).toContain("sayfaları bu kadar uzar");
+      expect(text, kind).toContain("saydam GölgeDosya işareti");
+    }
+    expect(note("watermark")).toMatch(/^Kaynak sayfanın önizlemesi\. Filigran, /);
+    expect(note("number")).toMatch(/^Kaynak sayfanın önizlemesi\. Sayfa numarası, /);
+  });
+
+  it("PDF → PNG/JPG görsel üretir: not 'Yeni PDF' demez", () => {
+    expect(note("raster")).toBe("Kaynak sayfanın önizlemesi. Her görselin sağ alt köşesine, görsel boyutu değişmeden, saydam GölgeDosya işareti eklenir.");
+  });
+
+  it("bileşen notu seçili araca göre çizer", () => {
+    expect(source).toContain('<p className="preview-note">{previewNote(kind)}</p>');
   });
 });

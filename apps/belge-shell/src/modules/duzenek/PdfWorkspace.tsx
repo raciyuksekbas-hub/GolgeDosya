@@ -113,6 +113,23 @@ const TOOL_FACTS: Record<Kind, { affects: string; output: string }> = {
 };
 
 /**
+ * Önizlemenin altındaki not: önizleme kaynağı gösterir, çıktıda ne değişir?
+ *
+ * GölgeDosya işareti sayfa boyutunu değiştirmez (ADR §10). Filigran ve Sayfa
+ * numarası ise hâlâ her sayfanın altına 60 pt pay ekler (stamp.rs
+ * `apply_text_marks`: kenar 20·2 + punto 10 + 10); bu araçlarda "sayfa boyutu
+ * değişmeden" demek yanlıştı — A4 595×842, 595×902 oluyordu. PDF → PNG/JPG
+ * PDF değil görsel üretir.
+ */
+export function previewNote(kind: Kind): string {
+    if (kind === 'watermark' || kind === 'number')
+        return `Kaynak sayfanın önizlemesi. ${kind === 'watermark' ? 'Filigran' : 'Sayfa numarası'}, her sayfanın altına eklenen yaklaşık 2 cm’lik (60 pt) bir şeride basılır; yeni PDF’nin sayfaları bu kadar uzar. Sağ alt köşeye saydam GölgeDosya işareti de eklenir.`;
+    if (kind === 'raster')
+        return 'Kaynak sayfanın önizlemesi. Her görselin sağ alt köşesine, görsel boyutu değişmeden, saydam GölgeDosya işareti eklenir.';
+    return 'Kaynak sayfanın önizlemesi. Yeni PDF’nin her sayfasının sağ alt köşesine, sayfa boyutu değişmeden, saydam GölgeDosya işareti eklenir.';
+}
+
+/**
  * Sıkıştırma ön ayarları. `value`, motorun `OptimizationLevel` adıdır ve
  * değişmez. Etiket ne elde edileceğini söyler; piksel ve JPEG kalitesi
  * avukata bir şey anlatmıyordu, yalnız ipucunda durur.
@@ -941,7 +958,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                 <div className="pdf-canvas">
                     <p className="page-line">{active?.source.file_name} · Kaynak sayfa {active?.page} / {active?.source.page_count}{kind === 'delete' && selected.includes(active?.key) ? ' — Çıktıdan çıkarılacak' : ''}{kind === 'rotate' ? ` · Dönüş: ${rotations[active?.key] || 0}°` : ''}{pageSelection && selected.includes(active?.key) ? ' · İşaretli' : ''}{kind === 'reorder' && selected.includes(active?.key) ? ' · Seçili' : ''}</p>
                     <div className="pdf-page-viewport" data-fit={typeof zoom === 'string' ? '' : undefined} tabIndex={0} role="region" aria-label="Kaydırılabilir PDF sayfası">{active && <Preview key={active.key} item={active} large mode={zoom} rotation={rotations[active.key] || 0}/>}</div>
-                    <p className="preview-note">Kaynak sayfanın önizlemesi. Yeni PDF’nin her sayfasının sağ alt köşesine, sayfa boyutu değişmeden, saydam GölgeDosya işareti eklenir.</p>
+                    <p className="preview-note">{previewNote(kind)}</p>
                 </div>
             </> : <PreviewPlaceholder state={docState} detail={failure} onOpenAnother={openAnother} forImages={kind === 'images'}/>}</aside>
         </div>
