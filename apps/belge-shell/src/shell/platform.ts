@@ -35,6 +35,14 @@ export function shortcutLabel(key: string, on: Platform = platform()): string {
 }
 
 /**
+ * Listede tek öğeyi seçime ekleyen/çıkaran tıklama: macOS'ta ⌘, Windows'ta
+ * Ctrl. macOS'ta Ctrl+tıklama sağ tıklamadır; seçimi değiştirmemeli.
+ */
+export function isToggleChord(e: { metaKey: boolean; ctrlKey: boolean }, on: Platform = platform()): boolean {
+  return on === "mac" ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+}
+
+/**
  * Kökü işaretler. Görsel kararlar CSS'te kalır: `data-titlebar="overlay"`
  * yalnız macOS'ta (tauri.conf.json: titleBarStyle Overlay — bu ayar yalnız
  * macOS'ta derlenir), `native` başka her yerde.

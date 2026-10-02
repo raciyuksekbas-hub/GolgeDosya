@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { detectPlatform, shortcutLabel } from "./platform";
+import { detectPlatform, isToggleChord, shortcutLabel } from "./platform";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tokens = readFileSync(resolve(here, "../shared-ui/tokens.css"), "utf8");
@@ -25,6 +25,14 @@ describe("platform tespiti", () => {
     expect(shortcutLabel("O", "mac")).toBe("⌘O");
     expect(shortcutLabel("O", "windows")).toBe("Ctrl+O");
     expect(shortcutLabel(",", "windows")).toBe("Ctrl+,");
+  });
+
+  it("listede ekle-çıkar tıklaması: macOS'ta ⌘, Windows'ta Ctrl; macOS'ta Ctrl+tıklama (sağ tık) seçim değildir", () => {
+    expect(isToggleChord({ metaKey: true, ctrlKey: false }, "mac")).toBe(true);
+    expect(isToggleChord({ metaKey: false, ctrlKey: true }, "mac")).toBe(false);
+    expect(isToggleChord({ metaKey: false, ctrlKey: true }, "windows")).toBe(true);
+    expect(isToggleChord({ metaKey: true, ctrlKey: false }, "windows")).toBe(false);
+    expect(isToggleChord({ metaKey: false, ctrlKey: false }, "mac")).toBe(false);
   });
 });
 

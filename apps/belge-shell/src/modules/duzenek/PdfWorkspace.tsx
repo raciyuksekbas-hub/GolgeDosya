@@ -28,19 +28,22 @@ import { savedStatus } from './savedMessage';
 import { humanSize } from '../../shared-ui/sizeText';
 import { copyDestination } from './copyDestination';
 import { describeOpenFailure, describeSaveFailure, logFailure, safeMessage, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { ScanBatchResult, SourceFile } from './types';
 import { InspectorPanel, InspectorSection, ToolbarActions, ToolbarStatus, useRevealInspector } from '../../shell/chrome';
 import { Button, EmptyState, IconButton, Status } from '../../shared-ui/primitives';
 import { announce } from '../../shared-ui/Announcer';
-import { isReordered } from './pageOrder';
+import { useShortcuts } from '../../shared-ui/useShortcuts';
+import { isToggleChord, shortcutLabel } from '../../shell/platform';
+import { describeMove, isReordered, moveKeys, pushHistory, sameOrder, selectPages, shiftKeys, type MoveKind } from './pageOrder';
+import { useStripDrag } from './useStripDrag';
 import './pdf.css';
 const tools = {
     merge: ['Birleştir', 'Açık belgeye eklediğiniz PDF’leri listedeki sırayla tek dosyada birleştirir.'],
     select: ['Seçili sayfalar → yeni PDF', 'İşaretlediğiniz sayfalardan yeni bir PDF kopyası oluşturur.'],
-    reorder: ['Sayfa sırasını değiştir', 'Sayfaları görsel olarak yeniden sıralayıp yeni bir kopya oluşturur.'],
+    reorder: ['Sayfa sırasını değiştir', 'Sayfaları şeritte sürükleyerek ya da taşıma düğmeleriyle yeniden sıralayıp yeni bir kopya oluşturur.'],
     delete: ['Sayfa sil', 'İşaretlediğiniz sayfaları çıkararak yeni bir PDF oluşturur.'],
     rotate: ['Döndür', 'Önizlediğiniz sayfayı her tıklamada 90° saat yönünde döndürür.'],
     compress: ['Sıkıştır', 'Belgeyi küçültür ve kalite kontrolünü geçen yeni bir kopya kaydeder.'],
@@ -214,7 +217,7 @@ export const PreviewStage = React.forwardRef<HTMLDivElement, {
         ? <p className="pdf-wait" data-tone="error" role="status" title={message}>{message}</p>
         : <p className="pdf-wait" role="status"><span className="spinner" aria-hidden="true"/>Önizleme hazırlanıyor</p>;
     return <div ref={ref} className={large ? 'pdf-preview-stage' : 'pdf-thumbnail-stage'} style={large && geometry ? previewStageSize(geometry) : undefined}>
-        {bitmap && geometry ? <div className="pdf-page-surface" style={{width: geometry.width, height: geometry.height}}><img src={bitmap.url} alt={label} style={{width: geometry.imageWidth, height: geometry.imageHeight, transform: `translate(-50%, -50%) rotate(${rotation}deg)`}}/></div> : wait}
+        {bitmap && geometry ? <div className="pdf-page-surface" style={{width: geometry.width, height: geometry.height}}><img src={bitmap.url} alt={label} draggable={false} style={{width: geometry.imageWidth, height: geometry.imageHeight, transform: `translate(-50%, -50%) rotate(${rotation}deg)`}}/></div> : wait}
         {/* Sayfa çizilmişken sonraki (daha keskin) render başarısız olursa hata
             sayfanın YANINA değil üstüne, yerleşim dışı bir şerit olarak gelir:
             yanına konan cümle genişliği taşırıp kaydırma çubuğu döngüsünü
@@ -222,6 +225,60 @@ export const PreviewStage = React.forwardRef<HTMLDivElement, {
         {bitmap && error && <p className="pdf-wait pdf-wait-overlay" data-tone="error" role="status" title={message}>{message}</p>}
     </div>;
 });
+/**
+ * Şeritteki tek sayfa — saf sunum; seçim, sıra ve sürükleme durumu çağıranda.
+ *
+ * Sayfa bir liste öğesidir; içindeki denetimler (görüntüle düğmesi, Seç/Dahil
+ * et/Çıkar kutusu, ↑/↓) kardeştir, iç içe etkileşimli öğe yoktur. Seçim
+ * çerçevesi yalnız seçimi olan araçlarda çizilir: Birleştir ve Döndür'de ilk
+ * sayfa, kullanıcının değiştiremediği bir seçimle işaretli duruyordu.
+ */
+export function PageThumbnail({ item, index, count, kind, isCurrent, isSelected, rotation, busy, drop, dragging, onView, onToggle, onShift, onPointerDown }: {
+    item: Page; index: number; count: number; kind: Kind; isCurrent: boolean; isSelected: boolean; rotation: number; busy: boolean;
+    /** Sürüklenen sayfaların bu sayfanın önüne mi arkasına mı ineceği. */
+    drop?: 'before' | 'after'; dragging?: boolean;
+    onView: (event: React.MouseEvent) => void; onToggle: () => void; onShift: (delta: -1 | 1) => void;
+    onPointerDown?: (event: React.PointerEvent<HTMLElement>) => void;
+}) {
+    const selectable = kind === 'select' || kind === 'delete' || kind === 'reorder';
+    const pickVerb = kind === 'delete' ? 'Çıkar' : kind === 'reorder' ? 'Seç' : 'Dahil et';
+    const pick = selectable && <label className="thumbnail-pick"><input type="checkbox" aria-label={`${index + 1}. sayfa (kaynak s. ${item.page}) — ${pickVerb}`} checked={isSelected} onChange={onToggle}/>{pickVerb}</label>;
+    return <div role="listitem" className={`thumbnail ${isCurrent ? 'current' : ''} ${selectable && isSelected ? 'selected' : ''} ${kind === 'delete' && isSelected ? 'removed' : ''}`} data-drop={drop} data-dragging={dragging || undefined} onPointerDown={onPointerDown}>
+        {/* Önizleme motoru PDF SAYFASI çizer. Görsel kaynaklarda (Görseller
+            → PDF aracı) bu çağrı zorunlu olarak düşüyor ve her küçük resim
+            "önizleme oluşturulamadı" hatası gösteriyordu: araç çalışıyor
+            ama tamamen bozukmuş gibi görünüyordu. Görselde hata yerine
+            dosyanın kendisi söylenir. */}
+        <button className="thumbnail-image-button" aria-label={`${item.source.file_name} sayfa ${item.page} görüntüle`} onClick={onView}>
+            {item.source.format === 'pdf'
+                ? <Preview item={item} rotation={rotation}/>
+                : <span className="thumbnail-placeholder">{item.source.file_name}</span>}
+        </button>
+        <span className="thumbnail-no">{index + 1}<span className="sr-only">. çıktı sırası · Kaynak s. {item.page}</span></span>
+        {/* Erişilebilir ad sayfayı TANIMLAR. Eskiden ad yalnız görünen
+            sözcüktü ("Dahil et"); 30 sayfalık bir belgede ekran okuyucu
+            30 kez aynı şeyi söylüyor, kullanıcı hangi kutuyu
+            işaretlediğini ayırt edemiyordu — yanlış sayfayı çıkarma
+            riski. Görünen sözcük adın İÇİNDE kalır (WCAG 2.5.3). */}
+        {kind !== 'reorder' && pick}
+        {/* Sırala: Seç kutusu klavyeyle birden fazla sayfa seçmenin yoludur;
+            ↑/↓ tek sayfayı bir sıra taşır (sürüklemenin erişilebilir eşi). */}
+        {/* Kenardaki ok `aria-disabled`: odakta kalır, basılınca bir şey
+            olmaz. Odak öbür yönün okuna geçseydi, fazladan bir Enter sayfayı
+            geldiği yöne geri götürürdü. */}
+        {kind === 'reorder' && <div className="thumbnail-move">
+            {pick}
+            <span className="thumbnail-step">
+                <IconButton label={`${index + 1}. sayfayı yukarı taşı (kaynak s. ${item.page})`} aria-disabled={index === 0 || busy || undefined} onClick={() => index > 0 && !busy && onShift(-1)}>
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </IconButton>
+                <IconButton label={`${index + 1}. sayfayı aşağı taşı (kaynak s. ${item.page})`} aria-disabled={index === count - 1 || busy || undefined} onClick={() => index < count - 1 && !busy && onShift(1)}>
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.5V12m-3.5-3.5L8 12l3.5-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </IconButton>
+            </span>
+        </div>}
+    </div>;
+}
 /**
  * Araç grupları — panelin görsel kütlesi.
  *
@@ -304,8 +361,10 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const [kind, setKind] = useState<Kind>('merge'), [sources, setSources] = useState<SourceFile[]>([]), [order, setOrder] = useState<Page[]>([]), [selected, setSelected] = useState<string[]>([]), [current, setCurrent] = useState(''), [zoom, setZoom] = useState<PreviewMode>('fit-page');
     const [rotations, setRotations] = useState<Record<string, number>>({});
     // Kaynağın sayfa sırası: sıranın gerçekten değişip değişmediği buna göre
-    // ölçülür (bkz. editSignature).
+    // ölçülür (bkz. editSignature). Sırala'nın Geri Al geçmişi ve seçim çapası.
     const [baseline, setBaseline] = useState<Page[]>([]);
+    const [history, setHistory] = useState<Page[][]>([]);
+    const [anchor, setAnchor] = useState('');
     // Son başarılı kaydın düzen imzası (bkz. editSignature).
     const [savedSignature, setSavedSignature] = useState('');
     // "Sayfa yok" ile "belge açılamadı" aynı şey değildir: araç paneli yalnız
@@ -314,7 +373,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const [failure, setFailure] = useState('');
     const [statusTone, setStatusTone] = useState<'info' | 'busy' | 'success' | 'error'>('info');
     const [margin, setMargin] = useState(10), [text, setText] = useState('KOPYA'), [imageFormat, setImageFormat] = useState('png'), [start, setStart] = useState(1), [level, setLevel] = useState('balanced_compression'), [approved, setApproved] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
-    const build = (list: SourceFile[]) => { setRotations({}); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setBaseline(next); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
+    const build = (list: SourceFile[]) => { setRotations({}); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setBaseline(next); setHistory([]); setAnchor(next[0]?.key || ''); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
     // Her tarama bir nesil alır. Kabuk tarama sürerken başka bir belge açarsa
     // (bar, son kullanılanlar) eski taramanın sonucu yenisinin üstüne yazılmaz;
     // yalnız en son başlatılan tarama listeyi ve meşgul durumunu değiştirir.
@@ -454,7 +513,89 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     // Kabuk belgeyi belge yüzeyinde açtırdı; aynı yolları burada tara.
     const opened = initialPaths?.join('\u0000') ?? '';
     useEffect(() => { if (opened) void load(opened.split('\u0000')); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [opened]);
-    const shiftPage = (index: number, delta: number) => { const next = [...order]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; setOrder(next); };
+    // Sırala: her taşıma Geri Al geçmişine girer ve ekran okuyucuya söylenir.
+    // Taşınan ilk sayfa şeritte görünür kalır: "Başa"/"Sona" ile giden sayfalar
+    // şeridin görünmeyen ucuna gidiyor, kullanıcı sonucu göremiyordu.
+    const revealPage = useRef('');
+    const applyMove = (next: Page[], moved: Page[], how: MoveKind) => {
+        if (!moved.length || sameOrder(next, order)) return;
+        setHistory(previous => pushHistory(previous, order));
+        setOrder(next);
+        revealPage.current = moved[0].key;
+        announce(describeMove(moved, how, next.findIndex(p => p.key === moved[0].key) + 1));
+    };
+    const shiftPage = (index: number, delta: -1 | 1) => applyMove(shiftKeys(order, [order[index].key], delta), [order[index]], delta < 0 ? 'up' : 'down');
+    const selectedInOrder = order.filter(p => selected.includes(p.key));
+    const movedSelection = (how: Exclude<MoveKind, 'drop'>) => {
+        const keys = selectedInOrder.map(p => p.key);
+        return how === 'start' ? moveKeys(order, keys, 0)
+            : how === 'end' ? moveKeys(order, keys, order.length)
+            : shiftKeys(order, keys, how === 'up' ? -1 : 1);
+    };
+    const canMove = (how: Exclude<MoveKind, 'drop'>) => !busy && selectedInOrder.length > 0 && !sameOrder(movedSelection(how), order);
+    const moveSelection = (how: Exclude<MoveKind, 'drop'>) => { if (canMove(how)) applyMove(movedSelection(how), selectedInOrder, how); };
+    const undo = () => {
+        if (busy || !history.length) return;
+        setOrder(history[history.length - 1]);
+        setHistory(history.slice(0, -1));
+        announce('Son taşıma geri alındı.');
+    };
+    // ⌘Z / Ctrl+Z: sistemin öğrettiği anlamıyla, yalnız Sırala'da ve geri
+    // alınacak taşıma varken. Kısayol Geri Al düğmesinin ipucunda yazılı.
+    useShortcuts(useMemo(() => [{ key: 'z', enabled: !busy && history.length > 0, run: () => { if (!document.querySelector('.sheet-backdrop')) undo(); } }],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [busy, history]), kind === 'reorder');
+    // Sırala'da tıklama masaüstü listesi gibi seçer: düz tıklama tek sayfa,
+    // Shift aralık, ⌘ (macOS) / Ctrl (Windows) ekle-çıkar. Diğer araçlarda
+    // tıklama yalnız önizlenen sayfayı değiştirir.
+    const viewPage = (event: React.MouseEvent, key: string) => {
+        if (kind === 'reorder') {
+            const next = selectPages(order, selected, anchor, key, { range: event.shiftKey, toggle: isToggleChord(event) });
+            setSelected(next.selected);
+            setAnchor(next.anchor);
+        }
+        setCurrent(key);
+    };
+    const stripRef = useRef<HTMLElement>(null);
+    // Sayfanın kendi ↑/↓ düğmesiyle taşıyan klavye kullanıcısının odağı sayfayla
+    // gider: aynı okta kalır. React sayfayı listede yeniden yerleştirince odak
+    // belgenin başına düşüyordu; her adımda yerini yeniden aramak gerekiyordu.
+    const refocus = useRef<{ key: string; delta: -1 | 1 } | null>(null);
+    useEffect(() => {
+        const want = refocus.current, shown = revealPage.current;
+        refocus.current = null;
+        revealPage.current = '';
+        const item = (key: string) => stripRef.current?.querySelector('[role="list"]')?.children[order.findIndex(p => p.key === key)];
+        if (shown) item(shown)?.scrollIntoView?.({ block: 'nearest' });
+        if (!want) return;
+        const target = item(want.key)?.querySelectorAll<HTMLButtonElement>('.thumbnail-step button')[want.delta < 0 ? 0 : 1];
+        if (target && document.activeElement !== target) target.focus();
+    }, [order]);
+    const shiftFromStrip = (item: Page, index: number, delta: -1 | 1) => {
+        // Fareyle tıklanan düğme (macOS'ta odak almaz) için odak taşınmaz.
+        if (stripRef.current?.contains(document.activeElement)) refocus.current = { key: item.key, delta };
+        shiftPage(index, delta);
+    };
+    const strip = useStripDrag({
+        listRef: stripRef,
+        enabled: kind === 'reorder' && !busy,
+        begin: key => {
+            if (selected.includes(key)) return selectedInOrder.map(p => p.key);
+            setSelected([key]);
+            setAnchor(key);
+            return [key];
+        },
+        changes: (keys, gap) => !sameOrder(moveKeys(order, keys, gap), order),
+        onDrop: (keys, gap) => applyMove(moveKeys(order, keys, gap), order.filter(p => keys.includes(p.key)), 'drop'),
+        // Belge Birleştir'de açılır; sayfayı sürükleyen kullanıcıya sıralamanın
+        // nerede olduğu söylenir. Ekrandaki bir sonucun üstüne yazılmaz.
+        onRefused: () => {
+            if (kind === 'reorder' || busy || status) return;
+            const hint = 'Sayfaları sürükleyerek sıralamak için Sırala aracını seçin.';
+            setStatus(hint); setStatusTone('info');
+            announce(hint);
+        },
+    });
     // Liste değişince son ekleme/kaydetme notu artık bu listeyi anlatmaz
     // ("A.pdf zaten listede" dendikten sonra A çıkarılmış olabilir): susar.
     const relist = (next: SourceFile[]) => { setSources(next); build(next); setStatus(''); setStatusTone('info'); };
@@ -465,7 +606,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const dirty = hasUnsavedEdits(signature, savedSignature);
     useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
-    const toggle = (key: string) => setSelected(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
+    const toggle = (key: string) => { setSelected(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]); setAnchor(key); };
     const selectedPages = order.filter(p => selected.includes(p.key)).map(p => p.page);
     const active = order.find(p => p.key === current) || order[0];
     const outputCount = kind === 'select' ? selected.length : kind === 'delete' ? order.length - selected.length : order.length;
@@ -546,7 +687,6 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     // kutusu da çizilmez. Eskiden kullanıcı önce kutuyu işaretlemek, sonra
     // yön seçmek zorundaydı ve birden fazla kutu işaretliyse hepsi dönüyordu.
     const pageSelection = ['select', 'delete'].includes(kind);
-    const pickVerb = kind === 'delete' ? 'Çıkar' : 'Dahil et';
     const surfaces = workspaceSurfaces(docState, order.length);
     const cannotSave = busy || !sources.length || (sources.some(s => s.is_signed) && !approved) ||
         (['select', 'delete'].includes(kind) && !selected.length) || outputCount === 0 || (kind === 'rotate' && !Object.values(rotations).some(Boolean)) ||
@@ -612,7 +752,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         {/* Barın ortası: açık belgenin ölçüsü. "8 sayfa · 2 işaretli" —
             kullanıcının "şu an neye bakıyorum" sorusunun ikinci yarısı. */}
         {order.length > 0 && <ToolbarStatus>
-            {order.length} sayfa{pageSelection && selected.length > 0 ? ` · ${selected.length} işaretli` : ''}
+            {order.length} sayfa{pageSelection && selected.length > 0 ? ` · ${selected.length} işaretli` : ''}{kind === 'reorder' && selected.length > 0 ? ` · ${selected.length} seçili` : ''}
         </ToolbarStatus>}
 
         {surfaces.tools && <ToolbarActions>
@@ -678,33 +818,16 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         {/* Şerit yalnız gösterilecek sayfa varken açılır; belge yokken 132 px'lik
             boş bir bant çizmez ve hata/boş durum tam genişliği alır. */}
         <div className="pdf-workspace-layout" data-pages={surfaces.strip}>
-            {surfaces.strip && <aside className="thumbnail-list" aria-label="Sayfa önizlemeleri">{order.map((item, index) => <div key={item.key} className={`thumbnail ${item.key === current ? 'current' : ''} ${selected.includes(item.key) ? 'selected' : ''} ${kind === 'delete' && selected.includes(item.key) ? 'removed' : ''}`}>
-                {/* Önizleme motoru PDF SAYFASI çizer. Görsel kaynaklarda (Görseller
-                    → PDF aracı) bu çağrı zorunlu olarak düşüyor ve her küçük resim
-                    "önizleme oluşturulamadı" hatası gösteriyordu: araç çalışıyor
-                    ama tamamen bozukmuş gibi görünüyordu. Görselde hata yerine
-                    dosyanın kendisi söylenir. */}
-                <button className="thumbnail-image-button" aria-label={`${item.source.file_name} sayfa ${item.page} görüntüle`} onClick={() => setCurrent(item.key)}>
-                    {item.source.format === 'pdf'
-                        ? <Preview item={item} rotation={rotations[item.key] || 0}/>
-                        : <span className="thumbnail-placeholder">{item.source.file_name}</span>}
-                </button>
-                <span className="thumbnail-no">{index + 1}<span className="sr-only">. çıktı sırası · Kaynak s. {item.page}</span></span>
-                {/* Erişilebilir ad sayfayı TANIMLAR. Eskiden ad yalnız görünen
-                    sözcüktü ("Dahil et"); 30 sayfalık bir belgede ekran okuyucu
-                    30 kez aynı şeyi söylüyor, kullanıcı hangi kutuyu
-                    işaretlediğini ayırt edemiyordu — yanlış sayfayı çıkarma
-                    riski. Görünen sözcük adın İÇİNDE kalır (WCAG 2.5.3). */}
-                {pageSelection && <label className="thumbnail-pick"><input type="checkbox" aria-label={`${index + 1}. sayfa (kaynak s. ${item.page}) — ${pickVerb}`} checked={selected.includes(item.key)} onChange={() => toggle(item.key)}/>{pickVerb}</label>}
-                {kind === 'reorder' && <div className="thumbnail-move">
-                    <IconButton label={`${index + 1}. sayfayı yukarı taşı (kaynak s. ${item.page})`} disabled={index === 0 || busy} onClick={() => shiftPage(index, -1)}>
-                        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </IconButton>
-                    <IconButton label={`${index + 1}. sayfayı aşağı taşı (kaynak s. ${item.page})`} disabled={index === order.length - 1 || busy} onClick={() => shiftPage(index, 1)}>
-                        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.5V12m-3.5-3.5L8 12l3.5-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </IconButton>
-                </div>}
-            </div>)}</aside>}
+            {surfaces.strip && <aside className="thumbnail-list" aria-label="Sayfa önizlemeleri" ref={stripRef} data-reorder={kind === 'reorder' || undefined} data-dragging={strip.drag ? '' : undefined} onClickCapture={strip.onClickCapture}>
+                <div role="list">{order.map((item, index) => {
+                    const gap = strip.drag?.gap;
+                    const drop = gap === index ? 'before' : gap === order.length && index === order.length - 1 ? 'after' : undefined;
+                    return <PageThumbnail key={item.key} item={item} index={index} count={order.length} kind={kind} isCurrent={item.key === current} isSelected={selected.includes(item.key)}
+                        rotation={rotations[item.key] || 0} busy={busy} drop={gap == null ? undefined : drop} dragging={strip.drag?.keys.includes(item.key)}
+                        onView={event => viewPage(event, item.key)} onToggle={() => toggle(item.key)} onShift={delta => shiftFromStrip(item, index, delta)}
+                        onPointerDown={event => strip.onPointerDown(event, item.key)}/>;
+                })}</div>
+            </aside>}
 
             <aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">
                 {/* Durum satırı HER durumda çizilir. Eskiden yalnız
@@ -725,11 +848,26 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     {kind === 'rotate' && <div className="row">
                         <Button className="btn-sm" disabled={busy || !active} onClick={() => active && setRotations(previous => rotatePages(previous, [active.key], 90))} title="Önizlenen sayfayı 90° döndür" aria-label={active ? `${order.findIndex(p => p.key === active.key) + 1}. sayfayı 90° döndür` : 'Döndür'}>↷ Döndür</Button>
                     </div>}
+                    {/* Sırala: seçili sayfaları taşıyan görünür denetimler — fare
+                        gerekmez. Seçim şeritteki Seç kutularıyla ya da tıklamayla
+                        (Shift aralık, ⌘/Ctrl ekle-çıkar) yapılır. Kullanılamayan
+                        düğme `disabled` değil `aria-disabled`: odakta kalır.
+                        Yoksa "Başa"ya basan klavye kullanıcısı, sayfalar başa
+                        varınca sönen düğmeyle birlikte odağını kaybederdi. */}
+                    {kind === 'reorder' && <div className="row reorder-controls">
+                        <div className="row" role="group" aria-label="Seçili sayfaları taşı">
+                            <Button className="btn-sm" aria-disabled={!canMove('start') || undefined} title="Seçili sayfaları başa taşı" onClick={() => moveSelection('start')}>Başa</Button>
+                            <Button className="btn-sm" aria-disabled={!canMove('up') || undefined} title="Seçili sayfaları birer sıra yukarı taşı" onClick={() => moveSelection('up')}>Yukarı</Button>
+                            <Button className="btn-sm" aria-disabled={!canMove('down') || undefined} title="Seçili sayfaları birer sıra aşağı taşı" onClick={() => moveSelection('down')}>Aşağı</Button>
+                            <Button className="btn-sm" aria-disabled={!canMove('end') || undefined} title="Seçili sayfaları sona taşı" onClick={() => moveSelection('end')}>Sona</Button>
+                        </div>
+                        <Button className="btn-sm" variant="quiet" aria-disabled={busy || !history.length || undefined} title={`Son taşımayı geri al  ${shortcutLabel('Z')}`} onClick={undo}>Geri Al</Button>
+                    </div>}
                     <div className="toolbar-spacer"/>
                     <label className="zoom">Yakınlaştır<select value={zoom} onChange={e => setZoom(e.target.value.startsWith('fit-') ? e.target.value as PreviewMode : Number(e.target.value))}><option value="fit-page">Sayfaya sığdır</option><option value="fit-width">Genişliğe sığdır</option>{[75, 100, 125, 150, 200].map(z => <option key={z} value={z}>{z}%</option>)}</select></label>
                 </div>
                 <div className="pdf-canvas">
-                    <p className="page-line">{active?.source.file_name} · Kaynak sayfa {active?.page} / {active?.source.page_count}{kind === 'delete' && selected.includes(active?.key) ? ' — Çıktıdan çıkarılacak' : ''}{kind === 'rotate' ? ` · Dönüş: ${rotations[active?.key] || 0}°` : ''}{selected.includes(active?.key) ? ' · İşaretli' : ''}</p>
+                    <p className="page-line">{active?.source.file_name} · Kaynak sayfa {active?.page} / {active?.source.page_count}{kind === 'delete' && selected.includes(active?.key) ? ' — Çıktıdan çıkarılacak' : ''}{kind === 'rotate' ? ` · Dönüş: ${rotations[active?.key] || 0}°` : ''}{pageSelection && selected.includes(active?.key) ? ' · İşaretli' : ''}{kind === 'reorder' && selected.includes(active?.key) ? ' · Seçili' : ''}</p>
                     <div className="pdf-page-viewport" data-fit={typeof zoom === 'string' ? '' : undefined} tabIndex={0} role="region" aria-label="Kaydırılabilir PDF sayfası">{active && <Preview key={active.key} item={active} large mode={zoom} rotation={rotations[active.key] || 0}/>}</div>
                     <p className="preview-note">Kaynak sayfanın önizlemesi. Yeni PDF’nin her sayfasının sağ alt köşesine, sayfa boyutu değişmeden, saydam GölgeDosya işareti eklenir.</p>
                 </div>

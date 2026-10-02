@@ -106,7 +106,47 @@
 }
 .pdf-root .thumbnail-pick input { width: 12px; height: 12px; margin: 0; }
 .pdf-root .thumbnail.selected .thumbnail-pick { color: var(--text-secondary); }
-.pdf-root .thumbnail-move { display: flex; justify-content: center; }
+.pdf-root .thumbnail-move { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; }
+/* Dar şeritte ya da büyük yazıda satır, Seç kutusu ile ↑/↓ çifti ARASINDAN
+   kırılır; oklar birbirinden ayrılmaz. */
+.pdf-root .thumbnail-move .thumbnail-pick { padding-top: 0; }
+.pdf-root .thumbnail-step { display: flex; flex: none; }
+
+/* Sırala: sürükleyerek sıralama. Gölge kart ya da kayan animasyon yok —
+   sayfalar yerinde kalır, nereye ineceklerini iki sayfa arasındaki 2 px'lik
+   vurgu çizgisi söyler. Sürüklenen sayfalar soluklaşır. Hareket yok, dolayısıyla
+   azaltılmış hareket tercihinde de aynı görünür. */
+.pdf-root .thumbnail-list[data-reorder] .thumbnail { -webkit-user-select: none; user-select: none; }
+.pdf-root .thumbnail-list[data-reorder] .thumbnail-image-button { cursor: grab; }
+.pdf-root .thumbnail-list[data-dragging] * { cursor: grabbing; }
+.pdf-root .thumbnail[data-dragging] { opacity: 0.5; }
+.pdf-root .thumbnail[data-drop]::after {
+  content: "";
+  position: absolute;
+  right: var(--space-1);
+  left: var(--space-1);
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
+}
+/* Çizgi iki sayfanın arasındaki boşluğun (margin-bottom: --space-2) ortasında. */
+.pdf-root .thumbnail[data-drop="before"]::after { top: calc(var(--space-2) / -2 - 1px); }
+.pdf-root .thumbnail[data-drop="after"]::after { bottom: calc(var(--space-2) / -2 - 1px); }
+/* Sırala'nın taşıma düğmeleri kullanılamazken odakta kalır (aria-disabled);
+   görünüşü sönük düğmeninkiyle aynıdır, üzerine gelince de değişmez. */
+.pdf-root .reorder-controls .btn[aria-disabled="true"],
+.pdf-root .reorder-controls .btn[aria-disabled="true"]:hover {
+  color: var(--text-muted);
+  background: var(--surface-hover);
+  cursor: default;
+}
+.pdf-root .thumbnail-step .icon-btn[aria-disabled="true"],
+.pdf-root .thumbnail-step .icon-btn[aria-disabled="true"]:hover {
+  color: var(--text-muted);
+  background: none;
+  cursor: default;
+}
 
 /* -- Belge alanı ---------------------------------------------------------- */
 .pdf-root .pdf-preview-panel {

@@ -6,7 +6,9 @@ import { useEffect } from "react";
  * Yalnız sistemin zaten öğrettiği iki tanesi bağlanır: ⌘O ve ⌘,. Bunlar her
  * macOS uygulamasında aynı anlama gelir, dolayısıyla öğrenilmeleri gerekmez.
  * Onlarca kısayoldan oluşan bir katalog üretilmedi — keşfedilemeyen kısayol
- * profesyonel kullanıcıya da yardım etmez.
+ * profesyonel kullanıcıya da yardım etmez. Aynı ölçüyle tek bir yerel
+ * kısayol var: Düzenle'nin Sırala aracında ⌘Z son taşımayı geri alır;
+ * sistemin öğrettiği anlamdadır ve Geri Al düğmesinin ipucunda yazılıdır.
  *
  * Metin girişi sırasında devre dışı: bir alana yazarken ⌘O basmak belge
  * seçicisini açmamalı. Sheet açıkken de devre dışı — odak tuzağının içinden
