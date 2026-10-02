@@ -209,6 +209,86 @@ describe("yalnız boşluk farkı değişiklik sayılmaz", () => {
   });
 });
 
+// Paragraf tutarla ya da tarihle başlayıp sayı sonraki sözcüğe bitişik
+// yazılınca ("12.500TL ...", "01.10.2026fesih ...") yapısal önek deseni
+// "12." ya da "01.10." kısmını paragraf numarası sanıyordu. Özet tutarı
+// "500 TL → 750 TL" diye yazıyor, yalnız boşluğu farklı yazımlar değişiklik
+// çıkıyor, araya numaralı paragraf eklenince de "18.500TL → 19.500TL" numara
+// kayması sayılıp satır "değişmedi" görünüyordu.
+describe("paragraf başındaki tutar ve tarih numara sanılmaz", () => {
+  const summaries = (comparison: ComparisonResult) => comparison.changes.flatMap((change) => change.summary);
+
+  it.each([
+    ["18.500 TL kira bedeli her ay ödenecektir.", "18.500TL kira bedeli her ay ödenecektir."],
+    ["12.500,00 TL alacak tahsil edilmiştir.", "12.500,00TL alacak tahsil edilmiştir."],
+    ["01.10.2026 tarihinde fesih bildirilmiştir.", "01.10.2026tarihinde fesih bildirilmiştir."],
+  ])("yalnız boşluk farkı: %s ↔ %s", (first, second) => {
+    for (const [base, revised] of [[first, second], [second, first]]) {
+      const comparison = compareParagraphs([base], [revised]);
+      expect(comparison.rows.map((row) => row.kind)).toEqual(["unchanged"]);
+      expect(comparison.changes).toEqual([]);
+      expect(paneRows(comparison, "base")).toEqual([base]);
+      expect(paneRows(comparison, "revised")).toEqual([revised]);
+    }
+  });
+
+  it("bitişik tutar özette tam yazılır: 12.500TL → 12.750TL", () => {
+    const comparison = compareParagraphs(
+      ["12.500TL tutarındaki alacak tahsil edilmiştir."],
+      ["12.750TL tutarındaki alacak tahsil edilmiştir."],
+    );
+    // Özetin tutar yazımı motorun sayı adayı yolundandır (gövde içindeki
+    // "Alacak 12.500TL ..." ile aynı); önemli olan tutarın TAMAMI olması.
+    expect(summaries(comparison)).toEqual(["“12.500 TL” → “12.750 TL”"]);
+    expect(comparison.changes[0].location ?? "").not.toMatch(/Madde 12/u);
+    // Panel tutarın tamamını işaretler; bitişik "TL" kaynaktaki gibi yapışık kalır.
+    expect(paneHtml(comparison, "base")).toContain('<del class="fragment removed">12.500</del>');
+    expect(paneHtml(comparison, "revised")).toContain('<ins class="fragment added">12.750</ins>');
+    expect(paneRows(comparison, "revised")).toEqual(["12.750TL tutarındaki alacak tahsil edilmiştir."]);
+  });
+
+  it("tutar değişikliği paragraf numarası değişikliği diye yazılmaz", () => {
+    const comparison = compareParagraphs(
+      ["18.500TL kira bedeli her ay ödenecektir."],
+      ["19.500TL kira bedeli her ay ödenecektir."],
+    );
+    expect(summaries(comparison)).toEqual(["“18.500 TL” → “19.500 TL”"]);
+    expect(comparison.changes[0].location ?? "").not.toMatch(/Madde 1[89]/u);
+  });
+
+  it("paragraf başındaki bitişik tarih özette tam yazılır", () => {
+    const comparison = compareParagraphs(
+      ["01.10.2026fesih bildirimi yapılmıştır."],
+      ["02.10.2026fesih bildirimi yapılmıştır."],
+    );
+    expect(summaries(comparison)).toEqual(["“01.10.2026” → “02.10.2026”"]);
+  });
+
+  // Araya numaralı paragraf eklenince sonraki numaralar bir kayar; motor bu
+  // kaymayı değişiklik saymaz. "18." ve "19." numara sanılınca tutar
+  // değişikliği bu kaymaya karışıyor ve hiç gösterilmiyordu.
+  it("araya numaralı paragraf eklenince tutar değişikliği kaybolmaz", () => {
+    const comparison = compareParagraphs(
+      ["Taraflar aşağıda belirtilmiştir ve sözleşmeyi imzalamıştır.", "18.500TL kira bedeli her ay peşin olarak ödenecektir."],
+      [
+        "Taraflar aşağıda belirtilmiştir ve sözleşmeyi imzalamıştır.",
+        "1. Kiracı depozito olarak iki aylık bedel yatırmıştır.",
+        "19.500TL kira bedeli her ay peşin olarak ödenecektir.",
+      ],
+    );
+    expect(comparison.rows.map((row) => row.kind)).toEqual(["unchanged", "added", "modified"]);
+    expect(summaries(comparison)).toContain("“18.500 TL” → “19.500 TL”");
+  });
+
+  it.each([
+    ["1.Kira bedeli 18.000 TL'dir.", "2.Kira bedeli 18.000 TL'dir.", "Paragraf numarası: 1 → 2"],
+    ["1) Kira bedeli 18.000 TL'dir.", "2) Kira bedeli 18.000 TL'dir.", "Paragraf numarası: 1 → 2"],
+    ["Madde 5 - Kira bedeli 18.000 TL'dir.", "Madde 6 - Kira bedeli 18.000 TL'dir.", "Madde numarası: 5 → 6"],
+  ])("gerçek numara değişikliği yine numara diye yazılır: %s", (base, revised, summary) => {
+    expect(summaries(compareParagraphs([base], [revised]))).toEqual([summary]);
+  });
+});
+
 describe("gerçek DOCX ve UDF çifti", () => {
   const browserDomParser = globalThis.DOMParser;
   beforeAll(() => {

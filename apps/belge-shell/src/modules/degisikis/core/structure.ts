@@ -10,10 +10,18 @@ export interface StructuralText {
   };
 }
 
-const ARTICLE_PREFIX = /^\s*((?:geçici\s+)?madde|madd[eıi]|article)\s*[-–—.]?\s*([\dA-ZÇĞİÖŞÜ]+(?:[./-][\dA-ZÇĞİÖŞÜ]+)*)(?:\s*[-–—.:)]\s*|\s+|$)/iu;
-const NUMBERED_PREFIX = /^\s*(\d+(?:[./]\d+)*)\s*([.)]|[-–—])\s*/u;
+// Önekin ayracından HEMEN sonra rakam geliyorsa ayraç sayının içindedir:
+// binlik ("12.500TL"), ondalık ("1.250,50"), tarih ("01.10.2026fesih",
+// "01-10-2026"), aralık ("2020-2021", "5-10 gün") ya da alt madde atfı
+// ("Madde 5.1'de"). Bu kontrol olmadan desen "12.500"den sonra ayraç
+// bulamayınca geri sarıyor, "12." numara, "500TL ..." gövde oluyordu; özet
+// tutarı "500 TL → 750 TL" diye yazıyordu. Ayraçtan sonra boşluk varsa ("1. 2026
+// yılı ...", Word'ün görünür liste etiketi) numara okuması kalır. ")" sayı
+// içinde geçmediği için bu kuralın dışındadır.
+const ARTICLE_PREFIX = /^\s*((?:geçici\s+)?madde|madd[eıi]|article)\s*[-–—.]?\s*([\dA-ZÇĞİÖŞÜ]+(?:[./-][\dA-ZÇĞİÖŞÜ]+)*)(?:\s*[-–—.:)](?!\d)\s*|\s+|$)/iu;
+const NUMBERED_PREFIX = /^\s*(\d+(?:[./]\d+)*)\s*(\)|[.\-–—](?!\d))\s*/u;
 const MULTILEVEL_CLAUSE_PREFIX = /^\s*(\d+(?:[./]\d+)+)(?:\s*([.)])?\s+)(?=\p{L})/u;
-const APPENDIX_HEADING = /^\s*EK\s*[-–—.]?\s*(\d+)\b(?:\s*[-–—.:]\s*(.*)|\s+(.*))?$/iu;
+const APPENDIX_HEADING = /^\s*EK\s*[-–—.]?\s*(\d+)\b(?:\s*[-–—.:](?!\d)\s*(.*)|\s+(.*))?$/iu;
 const APPENDIX_NUMBERED_SECTION = /^\s*(\d{1,2})[.)]\s*(\p{L}[\s\S]*)$/u;
 const APPENDIX_LETTERED_SECTION = /^\s*([A-ZÇĞİÖŞÜ])[.)]\s*(\p{L}[\s\S]*)$/u;
 
