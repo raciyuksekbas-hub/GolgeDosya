@@ -546,7 +546,7 @@ export async function v032Saha(ctx) {
   };
   const openPdf = async (path, pages) => {
     await openFrom("Düzenle", [path], basename(path));
-    await waitFor(`document.querySelectorAll('.thumbnail-list [role="list"] > .thumbnail').length === ${pages}
+    await waitFor(`document.querySelectorAll('.thumbnail-list .thumbnail').length === ${pages}
       && !!document.querySelector('.pdf-page-viewport .pdf-page-surface img, .pdf-preview-panel [data-tone="error"]')`, 60_000, `Düzenle: ${basename(path)}`);
     await sleep(500);
   };
@@ -583,11 +583,14 @@ export async function v032Saha(ctx) {
     }
     return { clicked: true, dialog, status };
   };
-  /** Şeritteki sayfalar: kaynak sayfa no, merkez, kutu ve Seç durumu (CSS px). */
+  /**
+   * Şeritteki sayfalar: kaynak sayfa no, merkez, kutu ve Seç durumu (CSS px).
+   * Seçici iki sürümde de tutar (v0.3.1'de `[role=list]` sarmalayıcısı yok).
+   */
   const strip = () => eval_(`(() => {
     const list = document.querySelector('.thumbnail-list');
     const r = list?.getBoundingClientRect();
-    const items = [...document.querySelectorAll('.thumbnail-list [role="list"] > .thumbnail')].map((t) => {
+    const items = [...document.querySelectorAll('.thumbnail-list .thumbnail')].map((t) => {
       const b = t.querySelector('.thumbnail-image-button'), br = b.getBoundingClientRect(), tr = t.getBoundingClientRect();
       const page = Number((/ sayfa (\\d+) görüntüle$/.exec(b.getAttribute('aria-label') ?? '') ?? [])[1]);
       return { page, x: br.left + br.width / 2, y: br.top + br.height / 2, mid: tr.top + tr.height / 2, top: tr.top, bottom: tr.bottom,
@@ -793,7 +796,7 @@ export async function v032Saha(ctx) {
     await sleep(600);
     await ctx.mode("Düzenle");
     if (!(await clickText(".file-row", basename(path)))) throw new Error("son belgelerde satır yok");
-    await waitFor("document.querySelectorAll('.thumbnail-list [role=\"list\"] > .thumbnail').length === 6", 60_000, "Düzenle: altı sayfa");
+    await waitFor("document.querySelectorAll('.thumbnail-list .thumbnail').length === 6", 60_000, "Düzenle: altı sayfa");
     await sleep(1000);
     const fresh = await measure();
     shot("v032-duzenle-1093x614-125");
@@ -819,12 +822,12 @@ export async function v032Saha(ctx) {
     const tool = await eval_(`[...document.querySelectorAll('button.tool[aria-pressed="true"]')].map((b) => b.textContent.trim())`);
     if (!(await clickText("button", "Birleştirilecek Belge Ekle", true))) throw new Error("'Birleştirilecek Belge Ekle' düğmesi yok");
     const dialog = nativeLive("filedialog", { Path: b });
-    await waitFor("document.querySelectorAll('.source-list li').length >= 2 || document.querySelectorAll('.thumbnail-list [role=\"list\"] > .thumbnail').length !== 2", 30_000, "kaynak listesi değişti")
+    await waitFor("document.querySelectorAll('.source-list li').length >= 2 || document.querySelectorAll('.thumbnail-list .thumbnail').length !== 2", 30_000, "kaynak listesi değişti")
       .catch(() => {});
     await sleep(800);
     const list = await eval_(`({ sources: [...document.querySelectorAll('.source-list li > span')].map((s) => s.textContent),
       bar: [...document.querySelectorAll('.doc-chip-name')].map((e) => e.textContent),
-      pages: document.querySelectorAll('.thumbnail-list [role="list"] > .thumbnail').length })`);
+      pages: document.querySelectorAll('.thumbnail-list .thumbnail').length })`);
     shot("v032-birlestir-ekle");
     check("a05", "Birleştir'de eklenen PDF açık belgenin ardına gelir: [A, B], 5 sayfa",
       list.sources.length === 2 && list.sources[0].startsWith(basename(a)) && list.sources[1].startsWith(basename(b)) && list.pages === 5,
@@ -867,7 +870,9 @@ export async function v032Saha(ctx) {
       { arac: tool, surukleme: moved, sira: after1, genislikler: w1, ...saved1 });
     await ctrlZ();
     const undo1 = await order();
-    check("sırala", "Ctrl+Z son taşımayı geri alır: [1,2,3,4]", JSON.stringify(undo1) === JSON.stringify([1, 2, 3, 4]), { sira: undo1 });
+    // Geri alınacak bir taşıma olmadan [1,2,3,4] boş bir başarıdır: önceki sıra da ölçülür.
+    check("sırala", "Ctrl+Z son taşımayı geri alır: [2,3,1,4] → [1,2,3,4]",
+      JSON.stringify(after1) === JSON.stringify([2, 3, 1, 4]) && JSON.stringify(undo1) === JSON.stringify([1, 2, 3, 4]), { once: after1, sonra: undo1 });
 
     // (2) İki bitişik olmayan sayfa: 2'ye tıkla, 4'e Ctrl+tıkla, 4'ü en başa sürükle.
     await begin();
@@ -889,13 +894,14 @@ export async function v032Saha(ctx) {
       { secili: picked, surukleme: moved2, sira: after2, genislikler: w2, ...saved2 });
     await ctrlZ();
     const undo2 = await order();
-    check("sırala", "Ctrl+Z iki sayfalık taşımayı geri alır: [1,2,3,4]", JSON.stringify(undo2) === JSON.stringify([1, 2, 3, 4]), { sira: undo2 });
+    check("sırala", "Ctrl+Z iki sayfalık taşımayı geri alır: [2,4,1,3] → [1,2,3,4]",
+      JSON.stringify(after2) === JSON.stringify([2, 4, 1, 3]) && JSON.stringify(undo2) === JSON.stringify([1, 2, 3, 4]), { once: after2, sonra: undo2 });
 
     // (3) Fare gerekmeyen yol: Seç kutusu + Başa + Geri Al.
     await begin();
     s = await strip();
     await click(s.items[2].x, s.items[2].y);
-    await eval_(`(() => { const box = document.querySelectorAll('.thumbnail-list [role="list"] > .thumbnail')[0].querySelector('.thumbnail-pick input'); if (box && !box.checked) box.click(); return !!box; })()`);
+    await eval_(`(() => { const box = document.querySelectorAll('.thumbnail-list .thumbnail')[0].querySelector('.thumbnail-pick input'); if (box && !box.checked) box.click(); return !!box; })()`);
     await sleep(300);
     const chosen = (await strip()).items.filter((t) => t.checked).map((t) => t.page);
     await clickText("button", "Başa", true);
@@ -1185,7 +1191,10 @@ export async function v032Saha(ctx) {
     try { native("dialog-close"); } catch { /* yardımcı yoksa */ }
     await clearEmulation();
   };
+  // `ctx.only`: yalnız adı bu düzenli ifadeye uyan senaryolar (hata ayıklama).
+  const only = ctx.only ? new RegExp(ctx.only, "u") : null;
   for (const [name, budget, scenario, height = 800] of scenarios) {
+    if (only && !only.test(name)) continue;
     const token = { dead: false };
     let timer;
     const job = scope.run(token, async () => {
