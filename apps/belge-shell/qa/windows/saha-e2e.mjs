@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { deflateSync } from "node:zlib";
 import { attach } from "./cdp.mjs";
 import { previewStability } from "./preview-stability.mjs";
+import { v032Saha } from "./v032-saha.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(here, "../../../..");
@@ -674,6 +675,10 @@ async function main() {
     // En sonda: son belgelere kendi PDF'lerini ekler ve sayfayı yeniden yükler;
     // yukarıdaki ekran görüntülerini değiştirmemeli.
     ["önizleme kararlılığı", () => previewStability({ cdp, invoke, native, mode, clickText, check, observe, sleep, dir: WORK, shot })],
+    // v0.3.2 saha düzeltmeleri: her senaryo sayfayı yeniden yükleyerek
+    // başlar, kendi fikstürünü yazar ve süre sınırlıdır; en sonda durur ki
+    // yukarıdaki ölçümlere emülasyon, açık pencere ya da Gezgin bırakmasın.
+    ["v0.3.2 saha", () => v032Saha({ cdp, invoke, native, mode, clickText, check, observe, sleep, dir: WORK, shot, shots: SHOTS })],
   ];
   for (const [name, step] of steps) {
     try {
