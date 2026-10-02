@@ -12,7 +12,9 @@
 //! dik ve tam BİR tanedir. Sayım üretim kodundan bağımsızdır.
 use lopdf::content::Content;
 use lopdf::{dictionary, Document, Object, ObjectId, Stream};
-use pdf_core::pdf::stamp::finalize_pdf_output;
+use pdf_core::pdf::stamp::{
+    apply_stamp_to_document, apply_text_marks, finalize_pdf_output, StampConfig, StampPosition,
+};
 
 const BRAND_FORM: &[u8] = b"q /BrandAlpha gs /Mark Do Q";
 /// Standart sayfada işaret genişliği ve kenar boşluğu (pt).
@@ -552,6 +554,276 @@ fn reprocessing_an_output_is_idempotent() {
         }
         assert_eq!(brand_forms(b).len(), 1, "marka formu çoğaldı");
     }
+}
+
+// ------------------------------------------------- kullanıcı işaretleri
+
+/// Helvetica-Bold'un FontBBox'ı, em cinsinden: hiçbir glifin mürekkebi bu
+/// kutudan taşmaz. Metin kutusu bununla ve harf başına 1 em genişlikle (her
+/// glifin ilerlemesinden büyük) hesaplanır; ölçüm gerçeğinden GENİŞtir, bu
+/// yüzden "kesişmiyor" sonucu güvenlidir.
+const HB_DESCENT: f32 = 0.228;
+const HB_ASCENT: f32 = 0.962;
+const HB_LEFT: f32 = 0.170;
+
+/// `m` dönüşümünü `ctm`'nin önüne ekler (`m` sonra `ctm`).
+fn then(m: &[f32], ctm: [f32; 6]) -> [f32; 6] {
+    [
+        m[0] * ctm[0] + m[1] * ctm[2],
+        m[0] * ctm[1] + m[1] * ctm[3],
+        m[2] * ctm[0] + m[3] * ctm[2],
+        m[2] * ctm[1] + m[3] * ctm[3],
+        m[4] * ctm[0] + m[5] * ctm[2] + ctm[4],
+        m[4] * ctm[1] + m[5] * ctm[3] + ctm[5],
+    ]
+}
+
+/// `ctm` altındaki `[x0 y0 x1 y1]` kutusunun görüntülenen sayfadaki kutusu.
+fn display_rect(ctm: [f32; 6], r: [f32; 4], v: [f32; 4], rot: i64) -> [f32; 4] {
+    let pts = [(r[0], r[1]), (r[2], r[1]), (r[0], r[3]), (r[2], r[3])].map(|(x, y)| {
+        let user = (
+            ctm[0] * x + ctm[2] * y + ctm[4],
+            ctm[1] * x + ctm[3] * y + ctm[5],
+        );
+        to_display(user, v, rot)
+    });
+    [
+        pts.iter().map(|p| p.0).fold(f32::MAX, f32::min),
+        pts.iter().map(|p| p.1).fold(f32::MAX, f32::min),
+        pts.iter().map(|p| p.0).fold(f32::MIN, f32::max),
+        pts.iter().map(|p| p.1).fold(f32::MIN, f32::max),
+    ]
+}
+
+/// Kullanıcının istediği işaretlerin (Ek rozeti, filigran, sayfa numarası)
+/// kutuları, görüntülenen sayfada: rozet dikdörtgeni ve metin. Damga kendi
+/// başına bir akıştır (`q cm … Q`), fontu `GolgeDosyaStamp` adıyla bağlıdır.
+fn user_marks(doc: &Document, page: ObjectId) -> Vec<[f32; 4]> {
+    let v = visible(doc, page);
+    let rot = rotation(doc, page);
+    let mut out = Vec::new();
+    for c in contents(doc, page) {
+        let ops = Content::decode(&c).unwrap().operations;
+        let stamp = ops.iter().any(|o| {
+            o.operator == "Tf"
+                && o.operands[0]
+                    .as_name()
+                    .is_ok_and(|n| n.starts_with(b"GolgeDosyaStamp"))
+        });
+        if !stamp {
+            continue;
+        }
+        let mut ctm = [1f32, 0., 0., 1., 0., 0.];
+        let (mut size, mut origin) = (0f32, (0f32, 0f32));
+        for op in &ops {
+            let nums = || -> Vec<f32> { op.operands.iter().map(number).collect() };
+            match op.operator.as_str() {
+                "cm" => ctm = then(&nums(), ctm),
+                "Tf" => size = number(&op.operands[1]),
+                "Td" => origin = (nums()[0], nums()[1]),
+                "re" => {
+                    let r = nums();
+                    out.push(display_rect(
+                        ctm,
+                        [r[0], r[1], r[0] + r[2], r[1] + r[3]],
+                        v,
+                        rot,
+                    ));
+                }
+                "Tj" => {
+                    let n = op.operands[0].as_str().unwrap().len() as f32;
+                    let (x, y) = origin;
+                    let text = [
+                        x - HB_LEFT * size,
+                        y - HB_DESCENT * size,
+                        x + n * size,
+                        y + HB_ASCENT * size,
+                    ];
+                    out.push(display_rect(ctm, text, v, rot));
+                }
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+fn overlaps(a: [f32; 4], b: [f32; 4]) -> bool {
+    a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]
+}
+
+/// İşaret tek, görünür kutunun içinde, dik, sağ alt çeyrekte ve okunur;
+/// marka, kullanıcı işaretinin eklediği payı (sayfanın kendi geometrisi
+/// olmuştur) değiştirmez. Dönüş: işaretin bindiği kullanıcı işaretleri, her
+/// biri bir satır (bütün durumlar tek seferde raporlansın diye).
+fn brand_collisions(stamped: &Document, after: &Document, label: &str) -> Vec<String> {
+    let mut collisions = Vec::new();
+    let pages = stamped
+        .get_pages()
+        .into_values()
+        .zip(after.get_pages().into_values());
+    for (n, (b, a)) in pages.enumerate() {
+        let at = format!("{label}, sayfa {}", n + 1);
+        assert_eq!(
+            geometry(stamped, b),
+            geometry(after, a),
+            "{at}: marka geometriyi değiştirdi"
+        );
+        let users = user_marks(after, a);
+        assert!(!users.is_empty(), "{at}: kullanıcı işareti bulunamadı");
+        let m = marks(after, a);
+        assert_eq!(m.len(), 1, "{at}: {} işaret", m.len());
+        let m = &m[0];
+        let (w, h) = display_size(after, a);
+        assert!(
+            m.rect[0] >= -0.01
+                && m.rect[1] >= -0.01
+                && m.rect[2] <= w + 0.01
+                && m.rect[3] <= h + 0.01,
+            "{at}: işaret görünür kutunun dışında: {:?} / {w}x{h}",
+            m.rect
+        );
+        assert!(
+            (m.axis.0 - 1.).abs() < 1e-4 && m.axis.1.abs() < 1e-4,
+            "{at}: işaret dik değil (eksen {:?})",
+            m.axis
+        );
+        assert!(
+            m.rect[0] + m.rect[2] > w && m.rect[1] + m.rect[3] < h,
+            "{at}: işaret sağ alt çeyrekte değil: {:?} / {w}x{h}",
+            m.rect
+        );
+        assert!(
+            m.width >= 0.08 * w.min(h),
+            "{at}: işaret okunmaz: {} pt",
+            m.width
+        );
+        for u in users.iter().filter(|u| overlaps(m.rect, **u)) {
+            collisions.push(format!(
+                "{at}: GölgeDosya işareti {:?} kullanıcı işaretine {u:?} biniyor",
+                m.rect
+            ));
+        }
+    }
+    collisions
+}
+
+fn ek_badge(font_size: f32, margin_pt: f32) -> StampConfig {
+    StampConfig {
+        enabled: true,
+        position: StampPosition::BottomRight,
+        font_size,
+        margin_pt,
+        show_badge: true,
+    }
+}
+
+type UserTool = (&'static str, fn(&mut Document));
+
+/// Alt kenara işaret basan kullanıcı araçları. Her biri kendi 60 pt'lik
+/// payını ekler (ürün kararı, değişmez).
+const BOTTOM_USER_TOOLS: [UserTool; 5] = [
+    ("sayfa numarası", |d| {
+        apply_text_marks(d, None, 12).unwrap()
+    }),
+    ("dört haneli sayfa numarası", |d| {
+        apply_text_marks(d, None, 1234).unwrap()
+    }),
+    ("filigran", |d| {
+        apply_text_marks(d, Some("GİZLİDİR - ÇOĞALTILAMAZ"), 1).unwrap()
+    }),
+    ("sağ alt Ek rozeti", |d| {
+        apply_stamp_to_document(d, 1, 1, &ek_badge(10., 20.)).unwrap()
+    }),
+    ("sağ alt Ek rozeti, 16 punto, 10 pt kenar", |d| {
+        apply_stamp_to_document(d, 12, 345, &ek_badge(16., 10.)).unwrap()
+    }),
+];
+
+/// Saha bulgusu: Sayfa numarası, filigran ve sağ alt Ek rozeti aynı çıktıda
+/// GölgeDosya işaretiyle buluşunca, Letter'dan büyük sayfada işaret numaranın
+/// üstüne biniyordu (A3'te "12" işaretin tam içinde, 1414×1885 taramada
+/// numaranın üstü işaretin altında, A4'te sağ alt Ek rozeti işarete 6 pt).
+/// İşaret artık kullanıcı payının ÜSTÜNDE, özgün sayfanın sağ alt köşesinde.
+#[test]
+fn the_brand_never_covers_a_bottom_user_mark() {
+    let pages: [(&str, Spec); 8] = [
+        ("A4", spec([0., 0., 595., 842.])),
+        ("Letter", spec([0., 0., 612., 792.])),
+        ("A3", spec([0., 0., 842., 1191.])),
+        ("A3 yatay", spec([0., 0., 1191., 842.])),
+        ("tarama 1414×1885", spec([0., 0., 1414., 1885.])),
+        (
+            "A3 /Rotate 90",
+            Spec {
+                rotate: Some(90),
+                ..spec([0., 0., 842., 1191.])
+            },
+        ),
+        (
+            "A3 /Rotate 270",
+            Spec {
+                rotate: Some(270),
+                ..spec([0., 0., 842., 1191.])
+            },
+        ),
+        (
+            "kaydırılmış CropBox, A3",
+            Spec {
+                crop: Some([30., 40., 812., 1150.]),
+                ..spec([0., 0., 842., 1191.])
+            },
+        ),
+    ];
+    let mut collisions = Vec::new();
+    for (tool, apply) in BOTTOM_USER_TOOLS {
+        for (size, s) in &pages {
+            let mut stamped = build(std::slice::from_ref(s));
+            apply(&mut stamped);
+            let after = finalize(&stamped);
+            collisions.extend(brand_collisions(
+                &stamped,
+                &after,
+                &format!("{tool}, {size}"),
+            ));
+        }
+        // Çok sayfalı karışık belge: her sayfa kendi payıyla.
+        let mut stamped = build(&pages.iter().map(|(_, s)| s.clone()).collect::<Vec<_>>());
+        apply(&mut stamped);
+        let after = finalize(&stamped);
+        collisions.extend(brand_collisions(
+            &stamped,
+            &after,
+            &format!("{tool}, karışık"),
+        ));
+    }
+    assert!(collisions.is_empty(), "{}", collisions.join("\n"));
+}
+
+/// Numaralanmış bir çıktı yeniden numaralanır ya da filigranlanır: iki pay,
+/// iki kullanıcı işareti. İşaret ikisine de binmez ve tek kalır.
+#[test]
+fn a_second_bottom_user_mark_keeps_the_brand_clear() {
+    let mut collisions = Vec::new();
+    for media in [
+        [0., 0., 595., 842.],
+        [0., 0., 842., 1191.],
+        [0., 0., 1414., 1885.],
+    ] {
+        let mut first = build(&[spec(media)]);
+        apply_text_marks(&mut first, None, 7).unwrap();
+        let mut stamped = finalize(&first);
+        apply_text_marks(&mut stamped, Some("ÖRNEKTİR"), 1).unwrap();
+        let after = finalize(&stamped);
+        let page = *after.get_pages().values().next().unwrap();
+        assert_eq!(user_marks(&after, page).len(), 2, "{media:?}");
+        collisions.extend(brand_collisions(
+            &stamped,
+            &after,
+            &format!("iki pay, {media:?}"),
+        ));
+    }
+    assert!(collisions.is_empty(), "{}", collisions.join("\n"));
 }
 
 // ------------------------------------------------------- eski (paylı) çıktılar

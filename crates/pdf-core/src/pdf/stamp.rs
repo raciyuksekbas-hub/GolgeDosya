@@ -155,6 +155,53 @@ fn display_matrix(rotation: i64, bx: [f32; 4]) -> Result<[f32; 6]> {
     })
 }
 
+/// `display_matrix`'in tersi: kullanıcı uzayındaki nokta, `bx` kutusunun
+/// görüntülenen hâlinde nerede (sol alt köşe orijin, x sağa, y yukarı).
+fn user_to_display(rotation: i64, bx: [f32; 4], (x, y): (f32, f32)) -> (f32, f32) {
+    let [x0, y0, x1, y1] = bx;
+    match rotation {
+        90 => (y - y0, x1 - x),
+        180 => (x1 - x, y1 - y),
+        270 => (y1 - y, x - x0),
+        _ => (x - x0, y - y0),
+    }
+}
+
+/// `bx` kutusunun görüntülenen genişliği ve yüksekliği.
+fn display_size(rotation: i64, bx: [f32; 4]) -> (f32, f32) {
+    let (w, h) = (bx[2] - bx[0], bx[3] - bx[1]);
+    if rotation == 90 || rotation == 270 {
+        (h, w)
+    } else {
+        (w, h)
+    }
+}
+
+/// Kullanıcı uzayındaki nokta, görüntülenen görünür kutunun sağ alt
+/// çeyreğinde mi? Sığdırmak için küçültülen işaret kısa kenarda tam ortaya
+/// düşer; yarım puntoluk pay bunun içindir.
+fn in_bottom_right_quarter(rotation: i64, visible: [f32; 4], point: (f32, f32)) -> bool {
+    const TOLERANCE: f32 = 0.5;
+    let (w, h) = display_size(rotation, visible);
+    let (x, y) = user_to_display(rotation, visible, point);
+    x >= w / 2. - TOLERANCE && y <= h / 2. + TOLERANCE
+}
+
+/// İki kutunun kesişimi; boşsa `None`.
+fn intersect(a: [f32; 4], b: [f32; 4]) -> Option<[f32; 4]> {
+    let both = [
+        a[0].max(b[0]),
+        a[1].max(b[1]),
+        a[2].min(b[2]),
+        a[3].min(b[3]),
+    ];
+    (both[0] < both[2] && both[1] < both[3]).then_some(both)
+}
+
+/// Kullanıcı işaretlerinin damga fontu bu adla (gerekirse sonuna `_`
+/// eklenerek) bağlanır. Marka yerleşimi damga akışını bu adla tanır.
+const STAMP_FONT: &str = "GolgeDosyaStamp";
+
 /// Ek damgası, filigran ve sayfa numarası: kullanıcının İSTEDİĞİ işaretler.
 /// Bu yol sayfaya pay ekler (işaret kaynak piksele binmez). GölgeDosya
 /// markası bu yoldan GEÇMEZ; o, geometriye dokunmayan
@@ -295,7 +342,7 @@ fn apply_stamp_to_page(
         .transpose()
         .map_err(pdf_error)?
         .unwrap_or_default();
-    let mut font_name = "GolgeDosyaStamp".to_string();
+    let mut font_name = STAMP_FONT.to_string();
     while fonts.has(font_name.as_bytes()) {
         font_name.push('_');
     }
@@ -726,8 +773,134 @@ fn brand_scale(display_w: f32, display_h: f32) -> f32 {
 /// birlikte sığan en geniş işaret (pt).
 fn brand_fit_width(display_w: f32, display_h: f32) -> f32 {
     let inset = BRAND_INSET / BRAND_MARK_WIDTH;
-    let aspect = (BRAND_BBOX[3] - BRAND_BBOX[1]) / (BRAND_BBOX[2] - BRAND_BBOX[0]);
-    (display_w / (1.0 + 2.0 * inset)).min(display_h / (aspect + 2.0 * inset))
+    (display_w / (1.0 + 2.0 * inset)).min(display_h / (brand_aspect() + 2.0 * inset))
+}
+
+/// İşaretin yüksekliği / genişliği.
+fn brand_aspect() -> f32 {
+    (BRAND_BBOX[3] - BRAND_BBOX[1]) / (BRAND_BBOX[2] - BRAND_BBOX[0])
+}
+
+/// `width` genişliğindeki işaretin `bx` kutusunun görüntülenen sağ alt
+/// köşesindeki sol alt noktası, kutunun görsel uzayında: sağdan ve alttan
+/// orantılı kenar boşluğu kadar içeride.
+fn mark_origin(rotation: i64, bx: [f32; 4], width: f32) -> (f32, f32) {
+    let (page_w, _) = display_size(rotation, bx);
+    let inset = width * BRAND_INSET / BRAND_MARK_WIDTH;
+    (page_w - inset - width, inset)
+}
+
+/// `[a b c d e f]` dönüşümü; nokta: x' = a·x + c·y + e, y' = b·x + d·y + f.
+type Matrix = [f32; 6];
+const IDENTITY: Matrix = [1., 0., 0., 1., 0., 0.];
+
+/// `m`, `ctm`'nin ÖNÜNE eklenir (`cm` işleci): önce `m`, sonra `ctm`.
+fn concat(m: Matrix, ctm: Matrix) -> Matrix {
+    [
+        m[0] * ctm[0] + m[1] * ctm[2],
+        m[0] * ctm[1] + m[1] * ctm[3],
+        m[2] * ctm[0] + m[3] * ctm[2],
+        m[2] * ctm[1] + m[3] * ctm[3],
+        m[4] * ctm[0] + m[5] * ctm[2] + ctm[4],
+        m[4] * ctm[1] + m[5] * ctm[3] + ctm[5],
+    ]
+}
+
+/// `cm` işlecinin altı sayısı; sayı olmayan ya da eksik işlenen `None`.
+fn operation_matrix(op: &Operation) -> Option<Matrix> {
+    let m: Vec<f32> = op
+        .operands
+        .iter()
+        .filter_map(|o| o.as_float().ok())
+        .collect();
+    m.try_into().ok()
+}
+
+/// `q` ardından gelen `x y w h re W n`: bir kırpma sarmalının dikdörtgeni.
+fn clip_rect(after_q: &[Operation]) -> Option<[f32; 4]> {
+    let [re, clip, end, ..] = after_q else {
+        return None;
+    };
+    if re.operator != "re" || clip.operator != "W" || end.operator != "n" {
+        return None;
+    }
+    let v: Vec<f32> = re
+        .operands
+        .iter()
+        .filter_map(|o| o.as_float().ok())
+        .collect();
+    let &[x, y, w, h] = v.as_slice() else {
+        return None;
+    };
+    Some([x.min(x + w), y.min(y + h), x.max(x + w), y.max(y + h)])
+}
+
+/// Kullanıcı işaretlerinin (Ek damgası, filigran, sayfa numarası) eklediği
+/// payların DIŞINDA kalan kutu: sayfanın o işaretlerden önceki görünür alanı.
+///
+/// `apply_stamp_to_page` payı ekledikten sonra kaynak içeriği eski kutuya
+/// kırpan bir sarmalla (`q x y w h re W n … Q`) sarar ve damga akışını
+/// (`q cm … /GolgeDosyaStamp Tf … Q`) HEMEN ardından ekler. Damgadan hemen
+/// önce kapanan sarmalın kırpma dikdörtgeni, payı eklemeden önceki kutudur.
+/// Birden çok damgada (numara üstüne filigran) kutular kesiştirilir.
+/// Akışlar sırayla, PDF'in tek içerik akışı gibi yürünür: sarmalın açılışı ve
+/// kapanışı ayrı akışlardadır. Damga yoksa ya da yapı tanınmazsa `None`.
+fn unstamped_box(doc: &LopdfDoc, page: &Dictionary) -> Option<[f32; 4]> {
+    struct Level {
+        /// Bu `q` bir kırpma sarmalı açıyorsa dikdörtgeni (kullanıcı uzayı).
+        clip: Option<[f32; 4]>,
+        /// Bu `q`'dan hemen önce kapanan sarmalın dikdörtgeni.
+        after_clip: Option<[f32; 4]>,
+        ctm: Matrix,
+    }
+    let mut stack: Vec<Level> = Vec::new();
+    let mut ctm = IDENTITY;
+    let mut just_closed = None;
+    let mut original: Option<[f32; 4]> = None;
+    for item in content_items(doc, page) {
+        let Some(operations) = stream_operations(doc, &item) else {
+            continue;
+        };
+        for (i, op) in operations.iter().enumerate() {
+            let mut closed = None;
+            match op.operator.as_str() {
+                "q" => stack.push(Level {
+                    clip: (ctm == IDENTITY)
+                        .then(|| clip_rect(&operations[i + 1..]))
+                        .flatten(),
+                    after_clip: just_closed,
+                    ctm,
+                }),
+                "Q" => {
+                    if let Some(level) = stack.pop() {
+                        ctm = level.ctm;
+                        closed = level.clip;
+                    }
+                }
+                "cm" => {
+                    if let Some(m) = operation_matrix(op) {
+                        ctm = concat(m, ctm);
+                    }
+                }
+                "Tf" if op
+                    .operands
+                    .first()
+                    .and_then(|n| n.as_name().ok())
+                    .is_some_and(|n| n.starts_with(STAMP_FONT.as_bytes())) =>
+                {
+                    if let Some(clip) = stack.last().and_then(|level| level.after_clip) {
+                        original = Some(match original {
+                            Some(known) => intersect(known, clip)?,
+                            None => clip,
+                        });
+                    }
+                }
+                _ => {}
+            }
+            just_closed = closed;
+        }
+    }
+    original
 }
 
 /// GölgeDosya işaretini sayfanın ÜSTÜNE bindirir; belge geometrisine dokunmaz.
@@ -745,6 +918,13 @@ fn brand_fit_width(display_w: f32, display_h: f32) -> f32 {
 /// durumundan başlasın; kırpma dikdörtgeni görünür kutunun kendisidir,
 /// görünen hiçbir şeyi kesmez.
 ///
+/// Sayfa numarası, filigran ya da Ek damgası sayfaya kendi payını ekler ve
+/// işaretini o paya basar. İşaret bu durumda payın DIŞINDAKİ özgün kutunun
+/// (`unstamped_box`) sağ alt köşesine basılır: ikisi asla üst üste binmez.
+/// Pay sayfanın kendi geometrisidir, dokunulmaz. Özgün kutuda işaret okunur
+/// boyutta ya da görünür sayfanın sağ alt çeyreğinde kalamıyorsa (yalnız
+/// birkaç punto yüksekliğinde dejenere bir sayfa) görünür kutuya dönülür.
+///
 /// Dönüş: `true` işaret basıldı; `false` raster dışa aktarmada sayfa işareti
 /// taşıyamayacak kadar küçük olduğu için atlandı. PDF çıktısında bu durum
 /// hatadır: her PDF çıktısı işareti taşır.
@@ -757,19 +937,36 @@ fn place_brand_overlay(
     let visible = visible_box(doc, &resolved)
         .ok_or_else(|| EklerError::InvalidPdf("Geçersiz sayfa kutusu".into()))?;
     let rotation = placement_rotation(doc, &resolved);
-    let (w, h) = (visible[2] - visible[0], visible[3] - visible[1]);
-    let (page_w, page_h) = if rotation == 90 || rotation == 270 {
-        (h, w)
-    } else {
-        (w, h)
+    let short_side = (visible[2] - visible[0]).min(visible[3] - visible[1]);
+    let raster_dpi = brand.raster_dpi;
+    let mark_width_in = |bx: [f32; 4]| {
+        let (page_w, page_h) = display_size(rotation, bx);
+        // Raster dışa aktarmanın kendi ölçüsü var: piksel olarak sayfa
+        // genişliğinin %9,4'ü (A4'te 56 pt), 32–240 px arası.
+        let wanted = match raster_dpi {
+            Some(dpi) => (page_w * dpi as f32 / 72. * 0.094).clamp(32., 240.) * 72. / dpi as f32,
+            None => BRAND_MARK_WIDTH * brand_scale(page_w, page_h),
+        };
+        wanted.min(brand_fit_width(page_w, page_h))
     };
-    // Raster dışa aktarmanın kendi ölçüsü var: piksel olarak sayfa genişliğinin
-    // %9,4'ü (A4'te 56 pt), 32–240 px arası.
-    let wanted = match brand.raster_dpi {
-        Some(dpi) => (page_w * dpi as f32 / 72. * 0.094).clamp(32., 240.) * 72. / dpi as f32,
-        None => BRAND_MARK_WIDTH * brand_scale(page_w, page_h),
-    };
-    let mark_width = wanted.min(brand_fit_width(page_w, page_h));
+    let anchor = unstamped_box(doc, &resolved)
+        .and_then(|original| intersect(original, visible))
+        .filter(|original| {
+            let width = mark_width_in(*original);
+            let legible = match raster_dpi {
+                Some(_) => width > BRAND_MARK_WIDTH * MIN_BRAND_SCALE,
+                None => width >= MIN_BRAND_MARK_RATIO * short_side,
+            };
+            legible
+                && display_matrix(rotation, *original).is_ok_and(|m| {
+                    let (x, y) = mark_origin(rotation, *original, width);
+                    let (cx, cy) = (x + width / 2., y + width * brand_aspect() / 2.);
+                    let centre = (m[0] * cx + m[2] * cy + m[4], m[1] * cx + m[3] * cy + m[5]);
+                    in_bottom_right_quarter(rotation, visible, centre)
+                })
+        })
+        .unwrap_or(visible);
+    let mark_width = mark_width_in(anchor);
     if !(mark_width.is_finite() && mark_width > BRAND_MARK_WIDTH * MIN_BRAND_SCALE) {
         if brand.raster_dpi.is_some() {
             return Ok(false);
@@ -778,8 +975,8 @@ fn place_brand_overlay(
             "Sayfa GölgeDosya işaretini taşıyamayacak kadar küçük".into(),
         ));
     }
-    let inset = mark_width * BRAND_INSET / BRAND_MARK_WIDTH;
-    let matrix = display_matrix(rotation, visible)?;
+    let matrix = display_matrix(rotation, anchor)?;
+    let (mark_x, mark_y) = mark_origin(rotation, anchor, mark_width);
 
     // Kaynakları sayfaya kopyala (kalıtımla gelenler dahil) ve formu benzersiz
     // bir adla bağla; belgenin kendi XObject adlarının üstüne yazılmaz.
@@ -819,8 +1016,8 @@ fn place_brand_overlay(
                 0.into(),
                 0.into(),
                 k.into(),
-                (page_w - inset - mark_width).into(),
-                inset.into(),
+                mark_x.into(),
+                mark_y.into(),
             ],
         ),
         Operation::new("Do", vec![Object::Name(name.into_bytes())]),
