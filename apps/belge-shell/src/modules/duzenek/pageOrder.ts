@@ -61,6 +61,14 @@ export type SelectGesture = {
     range?: boolean;
     /** macOS'ta ⌘, Windows'ta Ctrl (bkz. shell/platform.ts `isToggleChord`). */
     toggle?: boolean;
+    /**
+     * Klavyeden gelen etkinleştirme (görüntüle düğmesinde Enter/Boşluk;
+     * tıklama olayında `detail === 0`). Klavye kullanıcısı sayfaları Seç
+     * kutularıyla seçer; düğme ona yalnız sayfayı GÖSTERİR. Eskiden düz bir
+     * tıklama sayılıyor, 2–4–6 seçimi duyurusuz tek sayfaya iniyor ve sonraki
+     * "Başa" üç yerine bir sayfa taşıyordu.
+     */
+    keyboard?: boolean;
 };
 
 /**
@@ -71,6 +79,7 @@ export type SelectGesture = {
 export function selectPages(
     order: readonly Keyed[], selected: readonly string[], anchor: string, key: string, gesture: SelectGesture = {},
 ): { selected: string[]; anchor: string } {
+    if (gesture.keyboard) return { selected: [...selected], anchor };
     const inOrder = (set: Set<string>) => order.filter(p => set.has(p.key)).map(p => p.key);
     const from = order.findIndex(p => p.key === anchor), to = order.findIndex(p => p.key === key);
     if (gesture.range && from >= 0 && to >= 0) {

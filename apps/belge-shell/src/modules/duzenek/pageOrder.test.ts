@@ -70,6 +70,13 @@ describe("seçim — tıklama, Shift aralığı, ⌘/Ctrl ekle-çıkar", () => {
     expect(selectPages(six, keys(2), "a#2", "a#5", { range: true })).toEqual({ selected: keys(2, 3, 4, 5), anchor: "a#2" });
     expect(selectPages(six, keys(5), "a#5", "a#2", { range: true })).toEqual({ selected: keys(2, 3, 4, 5), anchor: "a#5" });
   });
+  it("klavyeyle görüntüle (Enter/Boşluk) seçimi bozmaz; yalnız önizleme değişir", () => {
+    // Seç kutularıyla 2, 4 ve 6'yı seçen klavye kullanıcısı 4'e bakmak için
+    // görüntüle düğmesine Enter basar: seçim sessizce tek sayfaya inmemeli.
+    expect(selectPages(six, keys(2, 4, 6), "a#6", "a#4", { keyboard: true })).toEqual({ selected: keys(2, 4, 6), anchor: "a#6" });
+    expect(selectPages(six, keys(2, 4, 6), "a#6", "a#5", { keyboard: true, range: true })).toEqual({ selected: keys(2, 4, 6), anchor: "a#6" });
+    expect(selectPages(six, [], "", "a#3", { keyboard: true })).toEqual({ selected: [], anchor: "" });
+  });
 });
 
 describe("sürükleme geometrisi", () => {

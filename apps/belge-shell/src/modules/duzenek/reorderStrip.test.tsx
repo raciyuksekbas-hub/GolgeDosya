@@ -78,6 +78,11 @@ describe("sürükleme ve klavye sözleşmesi", () => {
     // ⌘Z yalnız Sırala'da etkin (kısayol politikası: sistemin öğrettiği anlam, ipucunda yazılı).
     expect(source).toMatch(/useShortcuts\([\s\S]*?key: 'z'[\s\S]*?kind === 'reorder'\)/);
   });
+  it("görüntüle düğmesi klavyeyle (detail 0) seçimi değiştirmez; fare tıklaması masaüstü listesi gibi seçer", () => {
+    const view = source.slice(source.indexOf("const viewPage = "), source.indexOf("const stripRef = "));
+    expect(view).toContain("keyboard: event.detail === 0");
+    expect(view).toContain("toggle: isToggleChord(event)");
+  });
   it("platform ayrımı arayüze sızmaz", () => {
     expect(source).toContain("isToggleChord(event)");
     expect(source + drag).not.toMatch(/navigator\.platform|userAgent|isWindows|isMac/i);

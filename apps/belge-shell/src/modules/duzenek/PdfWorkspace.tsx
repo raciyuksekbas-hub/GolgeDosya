@@ -565,11 +565,12 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [busy, history]), kind === 'reorder');
     // Sırala'da tıklama masaüstü listesi gibi seçer: düz tıklama tek sayfa,
-    // Shift aralık, ⌘ (macOS) / Ctrl (Windows) ekle-çıkar. Diğer araçlarda
-    // tıklama yalnız önizlenen sayfayı değiştirir.
+    // Shift aralık, ⌘ (macOS) / Ctrl (Windows) ekle-çıkar. Klavyeyle
+    // etkinleştirme (Enter/Boşluk, `detail === 0`) ve diğer araçlarda tıklama
+    // yalnız önizlenen sayfayı değiştirir; klavyenin seçimi Seç kutularındadır.
     const viewPage = (event: React.MouseEvent, key: string) => {
         if (kind === 'reorder') {
-            const next = selectPages(order, selected, anchor, key, { range: event.shiftKey, toggle: isToggleChord(event) });
+            const next = selectPages(order, selected, anchor, key, { range: event.shiftKey, toggle: isToggleChord(event), keyboard: event.detail === 0 });
             setSelected(next.selected);
             setAnchor(next.anchor);
         }
