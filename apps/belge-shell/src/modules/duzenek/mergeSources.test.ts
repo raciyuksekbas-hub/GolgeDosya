@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import * as state from "./pdfWorkspaceState";
+import { Button } from "../../shared-ui/primitives";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
@@ -95,6 +96,19 @@ describe("Birleştir en az iki belgeyle kaydeder", () => {
     const gate = source.slice(source.indexOf("const cannotSave"), source.indexOf("const pick = (key: Kind)"));
     expect(gate).toMatch(/mergeShortfall\(kind, sources\.length\)/);
     expect(source).toMatch(/\{needMore && <p className="tool-hint"[^>]*>\{needMore\}<\/p>\}/);
+  });
+
+  it("panel kapalıyken de neden kaydetmenin yanında görünür; tıklayınca panel açılır, odak ekleme düğmesine gider", () => {
+    // Araçlar paneli ~1092 px'ten dar pencerede kapalı başlar ve varsayılan
+    // araç Birleştir'dir: iki Kaydet düğmesi nedensiz sönük duruyordu.
+    const bar = source.slice(source.indexOf("<ToolbarActions>"), source.indexOf("</ToolbarActions>"));
+    expect(bar).toMatch(
+      /\{needMore && !busy && <Button variant="quiet" className="save-reason" title=\{needMore\} onClick=\{showMergeAdd\}>En Az İki Belge Gerekli<\/Button>\}[\s\S]*Klasör Seçerek Kaydet[\s\S]*Yeni PDF Kaydet/,
+    );
+    expect(source).toMatch(/const showMergeAdd = \(\) => \{ revealTools\(\); requestAnimationFrame\(\(\) => mergeAddRef\.current\?\.focus\(\)\); \};/);
+    expect(source).toMatch(/<Button ref=\{mergeAddRef\} onClick=\{choose\} disabled=\{busy\}>\s*\{kind === 'merge' \? 'Birleştirilecek Belge Ekle'/);
+    // Odak gerçek <button>'a ulaşır: Button ref'i iletir.
+    expect((Button as unknown as { $$typeof: symbol }).$$typeof).toBe(Symbol.for("react.forward_ref"));
   });
 });
 

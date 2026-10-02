@@ -7,7 +7,7 @@
  * bileşen gerçek bir tekrarın karşılığıdır; soyutlama gösterisi değildir.
  */
 
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 /* ------------------------------------------------------------------ Button */
 
@@ -15,10 +15,11 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "default" | "primary" | "quiet" | "danger";
 };
 
-export function Button({ variant = "default", className, ...rest }: ButtonProps) {
+/** Ref iletilir: bir neden düğmesi odağı gerçek <button>'a götürebilsin. */
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({ variant = "default", className, ...rest }, ref) {
   const kind = variant === "default" ? "" : ` btn-${variant}`;
-  return <button type="button" className={`btn${kind}${className ? ` ${className}` : ""}`} {...rest} />;
-}
+  return <button ref={ref} type="button" className={`btn${kind}${className ? ` ${className}` : ""}`} {...rest} />;
+});
 
 /* -------------------------------------------------------------- IconButton
    İkon-only kontrolde erişilebilir ad ZORUNLU: `label` hem tooltip hem
