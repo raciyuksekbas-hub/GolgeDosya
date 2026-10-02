@@ -178,3 +178,34 @@ describe("bileşen bağlaması", () => {
     expect(source).toContain("merge: { affects: 'Açık belge ilk sırada; eklediğiniz belgeler sonuna eklenir, sırayı oklarla değiştirebilirsiniz.'");
   });
 });
+
+describe("Birleştir'den tek belgeli araca geçince kabuğun açtığı belge kalır", () => {
+  // A açıkken B eklenip başa taşınınca Sıkıştır'a geçmek A'yı kapatıp B'yi
+  // tutuyordu; bar hâlâ "A.pdf" diyordu ve A sanılan B'nin kopyası kaydediliyordu.
+  const kept = () => fn("keptSources") as unknown as (from: string, to: string, list: Src[], openedPath?: string) => Src[];
+
+  it("liste yeniden sıralansa da açık belge (A) kalır", () => {
+    expect(names(kept()("merge", "compress", [B, A, C], A.path))).toEqual(["A.pdf"]);
+    expect(names(kept()("merge", "reorder", [B, A], A.path))).toEqual(["A.pdf"]);
+    expect(names(kept()("merge", "rotate", [A, B], A.path))).toEqual(["A.pdf"]);
+  });
+
+  it("A listeden çıkarıldıysa ya da kabuk belge vermediyse listenin ilki kalır", () => {
+    expect(names(kept()("merge", "compress", [B, C], A.path))).toEqual(["B.pdf"]);
+    expect(names(kept()("merge", "compress", [B, C], undefined))).toEqual(["B.pdf"]);
+    expect(kept()("merge", "compress", [], A.path)).toEqual([]);
+  });
+
+  it("Birleştir'e geçiş listeyi tutar; Görseller'e giriş ve çıkış listeyi boşaltır", () => {
+    expect(names(kept()("compress", "merge", [A], A.path))).toEqual(["A.pdf"]);
+    expect(names(kept()("merge", "merge", [B, A], A.path))).toEqual(["B.pdf", "A.pdf"]);
+    expect(kept()("merge", "images", [A, B], A.path)).toEqual([]);
+    expect(kept()("images", "merge", [A, B], A.path)).toEqual([]);
+  });
+
+  it("bileşen araç değişiminde bu kuralı kullanır", () => {
+    const pick = source.slice(source.indexOf("const pick = (key: Kind)"), source.indexOf("const PAGE_TOOLS"));
+    expect(pick).toContain("const kept = keptSources(kind, key, sources, initialPaths?.[0]);");
+    expect(pick).not.toContain("sources.slice(0, 1)");
+  });
+});

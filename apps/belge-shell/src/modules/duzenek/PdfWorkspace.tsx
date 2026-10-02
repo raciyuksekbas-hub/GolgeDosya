@@ -22,7 +22,7 @@
  * ya da henüz yoksa ne araç paneli ne de sayfa şeridi çizilir — kullanılamayan
  * araçları soluk göstermek yerine hata/boş durum tam genişliği alır.
  */
-import { rotatePages, previewGeometry, previewStageSize, nextViewport, previewDpi, previewRetryDpi, workspaceSurfaces, appendSources, appendNote, shiftSource, removeSource, mergeShortfall, dragHint, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
+import { rotatePages, previewGeometry, previewStageSize, nextViewport, previewDpi, previewRetryDpi, workspaceSurfaces, appendSources, appendNote, shiftSource, removeSource, mergeShortfall, dragHint, keptSources, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { noBenefitStatus } from './noBenefitMessage';
 import { savedStatus } from './savedMessage';
 import { humanSize } from '../../shared-ui/sizeText';
@@ -771,7 +771,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         // düzeni kaynak sırasına dönüyor, Geri Al geçmişi de siliniyordu.
         if (key === kind) return;
         setKind(key);
-        const kept = key === 'images' || kind === 'images' ? [] : (key === 'merge' ? sources : sources.slice(0, 1));
+        const kept = keptSources(kind, key, sources, initialPaths?.[0]);
         // Araçlar BİLİNÇLİ olarak bağımsızdır: her biri kaynaktan tek bir işlem
         // uygulayıp kendi kopyasını üretir, düzenlemeler birikmez. Ama bu
         // sessizce oluyordu — kullanıcı üç belge açıp ya da sayfaları sıralayıp

@@ -155,6 +155,23 @@ export function mergeShortfall(kind: string, sourceCount: number): string {
 }
 
 /**
+ * Araç değişince listede kalan belgeler.
+ *
+ * Görseller → PDF'e girip çıkarken liste boşalır (görsel ile PDF karışmaz);
+ * Birleştir bütün listeyi tutar; öteki araçlar tek belgeyle çalışır. O tek
+ * belge kabuğun açtığı belgedir (`openedPath`; bardaki ad onu gösterir), liste
+ * yeniden sıralanmış olsa da. Eskiden listenin ilki kalıyordu: B başa
+ * taşındıktan sonra Sıkıştır'a geçmek A'yı kapatıp B'yi tutuyor, bar ise hâlâ
+ * "A.pdf" diyordu. Kabuğun belgesi listeden çıkarıldıysa listenin ilki kalır.
+ */
+export function keptSources<T extends { path: string }>(from: string, to: string, sources: readonly T[], openedPath?: string): T[] {
+    if (to === 'images' || from === 'images') return [];
+    if (to === 'merge') return [...sources];
+    const opened = sources.find(source => source.path === openedPath);
+    return opened ? [opened] : sources.slice(0, 1);
+}
+
+/**
  * Sırala dışında sayfa sürükleyen kullanıcıya verilecek ipucu; boş dize: ipucu yok.
  *
  * Sırala tek belgeyle çalışır. Birleştir'de birden çok belge varken ona geçmek
