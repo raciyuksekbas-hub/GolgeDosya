@@ -482,3 +482,11 @@ describe("sıkıştırma paneli insan diliyle", () => {
     expect(source).toContain("<span>{sourceLine(s)}</span>");
   });
 });
+
+describe("önizleme notu gerçeği söyler (0.3.2)", () => {
+  it("marka sayfa boyutunu değiştirmez; pay ya da eksik açıklama iddiası yok", () => {
+    expect(source).toContain("sayfa boyutu değişmeden, saydam GölgeDosya işareti eklenir.");
+    expect(source).not.toContain("logo payı");
+    expect(source).not.toContain("Açıklama/form görünümleri bu önizlemede eksik olabilir");
+  });
+});
