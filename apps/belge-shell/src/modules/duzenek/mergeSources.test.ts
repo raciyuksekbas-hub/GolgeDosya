@@ -92,7 +92,7 @@ describe("Birleştir en az iki belgeyle kaydeder", () => {
   });
 
   it("bileşen kapıyı Kaydet'e bağlar ve nedeni panelde gösterir", () => {
-    const gate = source.slice(source.indexOf("const cannotSave"), source.indexOf("const pick ="));
+    const gate = source.slice(source.indexOf("const cannotSave"), source.indexOf("const pick = (key: Kind)"));
     expect(gate).toMatch(/mergeShortfall\(kind, sources\.length\)/);
     expect(source).toMatch(/\{needMore && <p className="tool-hint"[^>]*>\{needMore\}<\/p>\}/);
   });
@@ -142,7 +142,7 @@ describe("bileşen bağlaması", () => {
   });
 
   it("Görseller'den PDF aracına dönüş kabuğun açık belgesini yeniden taban yapar", () => {
-    const pick = source.slice(source.indexOf("const pick ="), source.indexOf("const PAGE_TOOLS"));
+    const pick = source.slice(source.indexOf("const pick = (key: Kind)"), source.indexOf("const PAGE_TOOLS"));
     expect(pick).toMatch(/kind === 'images' && key !== 'images' && initialPaths\?\.length/);
     expect(pick).toMatch(/void load\(initialPaths, 'replace', message\)/);
   });
