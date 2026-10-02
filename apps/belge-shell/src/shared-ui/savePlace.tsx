@@ -15,6 +15,8 @@
  *    "Klasörde Göster"dir (`SavedPlace`).
  *
  * Dönüştür bu kuralın dışındadır: kendi çıktı klasörüne yazar (Ayarlar).
+ * Karşılaştır da dışındadır: raporu pencere açmadan İndirilenler'e yazar
+ * (`degisikis.rs` report_directory). Ayarlar'daki ipucu bunu adıyla söyler.
  */
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";

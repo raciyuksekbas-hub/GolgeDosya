@@ -17,10 +17,16 @@ const render = (path: string, isDefault: boolean) =>
 
 describe("Dönüştür'ün çıktı klasörü satırı", () => {
   it("etiket neyin buraya yazıldığını, ipucu öteki araçların ne yaptığını söyler", () => {
-    const html = render("/Users/avukat/Documents/GölgeDosya/Dönüştürülen Belgeler", true);
+    const html = render("/Users/avukat/Documents/GölgeDosya/Dönüştürülen Belgeler", true).replace(/&#x27;/gu, "'");
     expect(html).toContain("Dönüştürülen belgeler");
     expect(html).toContain("Yalnız Dönüştür buraya kaydeder.");
-    expect(html).toContain("Öteki araçlar kaydederken belgenin klasörünü önerir.");
+    // Araçlar adıyla sayılır. "Öteki araçlar belgenin klasörünü önerir"
+    // Karşılaştır için yanlıştı: rapor pencere açılmadan İndirilenler'e
+    // yazılır (`degisikis.rs` report_directory). Kullanıcı raporu
+    // karşılaştırdığı belgelerin yanında arıyordu.
+    expect(html).toContain("Düzenle, Ekler ve Denetle kaydederken belgenin klasörünü önerir.");
+    expect(html).toContain("Karşılaştır'ın raporu doğrudan İndirilenler klasörüne yazılır.");
+    expect(html).not.toContain("Öteki araçlar");
     // Kapsamsız genel etiket kalmadı.
     expect(html).not.toMatch(/>\s*Çıktı klasörü\s*</);
   });

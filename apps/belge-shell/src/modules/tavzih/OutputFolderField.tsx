@@ -19,9 +19,15 @@ import { fileNameOf } from "../../shell/modes";
  * kontrol sağ kolonda. Tam yol ipucunda durur; tercihler penceresinde dokuz
  * satıra sarılan bir yol, klasörün adından daha az bilgi taşıyor.
  */
-/** Satırın kapsamı: yalnız Dönüştür buraya yazar. */
+/**
+ * Satırın kapsamı: yalnız Dönüştür buraya yazar. Öteki araçlar adlarıyla
+ * sayılır, çünkü hepsi aynı şeyi yapmaz: Düzenle, Ekler ve Denetle kaydetme
+ * penceresini belgenin klasöründe açar (`startFolder`); Karşılaştır raporunu
+ * pencere açmadan İndirilenler'e yazar (`degisikis.rs` report_directory).
+ * "Öteki araçlar belgenin klasörünü önerir" Karşılaştır için yanlıştı.
+ */
 export const OUTPUT_FOLDER_HINT =
-  "Yalnız Dönüştür buraya kaydeder. Öteki araçlar kaydederken belgenin klasörünü önerir.";
+  "Yalnız Dönüştür buraya kaydeder. Düzenle, Ekler ve Denetle kaydederken belgenin klasörünü önerir. Karşılaştır'ın raporu doğrudan İndirilenler klasörüne yazılır.";
 
 export function OutputFolderRow({
   folder,

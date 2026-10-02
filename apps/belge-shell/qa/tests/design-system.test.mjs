@@ -579,6 +579,33 @@ test("aynı kavramın tek adı var", () => {
   assert.ok(visible(folder).includes("Dönüştürülen belgeler"), "tercih satırı Dönüştür'ün olduğunu söylemeli");
   assert.match(folder, /OUTPUT_FOLDER_HINT =\s*"Yalnız Dönüştür buraya kaydeder\./u);
 
+  // İpucu öteki araçların GERÇEKTE ne yaptığını adlarıyla söyler. Eskiden
+  // "Öteki araçlar kaydederken belgenin klasörünü önerir" diyordu; oysa
+  // Karşılaştır raporunu pencere açmadan İndirilenler'e yazar. Kaynak klasör
+  // kuralını (`startFolder`) kullanan araçlar ile Karşılaştır'ın rapor yeri
+  // değişirse bu cümle de değişmeli.
+  assert.match(
+    folder,
+    /OUTPUT_FOLDER_HINT =\s*"[^"]*Düzenle, Ekler ve Denetle kaydederken belgenin klasörünü önerir\. Karşılaştır'ın raporu doğrudan İndirilenler klasörüne yazılır\."/u,
+  );
+  assert.ok(!/OUTPUT_FOLDER_HINT =\s*"[^"]*Öteki araçlar/u.test(folder), "ipucu araçları adıyla saymalı");
+  for (const file of [
+    "src/modules/duzenek/copyDestination.ts",
+    "src/modules/duzenek/PdfWorkspace.tsx",
+    "src/modules/duzenek/ekler/AnnexWorkspace.tsx",
+    "src/modules/ikincigoz/ReviewWorkspace.tsx",
+  ]) {
+    assert.match(readFileSync(file, "utf8"), /startFolder\(/u, `${file}: ipucu bu aracın belgenin klasörünü önerdiğini söylüyor`);
+  }
+  for (const file of sources.filter((p) => p.startsWith("src/modules/degisikis/"))) {
+    assert.ok(!readFileSync(file, "utf8").includes("startFolder("), `${file}: Karşılaştır belgenin klasörünü öneriyorsa ipucunu güncelleyin`);
+  }
+  assert.match(
+    readFileSync("src-tauri/src/modules/degisikis.rs", "utf8"),
+    /fn report_directory\([^)]*\)[^{]*\{[^}]*?\.download_dir\(\)/u,
+    "Karşılaştır raporu İndirilenler'e yazmıyorsa ipucunu güncelleyin",
+  );
+
   // Kaydın yeri de tek adla gösterilir. Dönüştür "Klasörde Göster", Ekler
   // "Klasörü Aç" diyordu; Düzenle ve Denetle'de eylem hiç yoktu. Ad tek
   // sözlükten gelir ve platforma özgü dosya yöneticisi adı taşımaz.
