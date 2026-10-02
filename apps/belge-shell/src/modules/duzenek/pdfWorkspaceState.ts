@@ -38,6 +38,45 @@ export function nextViewport(previous: { width: number; height: number }, box: {
 }
 
 /**
+ * Yerel önizlemenin piksel bütçesi: crates/ekler-core/src/raster.rs genişlik ×
+ * yükseklik 40 000 000'u aşan bitmap'i "Görsel boyutu güvenli sınırı aşıyor"
+ * diye reddeder. Sınır bir güvenlik denetimidir; burada yalnız aşılmaz.
+ */
+const PREVIEW_PIXEL_BUDGET = 40_000_000;
+/** Büyük önizlemenin en düşük dpi'si: bir CSS pikseline bir görüntü pikseli. */
+const PREVIEW_BASE_DPI = 96;
+/**
+ * Büyük önizlemenin dpi'si: ekran ölçeği × yakınlaştırma, 96..300 arası.
+ *
+ * Sayfanın boyu biliniyorsa (`pageCss`: ilk başarılı render'ın bitmap'i, 96
+ * dpi CSS pikseli) istek yerel 40 MP sınırını da aşmaz. A1 Retina'da %150'de
+ * 288 dpi sınırı aşıyor, sayfanın üstünde hata şeridi kalıyordu; artık
+ * bütçeye sığan en keskin dpi istenir. A4 gibi olağan sayfalarda 300 dpi bile
+ * bütçenin çok altındadır: sonuç bugünküyle aynıdır.
+ */
+export function previewDpi(scale: number, dpr: number, pageCss?: { width: number; height: number }): number {
+    const wanted = Math.min(300, Math.max(PREVIEW_BASE_DPI, Math.ceil(PREVIEW_BASE_DPI * scale * dpr)));
+    if (!pageCss || !(pageCss.width > 0 && pageCss.height > 0)) return wanted;
+    // Motor her kenarı yukarı yuvarlar (ceil(pt · dpi / 72)); karekökten gelen
+    // sınır o yuvarlamayla bütçeyi bir satır aşabilir, sığana dek inilir.
+    const pixels = (dpi: number) => Math.ceil(pageCss.width * dpi / PREVIEW_BASE_DPI) * Math.ceil(pageCss.height * dpi / PREVIEW_BASE_DPI);
+    let dpi = Math.min(wanted, Math.floor(PREVIEW_BASE_DPI * Math.sqrt(PREVIEW_PIXEL_BUDGET / (pageCss.width * pageCss.height))));
+    while (dpi > PREVIEW_BASE_DPI && pixels(dpi) > PREVIEW_PIXEL_BUDGET) dpi--;
+    return Math.max(PREVIEW_BASE_DPI, dpi);
+}
+/**
+ * Başarısız büyük render bir kez daha hangi dpi'de denensin? `null`: denenmez.
+ *
+ * İlk render sayfanın boyunu bilmeden ekran ölçeğiyle ister (Retina'da 192).
+ * A0 ve piksel birimiyle yazılmış taranmış sayfalar bu dpi'de yerel sınırı
+ * aşar, 96 dpi'de sığar. Yalnız bitmap yokken ve yalnız bir kez: sayfa zaten
+ * çizilmişse hata yerleşim dışı şerittir; 96 dpi de başarısızsa hata gösterilir.
+ */
+export function previewRetryDpi(failedDpi: number, hasBitmap: boolean): number | null {
+    return !hasBitmap && failedDpi > PREVIEW_BASE_DPI ? PREVIEW_BASE_DPI : null;
+}
+
+/**
  * Düzenle'ye verilen belgenin durumu.
  *
  * `none` — kipe henüz belge verilmedi. `loading` — verilen belge taranıyor.

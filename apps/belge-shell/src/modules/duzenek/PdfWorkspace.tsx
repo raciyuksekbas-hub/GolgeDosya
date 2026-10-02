@@ -22,7 +22,7 @@
  * ya da henüz yoksa ne araç paneli ne de sayfa şeridi çizilir — kullanılamayan
  * araçları soluk göstermek yerine hata/boş durum tam genişliği alır.
  */
-import { rotatePages, previewGeometry, previewStageSize, nextViewport, workspaceSurfaces, appendSources, appendNote, shiftSource, removeSource, mergeShortfall, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
+import { rotatePages, previewGeometry, previewStageSize, nextViewport, previewDpi, previewRetryDpi, workspaceSurfaces, appendSources, appendNote, shiftSource, removeSource, mergeShortfall, type DocumentState, type PreviewMode } from './pdfWorkspaceState';
 import { noBenefitStatus } from './noBenefitMessage';
 import { savedStatus } from './savedMessage';
 import { humanSize } from '../../shared-ui/sizeText';
@@ -151,8 +151,11 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
     const deferredUrls = useRef(new Set<string>()).current;
     const [viewport, setViewport] = useState({width: 100, height: 130});
     const ref = useRef<HTMLDivElement>(null);
+    /** Görünen bitmap'in dpi'si: aynı dpi için ikinci, birebir aynı render istenmez. */
+    const renderedDpi = useRef(0);
     const geometry = bitmap ? previewGeometry(bitmap.width, bitmap.height, rotation, viewport.width, viewport.height, large ? mode : 'fit-page') : null;
-    const dpi = large ? Math.min(300, Math.max(96, Math.ceil(96 * (geometry?.scale || 1) * (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1)))) : 40;
+    // Sayfanın boyu (bitmap) biliniyorsa dpi yerel 40 MP sınırını aşmaz.
+    const dpi = large ? previewDpi(geometry?.scale || 1, typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1, bitmap ?? undefined) : 40;
     useEffect(() => {
         const target = large ? ref.current?.parentElement : ref.current;
         if (!target) return;
@@ -165,25 +168,37 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
         return () => observer.disconnect();
     }, [large]);
     useEffect(() => {
+        // Görünen bitmap zaten bu dpi'de çizildiyse (ilk render 96 dpi ile yeniden
+        // denendiğinde dpi oraya iner) ve hata yoksa aynı render yeniden istenmez.
+        if (renderedDpi.current === dpi && !error) return;
         let alive = true, started = false;
+        const hadBitmap = bitmap !== null;
         const urls: string[] = [];
         const load = () => {
             if (started) return;
             started = true;
-            const render = async () => {
+            const render = async (at: number): Promise<void> => {
                 if (!alive) return;
                 try {
                     // Rotation is visual and immediate; both views share the same unrotated bitmap geometry.
-                    const bytes = await invoke<number[]>('duzenek_preview_pdf_page', {path: item.source.path, page: item.page, dpi, rotation: 0});
+                    const bytes = await invoke<number[]>('duzenek_preview_pdf_page', {path: item.source.path, page: item.page, dpi: at, rotation: 0});
                     if (!alive) return;
                     const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], {type: 'image/png'}));
                     urls.push(url);
                     const img = new Image(); img.src = url; await img.decode();
-                    if (alive) { setBitmap(previous => ({url, width: previous?.width || img.naturalWidth * 96 / dpi, height: previous?.height || img.naturalHeight * 96 / dpi})); setError(''); }
-                } catch (e) { if (alive) setError(String(e)); }
+                    if (alive) { renderedDpi.current = at; setBitmap(previous => ({url, width: previous?.width || img.naturalWidth * 96 / at, height: previous?.height || img.naturalHeight * 96 / at})); setError(''); }
+                } catch (e) {
+                    // İlk render sayfanın boyunu bilmeden ekran ölçeğiyle ister. A0 ya da
+                    // taranmış büyük sayfa Retina'da yerel 40 MP sınırını aşar: sayfa hiç
+                    // görünmüyordu. Bitmap yokken bir kez, bütçeye sığan dpi ile denenir;
+                    // ilk BAŞARILI render bitmap'in CSS boyunu belirler (yukarıdaki kural).
+                    const retry = previewRetryDpi(at, hadBitmap);
+                    if (retry !== null && alive) return render(retry);
+                    if (alive) setError(String(e));
+                }
             };
-            if (large) activeQueue = activeQueue.catch(() => {}).then(render);
-            else queue = queue.catch(() => {}).then(render);
+            if (large) activeQueue = activeQueue.catch(() => {}).then(() => render(dpi));
+            else queue = queue.catch(() => {}).then(() => render(dpi));
         };
         const observer = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) load(); }, {rootMargin: '100px'});
         if (ref.current) observer.observe(ref.current);
