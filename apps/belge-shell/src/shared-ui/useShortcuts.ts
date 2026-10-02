@@ -22,16 +22,23 @@ export interface Shortcut {
   enabled?: boolean;
 }
 
-function inTextEntry(target: EventTarget | null): boolean {
+/**
+ * Klavyeyle metin yazılan `<input>` türleri. Seç kutusu, düğme ya da
+ * Yakınlaştır listesi (SELECT) metin girişi DEĞİLDİR: eskiden her INPUT ve
+ * SELECT sayılıyordu; Sırala'da odak bir Seç kutusundayken (Windows'ta
+ * tıklamak ona odak verir) ⌘Z / Ctrl+Z sessizce hiçbir şey yapmıyordu.
+ */
+const TEXT_INPUT_TYPES = new Set([
+  "text", "search", "email", "url", "tel", "password", "number",
+  "date", "datetime-local", "month", "time", "week",
+]);
+
+export function inTextEntry(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el) return false;
-  const tag = el.tagName;
-  return (
-    tag === "INPUT" ||
-    tag === "TEXTAREA" ||
-    tag === "SELECT" ||
-    el.isContentEditable === true
-  );
+  if (el.tagName === "INPUT")
+    return TEXT_INPUT_TYPES.has(((el as HTMLInputElement).type || "text").toLowerCase());
+  return el.tagName === "TEXTAREA" || el.isContentEditable === true;
 }
 
 export function useShortcuts(shortcuts: Shortcut[], active = true) {
