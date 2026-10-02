@@ -38,7 +38,7 @@ import { Button, EmptyState, IconButton, Status } from '../../shared-ui/primitiv
 import { announce } from '../../shared-ui/Announcer';
 import { useShortcuts } from '../../shared-ui/useShortcuts';
 import { isToggleChord, shortcutLabel } from '../../shell/platform';
-import { describeMove, isReordered, moveKeys, pushHistory, sameOrder, selectPages, shiftKeys, type MoveKind } from './pageOrder';
+import { describeMove, isReordered, moveKeys, pushHistory, sameOrder, selectPages, shiftKeys, stripStep, type MoveKind } from './pageOrder';
 import { useStripDrag } from './useStripDrag';
 import './pdf.css';
 const tools = {
@@ -133,6 +133,8 @@ type Page = {
     page: number;
     key: string;
 };
+/** Sırala şeridinin klavye yolunu ekran okuyucuya söyleyen gizli metnin kimliği. */
+const STRIP_KEYS_ID = 'sirala-serit-tuslari';
 // Bound native render requests; thumbnails render only when near the viewport.
 // Etkin sayfanın büyük önizlemesi küçük resim sütununun ARKASINDA beklemez:
 // kendi kuyruğu vardır. Aynı anda en fazla iki render (biri etkin sayfa) —
@@ -248,24 +250,31 @@ export const PreviewStage = React.forwardRef<HTMLDivElement, {
  * et/Çıkar kutusu, ↑/↓) kardeştir, iç içe etkileşimli öğe yoktur. Seçim
  * çerçevesi yalnız seçimi olan araçlarda çizilir: Birleştir ve Döndür'de ilk
  * sayfa, kullanıcının değiştiremediği bir seçimle işaretli duruyordu.
+ *
+ * `tabbable` false iken sayfanın denetimleri sekme sırasından çıkar (tabindex
+ * -1) ama odaklanabilir ve ekran okuyucuda erişilebilir kalır: Sırala'da
+ * şerit tek sekme durağıdır (bkz. `stripKeys`).
  */
-export function PageThumbnail({ item, index, count, kind, isCurrent, isSelected, rotation, busy, drop, dragging, onView, onToggle, onShift, onPointerDown }: {
+export function PageThumbnail({ item, index, count, kind, isCurrent, isSelected, rotation, busy, drop, dragging, tabbable = true, onView, onToggle, onShift, onPointerDown }: {
     item: Page; index: number; count: number; kind: Kind; isCurrent: boolean; isSelected: boolean; rotation: number; busy: boolean;
     /** Sürüklenen sayfaların bu sayfanın önüne mi arkasına mı ineceği. */
     drop?: 'before' | 'after'; dragging?: boolean;
+    /** Bu sayfanın denetimleri sekme sırasında mı? */
+    tabbable?: boolean;
     onView: (event: React.MouseEvent) => void; onToggle: () => void; onShift: (delta: -1 | 1) => void;
     onPointerDown?: (event: React.PointerEvent<HTMLElement>) => void;
 }) {
+    const tab = tabbable ? undefined : -1;
     const selectable = kind === 'select' || kind === 'delete' || kind === 'reorder';
     const pickVerb = kind === 'delete' ? 'Çıkar' : kind === 'reorder' ? 'Seç' : 'Dahil et';
-    const pick = selectable && <label className="thumbnail-pick"><input type="checkbox" aria-label={`${index + 1}. sayfa (kaynak s. ${item.page}) — ${pickVerb}`} checked={isSelected} onChange={onToggle}/>{pickVerb}</label>;
+    const pick = selectable && <label className="thumbnail-pick"><input type="checkbox" aria-label={`${index + 1}. sayfa (kaynak s. ${item.page}) — ${pickVerb}`} checked={isSelected} onChange={onToggle} tabIndex={tab}/>{pickVerb}</label>;
     return <div role="listitem" className={`thumbnail ${isCurrent ? 'current' : ''} ${selectable && isSelected ? 'selected' : ''} ${kind === 'delete' && isSelected ? 'removed' : ''}`} data-drop={drop} data-dragging={dragging || undefined} onPointerDown={onPointerDown}>
         {/* Önizleme motoru PDF SAYFASI çizer. Görsel kaynaklarda (Görseller
             → PDF aracı) bu çağrı zorunlu olarak düşüyor ve her küçük resim
             "önizleme oluşturulamadı" hatası gösteriyordu: araç çalışıyor
             ama tamamen bozukmuş gibi görünüyordu. Görselde hata yerine
             dosyanın kendisi söylenir. */}
-        <button className="thumbnail-image-button" aria-label={`${item.source.file_name} sayfa ${item.page} görüntüle`} onClick={onView}>
+        <button className="thumbnail-image-button" tabIndex={tab} aria-label={`${item.source.file_name} sayfa ${item.page} görüntüle`} aria-describedby={kind === 'reorder' ? STRIP_KEYS_ID : undefined} onClick={onView}>
             {item.source.format === 'pdf'
                 ? <Preview item={item} rotation={rotation}/>
                 : <span className="thumbnail-placeholder">{item.source.file_name}</span>}
@@ -285,10 +294,10 @@ export function PageThumbnail({ item, index, count, kind, isCurrent, isSelected,
         {kind === 'reorder' && <div className="thumbnail-move">
             {pick}
             <span className="thumbnail-step">
-                <IconButton label={`${index + 1}. sayfayı yukarı taşı (kaynak s. ${item.page})`} aria-disabled={index === 0 || busy || undefined} onClick={() => index > 0 && !busy && onShift(-1)}>
+                <IconButton label={`${index + 1}. sayfayı yukarı taşı (kaynak s. ${item.page})`} tabIndex={tab} aria-disabled={index === 0 || busy || undefined} onClick={() => index > 0 && !busy && onShift(-1)}>
                     <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </IconButton>
-                <IconButton label={`${index + 1}. sayfayı aşağı taşı (kaynak s. ${item.page})`} aria-disabled={index === count - 1 || busy || undefined} onClick={() => index < count - 1 && !busy && onShift(1)}>
+                <IconButton label={`${index + 1}. sayfayı aşağı taşı (kaynak s. ${item.page})`} tabIndex={tab} aria-disabled={index === count - 1 || busy || undefined} onClick={() => index < count - 1 && !busy && onShift(1)}>
                     <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.5V12m-3.5-3.5L8 12l3.5-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </IconButton>
             </span>
@@ -596,6 +605,31 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         if (stripRef.current?.contains(document.activeElement)) refocus.current = { key: item.key, delta };
         shiftPage(index, delta);
     };
+    // Sırala'da şerit TEK sekme durağıdır (roving tabindex). Her sayfa dört
+    // denetim taşır (görüntüle, Seç, ↑, ↓); hepsi sekme sırasındayken 60
+    // sayfalık bir ekte 3. sayfayı seçip "Sona"ya ulaşmak ~228 Tab istiyordu.
+    // Yalnız son odaklanan (yoksa önizlenen) sayfanın denetimleri sekme
+    // sırasındadır; ↑/↓ komşu sayfanın AYNI denetimine, Home/End uçlara gider.
+    // Taşıma düğmeleri ve Geri Al şeritten birkaç Tab ötededir. Öteki
+    // araçlarda şerit değişmedi.
+    const [roving, setRoving] = useState('');
+    const rovingKey = order.some(p => p.key === roving) ? roving : order.some(p => p.key === current) ? current : order[0]?.key;
+    const pageAt = (target: EventTarget) => {
+        const list = stripRef.current?.querySelector('[role="list"]');
+        const item = (target as HTMLElement).closest?.('[role="listitem"]');
+        return list && item ? Array.prototype.indexOf.call(list.children, item) as number : -1;
+    };
+    const stripFocus = (event: React.FocusEvent) => { const index = pageAt(event.target); if (order[index]) setRoving(order[index].key); };
+    const stripKeys = (event: React.KeyboardEvent<HTMLElement>) => {
+        if (kind !== 'reorder' || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+        const index = pageAt(event.target);
+        const next = index < 0 ? null : stripStep(event.key, index, order.length);
+        if (next === null) return;
+        event.preventDefault();
+        const controls = (at: number) => Array.from(stripRef.current?.querySelector('[role="list"]')?.children[at]?.querySelectorAll<HTMLElement>('button, input') ?? []);
+        const slot = controls(index).indexOf(event.target as HTMLElement);
+        controls(next)[Math.max(0, slot)]?.focus();
+    };
     const strip = useStripDrag({
         listRef: stripRef,
         enabled: kind === 'reorder' && !busy,
@@ -844,15 +878,16 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         {/* Şerit yalnız gösterilecek sayfa varken açılır; belge yokken 132 px'lik
             boş bir bant çizmez ve hata/boş durum tam genişliği alır. */}
         <div className="pdf-workspace-layout" data-pages={surfaces.strip}>
-            {surfaces.strip && <aside className="thumbnail-list" aria-label="Sayfa önizlemeleri" ref={stripRef} data-reorder={kind === 'reorder' || undefined} data-dragging={strip.drag ? '' : undefined} onClickCapture={strip.onClickCapture}>
+            {surfaces.strip && <aside className="thumbnail-list" aria-label="Sayfa önizlemeleri" ref={stripRef} data-reorder={kind === 'reorder' || undefined} data-dragging={strip.drag ? '' : undefined} onClickCapture={strip.onClickCapture} onKeyDown={stripKeys} onFocus={stripFocus}>
                 <div role="list">{order.map((item, index) => {
                     const gap = strip.drag?.gap;
                     const drop = gap === index ? 'before' : gap === order.length && index === order.length - 1 ? 'after' : undefined;
                     return <PageThumbnail key={item.key} item={item} index={index} count={order.length} kind={kind} isCurrent={item.key === current} isSelected={selected.includes(item.key)}
-                        rotation={rotations[item.key] || 0} busy={busy} drop={gap == null ? undefined : drop} dragging={strip.drag?.keys.includes(item.key)}
+                        rotation={rotations[item.key] || 0} busy={busy} drop={gap == null ? undefined : drop} dragging={strip.drag?.keys.includes(item.key)} tabbable={kind !== 'reorder' || item.key === rovingKey}
                         onView={event => viewPage(event, item.key)} onToggle={() => toggle(item.key)} onShift={delta => shiftFromStrip(item, index, delta)}
                         onPointerDown={event => strip.onPointerDown(event, item.key)}/>;
                 })}</div>
+                {kind === 'reorder' && <p id={STRIP_KEYS_ID} className="sr-only">Sayfalar arasında ↑ ve ↓ tuşlarıyla geçilir; Home ilk, End son sayfaya götürür.</p>}
             </aside>}
 
             <aside className="pdf-preview-panel" aria-label="PDF önizleme çalışma alanı">

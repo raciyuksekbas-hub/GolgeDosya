@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
   describeMove, dropGap, edgeScroll, HISTORY_LIMIT, isReordered, moveKeys, pushHistory, sameOrder, selectPages, shiftKeys,
 } from "./pageOrder";
+import * as pageOrder from "./pageOrder";
 
 const pages = (...n: number[]) => n.map((page) => ({ key: `a#${page}`, page }));
 const keys = (...n: number[]) => n.map((page) => `a#${page}`);
@@ -137,5 +138,24 @@ describe("duyuru", () => {
     expect(describeMove([{ page: 2 }, { page: 5 }], "end", 5)).toBe("2 sayfa sona taşındı.");
     expect(describeMove([{ page: 2 }, { page: 5 }], "up", 1)).toBe("2 sayfa birer sıra yukarı taşındı.");
     expect(describeMove([{ page: 2 }, { page: 5 }], "drop", 4)).toBe("2 sayfa 4. sıraya taşındı.");
+  });
+});
+
+describe("şeritte klavyeyle sayfadan sayfaya (Sırala, tek sekme durağı)", () => {
+  const step = () => {
+    const f = (pageOrder as Record<string, unknown>).stripStep;
+    expect(typeof f, "stripStep pageOrder'da tanımlı olmalı").toBe("function");
+    return f as (key: string, index: number, count: number) => number | null;
+  };
+  it("↑/↓ komşu sayfaya, Home/End uçlara gider; kenarda yerinde kalır", () => {
+    expect(step()("ArrowDown", 2, 6)).toBe(3);
+    expect(step()("ArrowUp", 2, 6)).toBe(1);
+    expect(step()("ArrowUp", 0, 6)).toBe(0);
+    expect(step()("ArrowDown", 5, 6)).toBe(5);
+    expect(step()("Home", 4, 6)).toBe(0);
+    expect(step()("End", 1, 6)).toBe(5);
+  });
+  it("başka tuşlar şeridin işi değildir", () => {
+    for (const key of ["Enter", " ", "Tab", "ArrowLeft", "ArrowRight", "z"]) expect(step()(key, 2, 6)).toBeNull();
   });
 });

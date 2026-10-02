@@ -95,6 +95,20 @@ export function selectPages(
 }
 
 /**
+ * Sırala şeridinde klavyeyle sayfadan sayfaya: hedef sayfanın sırası, şeridin
+ * işi olmayan tuşta `null`. Şerit tek sekme durağıdır (roving tabindex):
+ * yalnız bir sayfanın denetimleri sekme sırasındadır, ↑/↓ komşu sayfaya,
+ * Home/End uçlara gider; kenarda odak yerinde kalır.
+ */
+export function stripStep(key: string, index: number, count: number): number | null {
+    if (key === 'ArrowUp') return Math.max(0, index - 1);
+    if (key === 'ArrowDown') return Math.min(count - 1, index + 1);
+    if (key === 'Home') return 0;
+    if (key === 'End') return count - 1;
+    return null;
+}
+
+/**
  * İşaretçinin konumundan bırakma boşluğu: sayfanın orta noktasının üstü
  * "önüne", altı "arkasına" demektir. `midpoints` küçük resimlerin ekrandaki
  * dikey orta noktalarıdır, yukarıdan aşağıya.

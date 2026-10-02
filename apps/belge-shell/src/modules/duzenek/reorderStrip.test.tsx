@@ -89,6 +89,36 @@ describe("sürükleme ve klavye sözleşmesi", () => {
   });
 });
 
+describe("Sırala'da şerit tek sekme durağıdır (roving tabindex)", () => {
+  // 60 sayfalık bir ekte 3. sayfayı seçip "Sona"ya ulaşmak sayfa başına dört
+  // durakla ~228 Tab istiyordu. Artık yalnız bir sayfanın denetimleri sekme
+  // sırasında; ↑/↓, Home/End sayfalar arasında gezdirir.
+  const src = { id: "a", path: "/b/d.pdf", file_name: "d.pdf", format: "pdf", size_bytes: 1, page_count: 3, is_signed: false } as never;
+  const thumb = (kind: string, extra: Record<string, unknown> = {}) => renderToStaticMarkup(
+    <PageThumbnail item={{ source: src, page: 2, key: "a#2" }} index={1} count={3} kind={kind as never} isCurrent={false} isSelected={false} rotation={0} busy={false}
+      onView={() => {}} onToggle={() => {}} onShift={() => {}} {...extra} />,
+  );
+  const controls = (html: string) => [...html.matchAll(/<(button|input)\b[^>]*>/g)].map((m) => m[0]);
+
+  it("sekme sırası dışındaki sayfanın dört denetimi de tabindex=-1 taşır; durak sayfası ve öteki araçlar değişmez", () => {
+    const off = controls(thumb("reorder", { tabbable: false }));
+    expect(off).toHaveLength(4);
+    for (const c of off) expect(c).toContain('tabindex="-1"');
+    for (const c of controls(thumb("reorder", { tabbable: true }))) expect(c).not.toContain("tabindex");
+    for (const c of controls(thumb("select"))) expect(c).not.toContain("tabindex");
+  });
+  it("bileşen yalnız Sırala'da tek durak bırakır ve oklarla gezdirir", () => {
+    expect(source).toContain("tabbable={kind !== 'reorder' || item.key === rovingKey}");
+    expect(source).toMatch(/<aside className="thumbnail-list"[^>]*onKeyDown=\{stripKeys\}[^>]*onFocus=\{stripFocus\}/);
+    const keys = source.slice(source.indexOf("const stripKeys = "), source.indexOf("const strip = useStripDrag"));
+    expect(keys).toContain("kind !== 'reorder'");
+    expect(keys).toContain("stripStep(event.key");
+    expect(keys).toContain("event.preventDefault()");
+    // Ekran okuyucuya yol söylenir.
+    expect(source).toContain("Sayfalar arasında ↑ ve ↓ tuşlarıyla geçilir");
+  });
+});
+
 describe("tıklama mı sürükleme mi", () => {
   it("Sırala'da ~4 px'ten sonrası sürüklemedir", () => {
     expect(DRAG_THRESHOLD).toBe(4);
