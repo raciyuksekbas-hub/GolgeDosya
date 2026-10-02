@@ -509,18 +509,26 @@ fn export_contains_the_same_annotations_as_the_preview() {
         keep(&got, &format!("cikti-s{page:02}.png"));
         assert_eq!(
             (got.width(), got.height()),
-            (595, 842 + 34),
-            "s.{page}: pay dahil boyut"
+            (595, 842),
+            "s.{page}: görsel sayfa boyutunda (marka sayfayı büyütmez)"
         );
         let top = image::imageops::crop_imm(&got, 0, 0, 595, 842).to_image();
         let shown = preview(&src, page, 72, 0);
+        // Marka artık sayfanın üstüne, sağ alt köşeye basılıyor ve yalnız
+        // çıktıda var; karşılaştırma açıklamaları ölçsün diye o köşe dışarıda.
+        let brand_corner = |x: u32, y: u32| x >= 500 && y >= 800;
         let mut diff = 0u64;
-        for (a, b) in top.pixels().zip(shown.pixels()) {
+        let mut n = 0u64;
+        for ((x, y, a), b) in top.enumerate_pixels().zip(shown.pixels()) {
+            if brand_corner(x, y) {
+                continue;
+            }
+            n += 3;
             diff += (0..3)
                 .map(|c| u64::from(a.0[c].abs_diff(b.0[c])))
                 .sum::<u64>();
         }
-        let mae = diff as f64 / (595. * 842. * 3.);
+        let mae = diff as f64 / n as f64;
         assert!(mae < 0.5, "s.{page}: önizleme ↔ çıktı MAE {mae:.3}");
         let band = got.height() - 16;
         assert!(
@@ -529,7 +537,7 @@ fn export_contains_the_same_annotations_as_the_preview() {
                 .0
                 .iter()
                 .any(|c| *c < 235)),
-            "s.{page}: işaret payında GölgeDosya işareti yok"
+            "s.{page}: sağ alt köşede GölgeDosya işareti yok"
         );
     }
     for (page, expect) in &draws {
@@ -547,7 +555,13 @@ fn export_contains_the_same_annotations_as_the_preview() {
         let got = image::open(folder.join(format!("sayfa-{page:04}.png")))
             .unwrap()
             .to_rgb8();
-        let top = image::imageops::crop_imm(&got, 0, 0, 595, 842).to_image();
+        let mut top = image::imageops::crop_imm(&got, 0, 0, 595, 842).to_image();
+        // Sağ alt köşedeki marka sayılmaz; açıklamalar o köşede değil.
+        for y in 800..842 {
+            for x in 500..595 {
+                top.put_pixel(x, y, image::Rgb([255, 255, 255]));
+            }
+        }
         assert_eq!(non_white(&top), 0, "çıktı s.{page} {name}: çizilmemeliydi");
     }
     // JPEG de aynı yoldan geçer.
@@ -563,8 +577,8 @@ fn export_contains_the_same_annotations_as_the_preview() {
 }
 
 /// Dönük sayfa ve CropBox ≠ MediaBox: görünüm sayfayla birlikte döner;
-/// CropBox dışındaki (MediaBox içindeki) açıklama ne önizlemede ne de marka
-/// payı eklenmiş çıktıda görünür.
+/// CropBox dışındaki (MediaBox içindeki) açıklama ne önizlemede ne de
+/// çıktıda görünür.
 #[test]
 fn rotated_and_cropped_pages_keep_annotations_in_place() {
     let dir = tempfile::tempdir().unwrap();
@@ -640,7 +654,7 @@ fn rotated_and_cropped_pages_keep_annotations_in_place() {
     assert_eq!(
         greenish(&got),
         0,
-        "marka payı CropBox dışındaki açıklamayı açığa çıkardı"
+        "çıktı CropBox dışındaki açıklamayı açığa çıkardı"
     );
     let red_out = got
         .pixels()
@@ -762,7 +776,7 @@ fn a_signed_pdf_exports_after_approval() {
         .unwrap()
         .to_rgb8();
     assert!(
-        near(&got, [100., 700. + 34., 200., 720. + 34.], [0, 0, 0]) >= 1900,
+        near(&got, [100., 700., 200., 720.], [0, 0, 0]) >= 1900,
         "sayfa içeriği yok"
     );
     assert_eq!(before, calculate_sha256(&src).unwrap());
