@@ -752,11 +752,11 @@ export async function v032Saha(ctx) {
     };
     const one = await run(source, first);
     const gen1 = one?.status === "published" && existsSync(first) ? compare(first) : null;
-    check("a01", "Markalı çıktı: her sayfanın MediaBox/CropBox/Rotate'i kaynağınkiyle aynı ve tam bir işaret taşıyor",
+    check("a04", "Markalı çıktı: her sayfanın MediaBox/CropBox/Rotate'i kaynağınkiyle aynı ve tam bir işaret taşıyor",
       gen1 && gen1.length === BOX_PAGES.length && gen1.every((p) => p.ok), { sonuc: one, sayfalar: gen1 });
     const two = gen1 ? await run(first, second) : null;
     const gen2 = two?.status === "published" && existsSync(second) ? compare(second) : null;
-    check("a01", "Markalı çıktıdan yeniden türetme: kutular yine aynı, işaret çoğalmıyor (sayfa başına 1)",
+    check("a04", "Markalı çıktıdan yeniden türetme: kutular yine aynı, işaret çoğalmıyor (sayfa başına 1)",
       gen2 && gen2.length === BOX_PAGES.length && gen2.every((p) => p.ok), { sonuc: two, sayfalar: gen2 });
     // Kanıt: ikinci kuşak çıktı Düzenle'de açılır, ekran görüntüsü alınır.
     if (gen2) {
@@ -865,13 +865,13 @@ export async function v032Saha(ctx) {
     const out1 = join(dir, `v032 Sırala tek ${RUN}.pdf`);
     const saved1 = JSON.stringify(after1) === JSON.stringify([2, 3, 1, 4]) ? await saveVia("Yeni PDF Kaydet", out1) : { atlandi: "sıra değişmedi" };
     const w1 = existsSync(out1) ? widthsOf(out1) : null;
-    check("sırala", "İşaretçiyle tek sayfa sürüklendi: şerit [2,3,1,4], kaydedilen PDF aynı sırada",
+    check("a06", "İşaretçiyle tek sayfa sürüklendi: şerit [2,3,1,4], kaydedilen PDF aynı sırada",
       JSON.stringify(after1) === JSON.stringify([2, 3, 1, 4]) && JSON.stringify(w1) === JSON.stringify([440, 460, 420, 480]),
       { arac: tool, surukleme: moved, sira: after1, genislikler: w1, ...saved1 });
     await ctrlZ();
     const undo1 = await order();
     // Geri alınacak bir taşıma olmadan [1,2,3,4] boş bir başarıdır: önceki sıra da ölçülür.
-    check("sırala", "Ctrl+Z son taşımayı geri alır: [2,3,1,4] → [1,2,3,4]",
+    check("a06", "Ctrl+Z son taşımayı geri alır: [2,3,1,4] → [1,2,3,4]",
       JSON.stringify(after1) === JSON.stringify([2, 3, 1, 4]) && JSON.stringify(undo1) === JSON.stringify([1, 2, 3, 4]), { once: after1, sonra: undo1 });
 
     // (2) İki bitişik olmayan sayfa: 2'ye tıkla, 4'e Ctrl+tıkla, 4'ü en başa sürükle.
@@ -888,13 +888,13 @@ export async function v032Saha(ctx) {
     const out2 = join(dir, `v032 Sırala iki ${RUN}.pdf`);
     const saved2 = JSON.stringify(after2) === JSON.stringify([2, 4, 1, 3]) ? await saveVia("Yeni PDF Kaydet", out2) : { atlandi: "sıra değişmedi" };
     const w2 = existsSync(out2) ? widthsOf(out2) : null;
-    check("sırala", "Ctrl ile seçilen iki sayfa (2 ve 4) birlikte sürüklendi: [2,4,1,3], kaydedilen PDF aynı sırada",
+    check("a06", "Ctrl ile seçilen iki sayfa (2 ve 4) birlikte sürüklendi: [2,4,1,3], kaydedilen PDF aynı sırada",
       JSON.stringify(picked) === JSON.stringify([2, 4]) && JSON.stringify(after2) === JSON.stringify([2, 4, 1, 3])
         && JSON.stringify(w2) === JSON.stringify([440, 480, 420, 460]),
       { secili: picked, surukleme: moved2, sira: after2, genislikler: w2, ...saved2 });
     await ctrlZ();
     const undo2 = await order();
-    check("sırala", "Ctrl+Z iki sayfalık taşımayı geri alır: [2,4,1,3] → [1,2,3,4]",
+    check("a06", "Ctrl+Z iki sayfalık taşımayı geri alır: [2,4,1,3] → [1,2,3,4]",
       JSON.stringify(after2) === JSON.stringify([2, 4, 1, 3]) && JSON.stringify(undo2) === JSON.stringify([1, 2, 3, 4]), { once: after2, sonra: undo2 });
 
     // (3) Fare gerekmeyen yol: Seç kutusu + Başa + Geri Al.
@@ -911,7 +911,7 @@ export async function v032Saha(ctx) {
     await sleep(400);
     const restored = await order();
     shot("v032-sirala-dugmeler");
-    check("sırala", "Seç kutusu + 'Başa' seçili sayfaları başa taşır ([1,3,2,4]); 'Geri Al' geri getirir",
+    check("a06", "Seç kutusu + 'Başa' seçili sayfaları başa taşır ([1,3,2,4]); 'Geri Al' geri getirir",
       JSON.stringify(chosen) === JSON.stringify([1, 3]) && JSON.stringify(toStart) === JSON.stringify([1, 3, 2, 4])
         && JSON.stringify(restored) === JSON.stringify([1, 2, 3, 4]), { secili: chosen, basa: toStart, geriAl: restored });
   }
@@ -1149,7 +1149,7 @@ export async function v032Saha(ctx) {
     const saved = await saveVia("Yeni PDF Kaydet", null);
     const created = readdirSync(dir).filter((n) => !before.has(n) && /\.pdf$/i.test(n));
     const output = created.length === 1 ? join(dir, created[0]) : null;
-    check("a14", "Kaydet penceresi kaynak belgenin klasöründe açılır (önerilen adla kaydedilen kopya orada)",
+    check("a08", "Kaydet penceresi kaynak belgenin klasöründe açılır (önerilen adla kaydedilen kopya orada)",
       saved.status?.tone === "success" && Boolean(output), { olusan: created, pencere: saved.dialog, durum: saved.status });
     const place = await eval_(`(() => { const p = document.querySelector('.pdf-preview-panel .saved-place'); if (!p) return null;
       return { name: p.querySelector('.saved-place-name')?.textContent, dir: p.querySelector('.saved-place-name')?.getAttribute('title'),
@@ -1166,7 +1166,7 @@ export async function v032Saha(ctx) {
       if (target && output && (target.selected ?? []).some((p) => norm(p) === norm(output))) break;
     }
     nativeLive("screen", { Path: join(SHOTS, "v032-klasorde-goster.png") });
-    check("a14", "Düzenle 'Klasörde Göster' Gezgin'i kaydedilen dosyanın klasöründe, dosya seçili açar",
+    check("a08", "Düzenle 'Klasörde Göster' Gezgin'i kaydedilen dosyanın klasöründe, dosya seçili açar",
       Boolean(target) && Boolean(output) && (target.selected ?? []).some((p) => norm(p) === norm(output)),
       { satir: place, beklenen: { klasor: dir, dosya: output }, acilan: windows });
     nativeLive("close-explorer");
