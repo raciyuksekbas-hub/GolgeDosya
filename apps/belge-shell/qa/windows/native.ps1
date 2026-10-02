@@ -14,7 +14,10 @@ param(
   [int]$ProcessId,
   [string]$Keys,
   [int]$X, [int]$Y, [int]$Width, [int]$Height,
-  [string]$Path
+  [string]$Path,
+  # 'glyph': yazı tipi ailesi ve aranan karakterin kod noktası.
+  [string]$FontFamily,
+  [int]$CodePoint
 )
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -68,6 +71,46 @@ function Focus($h) {
   [void][GdU32]::SetForegroundWindow($h)
   Start-Sleep -Milliseconds 300
   [GdU32]::GetForegroundWindow() -eq $h
+}
+
+# Uygulama sürecinin görünür iletişim kutuları (#32770). UI Automation ağacı
+# sahipli pencereyi sahibinin altına taşıyabildiği için kök çocuklarına
+# bakılmaz; pencereler Win32 ile sayılır ve tanıtıcıdan UIA öğesi alınır.
+function Add-DialogType {
+  Add-Type -TypeDefinition @"
+using System; using System.Collections.Generic; using System.Runtime.InteropServices; using System.Text;
+public static class GdDlg {
+  delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  static string Class(IntPtr h) { var s = new StringBuilder(64); GetClassName(h, s, 64); return s.ToString(); }
+  public static IntPtr[] Dialogs(uint pid) {
+    var found = new List<IntPtr>();
+    EnumWindows((h, l) => {
+      uint owner; GetWindowThreadProcessId(h, out owner);
+      if (owner == pid && IsWindowVisible(h) && Class(h) == "#32770") found.Add(h);
+      return true;
+    }, IntPtr.Zero);
+    return found.ToArray();
+  }
+  /// Teşhis: görünür bütün #32770 pencereleri, başka süreçlerinkiler dahil.
+  public static string[] Describe() {
+    var found = new List<string>();
+    EnumWindows((h, l) => {
+      if (!IsWindowVisible(h) || Class(h) != "#32770") return true;
+      uint owner; GetWindowThreadProcessId(h, out owner);
+      var t = new StringBuilder(256); GetWindowText(h, t, 256);
+      found.Add(owner + " " + t.ToString());
+      return true;
+    }, IntPtr.Zero);
+    return found.ToArray();
+  }
+}
+"@
 }
 
 $VK = @{ CTRL = 0x11; SHIFT = 0x10; ALT = 0x12; F5 = 0x74; F24 = 0x87; R = 0x52; S = 0x53; ESC = 0x1B; LEFT = 0x25 }
@@ -255,6 +298,77 @@ public static class GdDisp {
     $code = [GdDisp]::Set($Width, $Height); Start-Sleep -Milliseconds 1500
     $after = [GdDisp]::Current()
     Out-Json @{ before = $before; after = $after; result = $code }
+  }
+  'filedialog' {
+    # Uygulamanın açtığı ortak dosya penceresi (Kaydet ya da Aç; #32770, kendi
+    # sürecinde). -Path verilirse ad kutusuna yazılır; verilmezse pencerenin
+    # önerdiği ad ve klasör kalır. Onay düğmesi (AutomationId 1) UI Automation
+    # ile çağrılır: klavye odağı ve ön plan gerekmez. Pencere 20 sn beklenir.
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    Add-DialogType
+    $dlg = [IntPtr]::Zero
+    for ($i = 0; $i -lt 80 -and $dlg -eq [IntPtr]::Zero; $i++) {
+      $all = [GdDlg]::Dialogs([uint32]$ProcessId)
+      if ($all.Length -gt 0) { $dlg = $all[0] } else { Start-Sleep -Milliseconds 250 }
+    }
+    if ($dlg -eq [IntPtr]::Zero) { Out-Json @{ found = $false; others = [GdDlg]::Describe() }; break }
+    Start-Sleep -Milliseconds 700
+    $A = [System.Windows.Automation.AutomationElement]
+    $Scope = [System.Windows.Automation.TreeScope]
+    $el = $A::FromHandle($dlg)
+    $edits = $el.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+    $nameBox = $null
+    foreach ($e in $edits) { if (@('1001', '1148', '1152') -contains $e.Current.AutomationId) { $nameBox = $e; break } }
+    # Pencerenin açıldığı klasör: adres çubuğu "Address: C:\…" (Türkçe "Adres: …").
+    $folderShown = $null
+    foreach ($tb in $el.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::ToolBar)))) {
+      $n = $tb.Current.Name
+      if ($n -match '^[^:\\]{2,24}: (.+)$') { $folderShown = $Matches[1]; break }
+    }
+    $suggested = $null
+    if ($nameBox) { $suggested = $nameBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value }
+    $typed = $false
+    if ($Path) {
+      if (-not $nameBox) { Out-Json @{ found = $true; title = $el.Current.Name; error = 'ad kutusu bulunamadı'; folder = $folderShown }; break }
+      $nameBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($Path)
+      $typed = $true
+      Start-Sleep -Milliseconds 300
+    }
+    $ok = $el.FindFirst($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::AutomationIdProperty, '1')))
+    if (-not $ok) { Out-Json @{ found = $true; title = $el.Current.Name; error = 'onay düğmesi bulunamadı'; folder = $folderShown }; break }
+    $ok.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $closed = $false
+    for ($i = 0; $i -lt 40 -and -not $closed; $i++) { Start-Sleep -Milliseconds 250; $closed = -not [GdDlg]::IsWindowVisible($dlg) }
+    Out-Json @{ found = $true; title = $el.Current.Name; folder = $folderShown; suggested = $suggested; typed = $typed; closed = $closed; others = [GdDlg]::Describe() }
+  }
+  'dialog-close' {
+    # Açık kalmış ortak pencereleri (ve uygulamanın başka #32770 kutularını)
+    # kapatır: WM_CLOSE = Vazgeç. Bir senaryo yarıda kalırsa sonrakini kilitlemesin.
+    Add-DialogType
+    $all = [GdDlg]::Dialogs([uint32]$ProcessId)
+    foreach ($d in $all) { [void][GdDlg]::PostMessage($d, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) }
+    if ($all.Length) { Start-Sleep -Milliseconds 800 }
+    Out-Json @{ closed = $all.Length }
+  }
+  'clip-text' {
+    # Panodaki düz metin (Ctrl+C / "Kopyala" sonrası gerçekte ne kopyalandı).
+    $t = Get-Clipboard -Raw -Format Text
+    Out-Json @{ text = $t }
+  }
+  'glyph' {
+    # Ailede bu karakterin GERÇEK bir glifi var mı? Tarayıcının bildirdiği aile
+    # glifi taşımıyorsa çizilen şey .notdef kutusudur (tofu).
+    Add-Type -AssemblyName PresentationCore
+    $face = New-Object System.Windows.Media.Typeface($FontFamily)
+    $gt = $null
+    $ok = $face.TryGetGlyphTypeface([ref]$gt)
+    $names = @(); $has = $false; $file = $null
+    if ($ok) {
+      $names = @($gt.FamilyNames.Values)
+      $has = $gt.CharacterToGlyphMap.ContainsKey($CodePoint)
+      $file = $gt.FontUri.LocalPath
+    }
+    Out-Json @{ family = $FontFamily; resolved = $ok; names = $names; has = $has; file = $file }
   }
   default { throw "bilinmeyen eylem: $Action" }
 }
