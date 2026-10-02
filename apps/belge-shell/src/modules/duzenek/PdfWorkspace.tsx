@@ -766,6 +766,10 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const mergeAddRef = useRef<HTMLButtonElement>(null);
     const showMergeAdd = () => { revealTools(); requestAnimationFrame(() => mergeAddRef.current?.focus()); };
     const pick = (key: Kind) => {
+        // Seçili araca yeniden tıklamak (vurgulu segment, "onaylıyorum" diye)
+        // bir şey değiştirmez. Eskiden aynı araç yeniden kuruluyordu: Sırala
+        // düzeni kaynak sırasına dönüyor, Geri Al geçmişi de siliniyordu.
+        if (key === kind) return;
         setKind(key);
         const kept = key === 'images' || kind === 'images' ? [] : (key === 'merge' ? sources : sources.slice(0, 1));
         // Araçlar BİLİNÇLİ olarak bağımsızdır: her biri kaynaktan tek bir işlem

@@ -190,3 +190,12 @@ describe("klavye odağı taşımadan sonra yerinde kalır", () => {
     expect(source).toContain("onClick={() => index < count - 1 && !busy && onShift(1)}");
   });
 });
+
+describe("seçili araca yeniden tıklamak bir şey sıfırlamaz", () => {
+  it("pick, zaten seçili araçta hiçbir şey yapmaz (Sırala düzeni ve Geri Al geçmişi kalır)", () => {
+    // Vurgulu "Sırala" segmentine "onaylıyorum" diye tıklayan kullanıcı 40
+    // sayfalık düzeni kaybediyordu; build() Geri Al geçmişini de siliyordu.
+    const pick = source.slice(source.indexOf("const pick = (key: Kind) => {"), source.indexOf("const PAGE_TOOLS"));
+    expect(pick).toMatch(/^const pick = \(key: Kind\) => \{(\s*\/\/[^\n]*)*\s*if \(key === kind\) return;\s*setKind\(key\);/);
+  });
+});
