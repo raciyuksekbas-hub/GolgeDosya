@@ -220,6 +220,8 @@ struct Mark {
     rect: [f32; 4],
     /// Formun +x ekseninin görüntüdeki birim yönü.
     axis: (f32, f32),
+    /// Formun +y ekseninin görüntüdeki birim yönü (aynalanmış işaret yakalanır).
+    up: (f32, f32),
     width: f32,
 }
 
@@ -305,6 +307,8 @@ fn marks(doc: &Document, page: ObjectId) -> Vec<Mark> {
                 let o = to_display(user(0., 0.), v, rot);
                 let e = to_display(user(1., 0.), v, rot);
                 let len = ((e.0 - o.0).powi(2) + (e.1 - o.1).powi(2)).sqrt();
+                let f = to_display(user(0., 1.), v, rot);
+                let up = ((f.0 - o.0).powi(2) + (f.1 - o.1).powi(2)).sqrt();
                 out.push(Mark {
                     rect: [
                         pts.iter().map(|p| p.0).fold(f32::MAX, f32::min),
@@ -313,6 +317,7 @@ fn marks(doc: &Document, page: ObjectId) -> Vec<Mark> {
                         pts.iter().map(|p| p.1).fold(f32::MIN, f32::max),
                     ],
                     axis: ((e.0 - o.0) / len, (e.1 - o.1) / len),
+                    up: ((f.0 - o.0) / up, (f.1 - o.1) / up),
                     width: len * 290.,
                 });
             }
@@ -331,6 +336,14 @@ fn display_size(doc: &Document, page: ObjectId) -> (f32, f32) {
     } else {
         (w, h)
     }
+}
+
+/// İşaret görüntülenen sayfada dik mi: formun x ekseni sağa, y ekseni yukarı.
+fn upright(m: &Mark) -> bool {
+    (m.axis.0 - 1.).abs() < 1e-4
+        && m.axis.1.abs() < 1e-4
+        && (m.up.1 - 1.).abs() < 1e-3
+        && m.up.0.abs() < 1e-3
 }
 
 // ------------------------------------------------------------------ sözleşme
@@ -397,9 +410,10 @@ fn assert_overlay_contract(before: &Document, after: &Document, label: &str) {
             m.rect
         );
         assert!(
-            (m.axis.0 - 1.).abs() < 1e-4 && m.axis.1.abs() < 1e-4,
-            "{at}: işaret dik değil (eksen {:?})",
-            m.axis
+            upright(m),
+            "{at}: işaret dik değil (x {:?}, y {:?})",
+            m.axis,
+            m.up
         );
         assert!(
             m.width >= 0.08 * w.min(h),
@@ -532,8 +546,89 @@ fn annotations_outside_the_page_no_longer_block_branding() {
     assert_overlay_contract(&before, &after, "açıklamalı sayfa");
 }
 
+/// Yeniden işleme bir şey değiştirmez: ikinci işaret, ikinci sarmal, yeni
+/// akış ya da geometri değişikliği yok; marka formu tek.
+fn assert_idempotent(once: &Document, label: &str) {
+    let twice = finalize(once);
+    let thrice = finalize(&twice);
+    for (a, b) in [(once, &twice), (&twice, &thrice)] {
+        for (p, q) in a.get_pages().values().zip(b.get_pages().values()) {
+            assert_eq!(geometry(a, *p), geometry(b, *q), "{label}");
+            assert_eq!(contents(a, *p), contents(b, *q), "{label}: akışlar değişti");
+            assert_eq!(marks(b, *q).len(), 1, "{label}");
+        }
+        assert_eq!(brand_forms(b).len(), 1, "{label}: marka formu çoğaldı");
+    }
+}
+
+/// Döndür aracının yaptığı: her sayfanın /Rotate'ine `degrees` eklenir,
+/// başka hiçbir şeye dokunulmaz.
+fn rotate_all(doc: &Document, degrees: i64) -> Document {
+    let mut out = doc.clone();
+    for page in out.get_pages().into_values() {
+        let old = rotation(&out, page);
+        out.get_dictionary_mut(page)
+            .unwrap()
+            .set("Rotate", (old + degrees).rem_euclid(360));
+    }
+    out
+}
+
+/// Tek işaret; görüntülenen sayfada dik, sağ alt köşede (sağdan ve alttan
+/// orantılı kenar boşluğu kadar içeride), okunur.
+fn assert_upright_in_corner(doc: &Document, page: ObjectId, label: &str) {
+    let m = marks(doc, page);
+    assert_eq!(m.len(), 1, "{label}: {} işaret", m.len());
+    let m = &m[0];
+    let (w, h) = display_size(doc, page);
+    let inset = m.width * INSET / MARK_W;
+    assert!(
+        upright(m),
+        "{label}: işaret dik değil (x {:?}, y {:?})",
+        m.axis,
+        m.up
+    );
+    assert!(
+        (w - m.rect[2] - inset).abs() < 0.05 && (m.rect[1] - inset).abs() < 0.05,
+        "{label}: işaret görüntülenen sağ alt köşede değil: {:?} / {w}x{h}, kenar {inset}",
+        m.rect
+    );
+    assert!(
+        m.width >= 0.08 * w.min(h),
+        "{label}: işaret okunmaz: {} pt",
+        m.width
+    );
+}
+
+/// Sayfanın kaynaklarında marka formuna bağlı XObject adları.
+fn brand_resource_names(doc: &Document, page: ObjectId) -> usize {
+    let forms = brand_forms(doc);
+    let d = doc.get_dictionary(page).unwrap();
+    let res = doc
+        .dereference(d.get(b"Resources").unwrap())
+        .unwrap()
+        .1
+        .as_dict()
+        .unwrap();
+    doc.dereference(res.get(b"XObject").unwrap())
+        .unwrap()
+        .1
+        .as_dict()
+        .unwrap()
+        .iter()
+        .filter(|(_, v)| v.as_reference().is_ok_and(|id| forms.contains(&id)))
+        .count()
+}
+
 /// GölgeDosya çıktısı yeniden işlenince ikinci işaret, ikinci sarmal ya da
 /// geometri değişikliği OLMAZ.
+///
+/// Döndür bir GölgeDosya çıktısında yalnız /Rotate'i değiştirir. Saha
+/// bulgusu: eski işaret "kurala uyuyor" sayılıyordu (tek, görünür, okunur)
+/// ve yerinde kalıyordu; 90°'de görüntülenen sayfanın sol altında yan, 180°'de
+/// sol üstte ters duruyordu. Artık işaret sökülüp görüntülenen sayfanın sağ
+/// alt köşesine dik basılır: yine tek işaret, geometri yine aynı, sonuç da
+/// idempotent.
 #[test]
 fn reprocessing_an_output_is_idempotent() {
     let before = build(&[
@@ -542,17 +637,50 @@ fn reprocessing_an_output_is_idempotent() {
             rotate: Some(90),
             ..spec([0., 0., 842., 595.])
         },
+        spec([0., 0., 1414., 1885.]),
+        Spec {
+            crop: Some([36., 36., 576., 756.]),
+            ..spec([0., 0., 612., 792.])
+        },
     ]);
     let once = finalize(&before);
-    let twice = finalize(&once);
-    let thrice = finalize(&twice);
-    for (a, b) in [(&once, &twice), (&twice, &thrice)] {
-        for (p, q) in a.get_pages().values().zip(b.get_pages().values()) {
-            assert_eq!(geometry(a, *p), geometry(b, *q));
-            assert_eq!(contents(a, *p), contents(b, *q), "akışlar değişti");
-            assert_eq!(marks(b, *q).len(), 1);
+    assert_idempotent(&once, "markalı çıktı");
+    for degrees in [90, 180, 270] {
+        let label = format!("markalı çıktı {degrees}° döndürüldü");
+        let rotated = rotate_all(&once, degrees);
+        let again = finalize(&rotated);
+        for (n, (p, q)) in rotated
+            .get_pages()
+            .values()
+            .zip(again.get_pages().values())
+            .enumerate()
+        {
+            let at = format!("{label}, sayfa {}", n + 1);
+            assert_eq!(
+                geometry(&rotated, *p),
+                geometry(&again, *q),
+                "{at}: geometri değişti"
+            );
+            assert_upright_in_corner(&again, *q, &at);
         }
-        assert_eq!(brand_forms(b).len(), 1, "marka formu çoğaldı");
+        assert_eq!(brand_forms(&again).len(), 1, "{label}: marka formu çoğaldı");
+        assert_idempotent(&again, &label);
+    }
+}
+
+/// Art arda döndürme (4 × 90°): her adımda tek, dik işaret; sayfa marka
+/// formunu her adımda aynı adla bağlar, ad birikmez.
+#[test]
+fn successive_rotations_keep_one_upright_mark() {
+    let mut current = finalize(&build(&[spec([0., 0., 595., 842.])]));
+    for step in 1..=4 {
+        current = finalize(&rotate_all(&current, 90));
+        let page = *current.get_pages().values().next().unwrap();
+        let label = format!("{step}. döndürme");
+        assert_eq!(rotation(&current, page), (step * 90) % 360, "{label}");
+        assert_upright_in_corner(&current, page, &label);
+        assert_eq!(brand_forms(&current).len(), 1, "{label}");
+        assert_eq!(brand_resource_names(&current, page), 1, "{label}");
     }
 }
 
@@ -684,9 +812,10 @@ fn brand_collisions(stamped: &Document, after: &Document, label: &str) -> Vec<St
             m.rect
         );
         assert!(
-            (m.axis.0 - 1.).abs() < 1e-4 && m.axis.1.abs() < 1e-4,
-            "{at}: işaret dik değil (eksen {:?})",
-            m.axis
+            upright(m),
+            "{at}: işaret dik değil (x {:?}, y {:?})",
+            m.axis,
+            m.up
         );
         assert!(
             m.rect[0] + m.rect[2] > w && m.rect[1] + m.rect[3] < h,
@@ -826,6 +955,67 @@ fn a_second_bottom_user_mark_keeps_the_brand_clear() {
     assert!(collisions.is_empty(), "{}", collisions.join("\n"));
 }
 
+/// Numaralanmış (payı eklenmiş) bir çıktı döndürülür: işaret dik ve
+/// görüntülenen sağ altta yeniden basılır, numaraya binmez, geometri
+/// değişmez; sonuç idempotenttir.
+#[test]
+fn rotating_a_numbered_output_keeps_the_brand_upright_and_clear() {
+    let mut collisions = Vec::new();
+    for media in [
+        [0., 0., 595., 842.],
+        [0., 0., 842., 1191.],
+        [0., 0., 1414., 1885.],
+    ] {
+        let mut numbered = build(&[spec(media)]);
+        apply_text_marks(&mut numbered, None, 3).unwrap();
+        let once = finalize(&numbered);
+        for degrees in [90, 180, 270] {
+            let label = format!("numaralı {media:?}, {degrees}° döndürüldü");
+            let rotated = rotate_all(&once, degrees);
+            let again = finalize(&rotated);
+            collisions.extend(brand_collisions(&rotated, &again, &label));
+            assert_idempotent(&again, &label);
+        }
+    }
+    assert!(collisions.is_empty(), "{}", collisions.join("\n"));
+}
+
+/// İşaret GölgeDosya'nın sökülebilir kalıbında değilse (başka bir araç son
+/// iki akışı birleştirmiş) ve sayfa döndürülmüşse belge içeriğine dokunulmaz:
+/// yan duran işaret olduğu gibi kalır, yanına ikinci bir işaret basılmaz ve
+/// çıktı reddedilmez. Sökemediği işaretin yanına ikinci işaret basmak "tam
+/// bir işaret" kuralını bozardı.
+#[test]
+fn a_misplaced_mark_in_a_foreign_stream_is_kept_not_doubled() {
+    let mut once = finalize(&build(&[spec([0., 0., 595., 842.])]));
+    let page = *once.get_pages().values().next().unwrap();
+    let mut items = once
+        .get_dictionary(page)
+        .unwrap()
+        .get(b"Contents")
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .clone();
+    let overlay = items.pop().unwrap();
+    let suffix = items.pop().unwrap();
+    let merged = [data(&once, &suffix), data(&once, &overlay)].concat();
+    items.push(once.add_object(Stream::new(dictionary! {}, merged)).into());
+    once.get_dictionary_mut(page)
+        .unwrap()
+        .set("Contents", items);
+    let rotated = rotate_all(&once, 90);
+    let after = finalize(&rotated);
+    let q = *after.get_pages().values().next().unwrap();
+    assert_eq!(geometry(&rotated, page), geometry(&after, q));
+    assert_eq!(
+        contents(&rotated, page),
+        contents(&after, q),
+        "yabancı yapıdaki akışa dokunuldu"
+    );
+    assert_eq!(marks(&after, q).len(), 1);
+}
+
 // ------------------------------------------------------- eski (paylı) çıktılar
 
 /// v0.3.0/0.3.1'in bıraktığı paylı sayfa: içerik `q 0 0 w h re W n … Q`
@@ -906,10 +1096,15 @@ fn logo_bytes(doc: &Document) -> Vec<Vec<u8>> {
 
 /// Sahadaki v0.3.x çıktısı yeniden işlenir: girdinin geometrisi (34 pt'lik
 /// pay dahil) AYNEN korunur, ikinci pay ve ikinci işaret eklenmez, eski çizim
-/// yerinde yeni çizime yükseltilir. Döndürülmüş eski çıktı için de.
+/// yerinde yeni çizime yükseltilir.
+///
+/// Sonradan döndürülmüş eski çıktıda paydaki işaret yan ya da ters durur:
+/// pay (geometri) yine korunur, eski işaret akışı sökülür ve işaret
+/// görüntülenen sayfanın sağ alt köşesine dik basılır. Kaynak akışlar ve
+/// eski sarmal aynen kalır.
 #[test]
 fn a_legacy_banded_output_keeps_its_geometry_and_one_mark() {
-    for rotate in [None, Some(90)] {
+    for rotate in [None, Some(90), Some(180), Some(270)] {
         for logo in [KAT_2026_09_20, CANONICAL] {
             let before = banded(595., 842., 56., logo, rotate);
             let after = finalize(&before);
@@ -918,13 +1113,20 @@ fn a_legacy_banded_output_keeps_its_geometry_and_one_mark() {
                 *after.get_pages().values().next().unwrap(),
             );
             assert_eq!(geometry(&before, b), geometry(&after, a), "{rotate:?}");
-            assert_eq!(marks(&after, a).len(), 1, "{rotate:?}");
-            assert_eq!(
-                contents(&before, b),
-                contents(&after, a),
-                "{rotate:?}: kurala uyan eski sayfanın akışları değişmemeli"
-            );
             assert_eq!(logo_bytes(&after), vec![CANONICAL.to_vec()], "{rotate:?}");
+            if rotate.is_none() {
+                assert_eq!(marks(&after, a).len(), 1);
+                assert_eq!(
+                    contents(&before, b),
+                    contents(&after, a),
+                    "kurala uyan eski sayfanın akışları değişmemeli"
+                );
+            } else {
+                assert_upright_in_corner(&after, a, &format!("{rotate:?}"));
+                let src = contents(&before, b);
+                let out = contents(&after, a);
+                assert_eq!(&out[1..out.len() - 2], &src[..src.len() - 1], "{rotate:?}");
+            }
         }
     }
 }

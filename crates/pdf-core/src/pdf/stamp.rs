@@ -979,7 +979,9 @@ fn place_brand_overlay(
     let (mark_x, mark_y) = mark_origin(rotation, anchor, mark_width);
 
     // Kaynakları sayfaya kopyala (kalıtımla gelenler dahil) ve formu benzersiz
-    // bir adla bağla; belgenin kendi XObject adlarının üstüne yazılmaz.
+    // bir adla bağla; belgenin kendi XObject adlarının üstüne yazılmaz. Sayfa
+    // formu zaten bağlıyorsa (işaret döndürmeden sonra yeniden basılıyor) o
+    // ad kullanılır: her yeniden basımda yeni bir ad birikmez.
     let mut resources = resolved
         .get(b"Resources")
         .ok()
@@ -994,11 +996,21 @@ fn place_brand_overlay(
         .transpose()
         .map_err(pdf_error)?
         .unwrap_or_default();
-    let mut name = "GolgeDosyaBrand".to_string();
-    while objects.has(name.as_bytes()) {
-        name.push('_');
-    }
-    objects.set(name.clone(), brand.form);
+    let bound = objects
+        .iter()
+        .find(|(_, v)| v.as_reference().ok() == Some(brand.form))
+        .map(|(k, _)| k.clone());
+    let name = match bound {
+        Some(name) => name,
+        None => {
+            let mut name = b"GolgeDosyaBrand".to_vec();
+            while objects.has(&name) {
+                name.push(b'_');
+            }
+            objects.set(name.clone(), brand.form);
+            name
+        }
+    };
     resources.set("XObject", objects);
     doc.get_object_mut(page_id)
         .and_then(|o| o.as_dict_mut())
@@ -1020,7 +1032,7 @@ fn place_brand_overlay(
                 mark_y.into(),
             ],
         ),
-        Operation::new("Do", vec![Object::Name(name.into_bytes())]),
+        Operation::new("Do", vec![Object::Name(name)]),
         Operation::new("Q", vec![]),
     ];
     let overlay = add_brand_stream(
@@ -1113,12 +1125,17 @@ fn apply_branding_for_output(doc: &mut LopdfDoc, raster_dpi: Option<u32>) -> Res
     // işaret ya da çift işaret: sayfa yeniden işaretlenir ve GölgeDosya'nın
     // KENDİ yazdığı eski işaret akışı önce sökülür (`detach_brand_stamps`).
     // Böylece yükseltme ikinci bir işaret DEĞİL, tek bir doğru işaret bırakır.
+    //
+    // Doğru işaret aynı zamanda görüntülenen sayfada dik ve sağ alttadır.
+    // Döndür bir çıktıda yalnız /Rotate'i değiştirir; eskiden işaret "tek,
+    // görünür, okunur" sayılıp yerinde kalıyor, 90°'de sol altta yan, 180°'de
+    // sol üstte ters duruyordu. Artık o işaret de sökülüp yeniden basılır.
     upgrade_legacy_brand_marks(doc)?;
     let existing = existing_brand_forms(doc);
     let pending: Vec<lopdf::ObjectId> = doc
         .get_pages()
         .into_values()
-        .filter(|page| !page_mark_is_canonical(doc, *page, &existing))
+        .filter(|page| page_mark(doc, *page, &existing) == PageMark::Replace)
         .collect();
     if pending.is_empty() {
         return Ok(());
@@ -1218,11 +1235,19 @@ fn existing_brand_forms(doc: &LopdfDoc) -> std::collections::HashSet<lopdf::Obje
         .collect()
 }
 
-/// Sayfadaki bir marka çizimi: görünür kutunun içinde mi, kaç pt genişlikte.
+/// Sayfadaki bir marka çizimi.
 #[derive(Debug, Clone, Copy)]
 struct BrandDraw {
+    /// Dört köşesi görünür kutunun içinde.
     inside: bool,
+    /// Kaç pt genişlikte.
     width: f32,
+    /// Sayfanın /Rotate ile görüntülenen hâlinde dik (formun x ekseni sağa,
+    /// y ekseni yukarı) ve merkezi sağ alt çeyrekte.
+    upright_bottom_right: bool,
+    /// GölgeDosya'nın sökülebilir kalıbında (`is_brand_stamp`): yeniden
+    /// basılabilir.
+    detachable: bool,
 }
 
 /// Sayfa kutusu (`CropBox`, `MediaBox` …), köşeleri normalize.
@@ -1317,7 +1342,8 @@ fn stream_operations(doc: &LopdfDoc, item: &Object) -> Option<Vec<Operation>> {
 /// Sayfadaki bütün marka çizimleri ve görünür kutunun kısa kenarı.
 ///
 /// İşaretin kutusu, çizildiği akıştaki `cm` dönüşümlerinden hesaplanır;
-/// genişliği dönüşümün x ekseni uzunluğu × form kutusu. Her akış kendi
+/// genişliği dönüşümün x ekseni uzunluğu × form kutusu; yönü ve köşesi
+/// sayfanın /Rotate'i ile görüntülenen hâline göre. Her akış kendi
 /// başına yürünür: GölgeDosya belge içeriğini `q … Q` ile sarmaladığı için
 /// işaret akışı temiz grafik durumundan başlar.
 fn brand_draws_on_page(
@@ -1328,34 +1354,26 @@ fn brand_draws_on_page(
     let page = super::resolved_page_dictionary(doc, page_id).ok()?;
     let visible = visible_box(doc, &page)?;
     let short_side = (visible[2] - visible[0]).min(visible[3] - visible[1]);
+    let rotation = placement_rotation(doc, &page);
     let names = brand_names(doc, &page, forms);
     if names.is_empty() {
         return Some((Vec::new(), short_side));
     }
-    let number = |o: &Object| o.as_float().ok();
     let mut draws = Vec::new();
     for item in content_items(doc, &page) {
         let Some(operations) = stream_operations(doc, &item) else {
             continue;
         };
-        // [a b c d e f]; nokta: x' = a·x + c·y + e, y' = b·x + d·y + f.
-        let mut ctm = [1f32, 0., 0., 1., 0., 0.];
+        let detachable = is_brand_stamp(&operations, &names);
+        let mut ctm = IDENTITY;
         let mut saved = Vec::new();
         for op in &operations {
             match op.operator.as_str() {
                 "q" => saved.push(ctm),
-                "Q" => ctm = saved.pop().unwrap_or([1., 0., 0., 1., 0., 0.]),
+                "Q" => ctm = saved.pop().unwrap_or(IDENTITY),
                 "cm" if op.operands.len() == 6 => {
-                    let m: Vec<f32> = op.operands.iter().filter_map(number).collect();
-                    if m.len() == 6 {
-                        ctm = [
-                            m[0] * ctm[0] + m[1] * ctm[2],
-                            m[0] * ctm[1] + m[1] * ctm[3],
-                            m[2] * ctm[0] + m[3] * ctm[2],
-                            m[2] * ctm[1] + m[3] * ctm[3],
-                            m[4] * ctm[0] + m[5] * ctm[2] + ctm[4],
-                            m[4] * ctm[1] + m[5] * ctm[3] + ctm[5],
-                        ];
+                    if let Some(m) = operation_matrix(op) {
+                        ctm = concat(m, ctm);
                     }
                 }
                 "Do" if op
@@ -1364,6 +1382,12 @@ fn brand_draws_on_page(
                     .and_then(|o| o.as_name().ok())
                     .is_some_and(|n| names.iter().any(|m| m == n)) =>
                 {
+                    let user = |x: f32, y: f32| {
+                        (
+                            ctm[0] * x + ctm[2] * y + ctm[4],
+                            ctm[1] * x + ctm[3] * y + ctm[5],
+                        )
+                    };
                     let corners = [
                         (BRAND_BBOX[0], BRAND_BBOX[1]),
                         (BRAND_BBOX[2], BRAND_BBOX[1]),
@@ -1372,10 +1396,7 @@ fn brand_draws_on_page(
                     ];
                     const TOLERANCE: f32 = 0.5;
                     let inside = corners.iter().all(|(x, y)| {
-                        let (ux, uy) = (
-                            ctm[0] * x + ctm[2] * y + ctm[4],
-                            ctm[1] * x + ctm[3] * y + ctm[5],
-                        );
+                        let (ux, uy) = user(*x, *y);
                         ux >= visible[0] - TOLERANCE
                             && ux <= visible[2] + TOLERANCE
                             && uy >= visible[1] - TOLERANCE
@@ -1383,7 +1404,31 @@ fn brand_draws_on_page(
                     });
                     let width = (ctm[0] * ctm[0] + ctm[1] * ctm[1]).sqrt()
                         * (BRAND_BBOX[2] - BRAND_BBOX[0]);
-                    draws.push(BrandDraw { inside, width });
+                    // Formun eksenleri görüntüde. /Rotate yalnız bileşenlerin
+                    // yerini ve işaretini değiştirir: çıkarma yok, yuvarlama
+                    // hatası yok.
+                    let shown = |(x, y): (f32, f32)| match rotation {
+                        90 => (y, -x),
+                        180 => (-x, -y),
+                        270 => (-y, x),
+                        _ => (x, y),
+                    };
+                    let (ax, ay) = shown((ctm[0], ctm[1]));
+                    let (bx, by) = shown((ctm[2], ctm[3]));
+                    const SKEW: f32 = 1e-3;
+                    let upright =
+                        ax > 0. && by > 0. && ay.abs() <= SKEW * ax && bx.abs() <= SKEW * by;
+                    let centre = user(
+                        (BRAND_BBOX[0] + BRAND_BBOX[2]) / 2.,
+                        (BRAND_BBOX[1] + BRAND_BBOX[3]) / 2.,
+                    );
+                    draws.push(BrandDraw {
+                        inside,
+                        width,
+                        upright_bottom_right: upright
+                            && in_bottom_right_quarter(rotation, visible, centre),
+                        detachable,
+                    });
                 }
                 _ => {}
             }
@@ -1392,23 +1437,73 @@ fn brand_draws_on_page(
     Some((draws, short_side))
 }
 
-/// Sayfa kuralı sağlıyor mu: tam BİR görünür işaret ve okunur boyutta.
+/// Sayfanın işaret durumu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PageMark {
+    /// Kural tam: tek görünür, okunur işaret; görüntülenen sayfada dik ve sağ
+    /// altta.
+    Canonical,
+    /// Tek görünür, okunur işaret; ama yan, ters ya da başka köşede ve
+    /// GölgeDosya'nın sökülebilir kalıbında DEĞİL (başka bir araç akışları
+    /// birleştirmiş). Belge içeriğine dokunulmaz, işaret olduğu gibi kalır:
+    /// sökülemeyen işaretin yanına ikinci bir işaret basmak "tam bir işaret"
+    /// kuralını bozardı.
+    Misplaced,
+    /// Sayfa yeniden işaretlenmeli: işaret yok, okunmaz, birden çok ya da
+    /// sökülüp dik ve sağ alta yeniden basılabilir.
+    Replace,
+}
+
+/// Sayfa kuralı sağlıyor mu: tam BİR görünür işaret, okunur boyutta,
+/// görüntülenen sayfada dik ve sağ altta.
 ///
 /// Görünür alanın dışında kalmış (ör. sonradan kırpılmış) bir çizim sayılmaz:
 /// kullanıcı onu görmez. Görünür iki işaret, okunmaz tek işaret ya da hiç
-/// işaret kuralı bozar.
-fn page_mark_is_canonical(
+/// işaret kuralı bozar. Sayfa sonradan döndürülmüşse (Döndür yalnız /Rotate'i
+/// değiştirir) işaret yan ya da ters kalır: o da yeniden basılır.
+fn page_mark(
     doc: &LopdfDoc,
     page_id: lopdf::ObjectId,
     forms: &std::collections::HashSet<lopdf::ObjectId>,
-) -> bool {
-    brand_draws_on_page(doc, page_id, forms).is_some_and(|(draws, short_side)| {
-        let mut visible = draws.iter().filter(|d| d.inside);
-        match (visible.next(), visible.next()) {
-            (Some(only), None) => only.width >= MIN_BRAND_MARK_RATIO * short_side,
-            _ => false,
+) -> PageMark {
+    let Some((draws, short_side)) = brand_draws_on_page(doc, page_id, forms) else {
+        return PageMark::Replace;
+    };
+    let mut visible = draws.iter().filter(|d| d.inside);
+    match (visible.next(), visible.next()) {
+        (Some(only), None) if only.width >= MIN_BRAND_MARK_RATIO * short_side => {
+            if only.upright_bottom_right {
+                PageMark::Canonical
+            } else if only.detachable {
+                PageMark::Replace
+            } else {
+                PageMark::Misplaced
+            }
         }
-    })
+        _ => PageMark::Replace,
+    }
+}
+
+/// GölgeDosya'nın yazdığı işaret akışı kalıbı: kendi başına bir akış, içeriği
+/// tam olarak `q cm cm Do Q`, `Do` sayfanın bir marka formu adına.
+fn is_brand_stamp(ops: &[Operation], names: &[Vec<u8>]) -> bool {
+    match ops {
+        [q, a, b, draw, end] => {
+            q.operator == "q"
+                && a.operator == "cm"
+                && a.operands.len() == 6
+                && b.operator == "cm"
+                && b.operands.len() == 6
+                && draw.operator == "Do"
+                && draw
+                    .operands
+                    .first()
+                    .and_then(|n| n.as_name().ok())
+                    .is_some_and(|n| names.iter().any(|m| m == n))
+                && end.operator == "Q"
+        }
+        _ => false,
+    }
 }
 
 /// GölgeDosya'nın bu sayfaya daha önce yazdığı işaret akışlarını söker.
@@ -1437,27 +1532,12 @@ fn detach_brand_stamps(
         return Ok(());
     }
     let items = content_items(doc, &page);
-    let is_stamp = |ops: &[Operation]| match ops {
-        [q, a, b, draw, end] => {
-            q.operator == "q"
-                && a.operator == "cm"
-                && a.operands.len() == 6
-                && b.operator == "cm"
-                && b.operands.len() == 6
-                && draw.operator == "Do"
-                && draw
-                    .operands
-                    .first()
-                    .and_then(|n| n.as_name().ok())
-                    .is_some_and(|n| names.iter().any(|m| m == n))
-                && end.operator == "Q"
-        }
-        _ => false,
-    };
     let before = items.len();
     let kept: Vec<Object> = items
         .into_iter()
-        .filter(|item| !stream_operations(doc, item).is_some_and(|ops| is_stamp(&ops)))
+        .filter(|item| {
+            !stream_operations(doc, item).is_some_and(|ops| is_brand_stamp(&ops, &names))
+        })
         .collect();
     if kept.len() == before {
         return Ok(());
@@ -1470,7 +1550,10 @@ fn detach_brand_stamps(
 }
 
 /// Ürün kuralının doğrulaması: her sayfada tam bir görünür GölgeDosya işareti,
-/// okunur boyutta; eski dönem çizimi yok. Yayımdan önceki son söz budur.
+/// okunur boyutta, görüntülenen sayfada dik ve sağ altta; eski dönem çizimi
+/// yok. Yayımdan önceki son söz budur. Tek istisna `PageMark::Misplaced`:
+/// başka bir aracın birleştirdiği, sökülemeyen tek işaret olduğu gibi kabul
+/// edilir; GölgeDosya'nın kendi bastığı işaret her zaman sökülebilir.
 pub fn verify_canonical_branding(doc: &LopdfDoc) -> Result<()> {
     let outdated = doc.objects.values().any(|obj| {
         obj.as_stream().is_ok_and(|s| {
@@ -1485,7 +1568,7 @@ pub fn verify_canonical_branding(doc: &LopdfDoc) -> Result<()> {
     }
     let forms = existing_brand_forms(doc);
     for (number, id) in doc.get_pages() {
-        if !page_mark_is_canonical(doc, id, &forms) {
+        if page_mark(doc, id, &forms) == PageMark::Replace {
             return Err(EklerError::ValidationFailed(format!(
                 "Sayfa {number}: çıktı GölgeDosya işaretini doğru taşımıyor; güvenlik için yayımlanmadı"
             )));
