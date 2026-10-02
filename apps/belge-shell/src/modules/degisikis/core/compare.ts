@@ -1188,10 +1188,24 @@ function summarizeBodyDiff(base: DiffFragment[], revised: DiffFragment[]): strin
   return summaries;
 }
 
+/**
+ * İki önek sözcükleriyle aynı mı? "Madde 5 -" ile "Madde 5-", "1)" ile "1 )"
+ * aynı önektir. Ham metin karşılaştırılınca satır "değişti" sayılıyor, özet
+ * "Madde numarası: 5 → 5" diyordu. Gösterilen önek yine kaynaktan gelir.
+ */
+function samePrefix(base: StructuralText, revised: StructuralText): boolean {
+  if (!base.prefix || !revised.prefix) return !base.prefix && !revised.prefix;
+  return wordsKey(base.prefix.raw) === wordsKey(revised.prefix.raw);
+}
+
 function prefixSummary(base: StructuralText, revised: StructuralText): string[] {
-  if (!base.prefix && !revised.prefix) return [];
-  if (base.prefix?.raw === revised.prefix?.raw) return [];
+  if (samePrefix(base, revised)) return [];
   if (base.prefix && revised.prefix && base.prefix.kind === revised.prefix.kind) {
+    // Numara aynı, yazım farklıysa ("Madde 5 –" / "Madde 5 -", "1." / "1)")
+    // "5 → 5" kendisiyle çelişir; değişen yazım gösterilir.
+    if (base.prefix.number === revised.prefix.number) {
+      return [`${quote(base.prefix.raw)} → ${quote(revised.prefix.raw)}`];
+    }
     const label = base.prefix.kind === "article" ? "Madde numarası" : "Paragraf numarası";
     return [`${label}: ${base.prefix.number} → ${revised.prefix.number}`];
   }
@@ -1234,12 +1248,12 @@ function prefixedDiff(baseText: string, revisedText: string, ignoredOrdinalPrefi
   const baseStructure = splitStructuralPrefix(baseText);
   const revisedStructure = splitStructuralPrefix(revisedText);
   const body = wordDiff(baseStructure.body, revisedStructure.body);
-  const samePrefix = baseStructure.prefix?.raw === revisedStructure.prefix?.raw;
+  const prefixUnchanged = samePrefix(baseStructure, revisedStructure);
   const basePrefix: DiffFragment[] = baseStructure.prefix
-    ? [{ kind: samePrefix ? "equal" : "removed", text: baseStructure.prefix.raw }]
+    ? [{ kind: prefixUnchanged ? "equal" : "removed", text: baseStructure.prefix.raw }]
     : [];
   const revisedPrefix: DiffFragment[] = revisedStructure.prefix
-    ? [{ kind: samePrefix ? "equal" : "added", text: revisedStructure.prefix.raw }]
+    ? [{ kind: prefixUnchanged ? "equal" : "added", text: revisedStructure.prefix.raw }]
     : [];
   return {
     base: [...basePrefix, ...gluedToPrefix(body.base, bodyGluedToPrefix(baseText, baseStructure))],

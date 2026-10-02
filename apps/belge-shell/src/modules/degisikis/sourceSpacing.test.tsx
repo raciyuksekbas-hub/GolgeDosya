@@ -289,6 +289,50 @@ describe("paragraf başındaki tutar ve tarih numara sanılmaz", () => {
   });
 });
 
+// Önek ham metniyle karşılaştırılıyordu: "Madde 5 -" ile "Madde 5-" farklı
+// sayılıyor, satır "değişti" görünüyor, özet "Madde numarası: 5 → 5" diyordu.
+// Yeniden yazılmış bir sözleşmede her madde böyle bir kayıt üretir. Önekler de
+// sözcükleriyle karşılaştırılır; gösterilen önek her yanda kaynaktaki gibidir.
+describe("önekte yalnız boşluk farkı değişiklik sayılmaz", () => {
+  const summaries = (comparison: ComparisonResult) => comparison.changes.flatMap((change) => change.summary);
+
+  it.each([
+    ["Madde 5 - Kira bedeli 18.000 TL'dir.", "Madde 5- Kira bedeli 18.000 TL'dir."],
+    ["1) Kira bedeli 18.000 TL'dir.", "1 ) Kira bedeli 18.000 TL'dir."],
+    ["1.1. Kira bedeli 18.000 TL'dir.", "1.1 . Kira bedeli 18.000 TL'dir."],
+  ])("%s ↔ %s", (first, second) => {
+    for (const [base, revised] of [[first, second], [second, first]]) {
+      const comparison = compareParagraphs([base], [revised]);
+      expect(comparison.rows.map((row) => row.kind)).toEqual(["unchanged"]);
+      expect(comparison.changes).toEqual([]);
+      expect(paneRows(comparison, "base")).toEqual([base]);
+      expect(paneRows(comparison, "revised")).toEqual([revised]);
+    }
+  });
+
+  it("gövde değişince önekin boşluk farkı özete ve işarete girmez", () => {
+    const base = "Madde 5 - Kira bedeli 18.000 TL'dir.";
+    const revised = "Madde 5- Kira bedeli 18.500 TL'dir.";
+    const comparison = compareParagraphs([base], [revised]);
+    expect(summaries(comparison)).toEqual(["“18.000 TL” → “18.500 TL”"]);
+    expect(comparison.rows[0].baseFragments[0]).toEqual({ kind: "equal", text: "Madde 5 -" });
+    expect(comparison.rows[0].revisedFragments[0]).toEqual({ kind: "equal", text: "Madde 5-" });
+    expect(paneRows(comparison, "base")).toEqual([base]);
+    expect(paneRows(comparison, "revised")).toEqual([revised]);
+  });
+
+  // Ayraç gerçekten değiştiyse (uzun tire → kısa tire) bu bir değişikliktir;
+  // ama numara aynıyken "5 → 5" yazmak kendisiyle çelişir. Değişen yazım gösterilir.
+  it("numara aynı, ayraç farklıysa özet değişen yazımı söyler", () => {
+    const comparison = compareParagraphs(
+      ["Madde 5 – Kira bedeli 18.000 TL'dir."],
+      ["Madde 5 - Kira bedeli 18.000 TL'dir."],
+    );
+    expect(comparison.rows.map((row) => row.kind)).toEqual(["modified"]);
+    expect(summaries(comparison)).toEqual(["“Madde 5 –” → “Madde 5 -”"]);
+  });
+});
+
 describe("gerçek DOCX ve UDF çifti", () => {
   const browserDomParser = globalThis.DOMParser;
   beforeAll(() => {
