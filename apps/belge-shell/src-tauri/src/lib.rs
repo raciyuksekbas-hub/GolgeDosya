@@ -23,6 +23,7 @@ pub mod modules {
     pub mod tavzih;
 }
 pub mod legacy;
+pub mod output_place;
 pub mod paths;
 pub mod settings;
 
@@ -247,7 +248,8 @@ pub fn run() {
                 remember_documents,
                 forget_documents,
                 migrate_legacy_settings,
-                clipboard::pasted_document_paths
+                clipboard::pasted_document_paths,
+                output_place::output_start_folder
                 $(, $extra)*
             ]
         };

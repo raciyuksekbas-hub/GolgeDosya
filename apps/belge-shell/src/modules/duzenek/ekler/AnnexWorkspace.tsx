@@ -17,6 +17,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { Button, EmptyState, Status } from "../../../shared-ui/primitives";
 import { ConfirmSheet } from "../../../shared-ui/ConfirmSheet";
+import { startFolder } from "../../../shared-ui/savePlace";
 import { announce } from "../../../shared-ui/Announcer";
 import { logFailure, safeMessage } from "../../../shared-ui/failure";
 import { ToolbarActions } from "../../../shell/chrome";
@@ -250,7 +251,13 @@ export function AnnexWorkspace({ project, onProject, prepared, onPrepared, onNew
   /** Nihai iş: mantıksal plandan gerçek fiziksel çıktılar. */
   const prepare = useCallback(async () => {
     try {
-      const dir = await open({ directory: true });
+      // Pencere ilk belgenin klasöründe açılır (bkz. shared-ui/savePlace).
+      const dir = await open({
+        directory: true,
+        multiple: false,
+        title: "Ek paketinin kaydedileceği klasör",
+        defaultPath: (await startFolder(project.sources[0]?.path)) ?? undefined,
+      });
       if (typeof dir !== "string") return;
       setBusy(true);
       say("Ekler hazırlanıyor…", "busy");

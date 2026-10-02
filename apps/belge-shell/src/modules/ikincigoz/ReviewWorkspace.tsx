@@ -6,6 +6,8 @@ import { announce } from "../../shared-ui/Announcer";
 import { logFailure, safeMessage } from "../../shared-ui/failure";
 import { Button, EmptyState, Status } from "../../shared-ui/primitives";
 import { InspectorPanel, InspectorSection, ToolbarActions, ToolbarStatus } from "../../shell/chrome";
+import { startFolder } from "../../shared-ui/savePlace";
+import { correctedSaveOptions } from "./saveTarget";
 
 /**
  * Severity'nin metin karşılığı.
@@ -521,10 +523,9 @@ export function ReviewWorkspace({ path }: { path: string }) {
       // `save()` try'ın DIŞINDAYDI: kaydetme penceresi hiç açılamazsa söz
       // reddi yakalanmıyor, kullanıcı düğmeye basıyor ve hiçbir şey
       // olmuyordu. Vazgeçmek (`!target`) sessizdir; açılamamak değil.
-      const target = await save({
-        defaultPath: undefined,
-        title: "Düzeltilmiş kopyayı kaydet",
-      });
+      // Pencere belgenin klasöründe, motorun önerdiği adla ve belgenin
+      // türüne süzülmüş açılır (bkz. saveTarget.ts).
+      const target = await save(correctedSaveOptions(path, await startFolder(path)));
       if (!target) return;
       // Yeni bir deneme başladı: önceki denemenin makbuzu artık bu ekranın
       // doğrusu değil. Eskiden `written` temizlenmiyordu; ikinci kaydetme

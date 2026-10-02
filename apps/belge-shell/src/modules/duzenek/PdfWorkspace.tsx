@@ -27,6 +27,7 @@ import { noBenefitStatus } from './noBenefitMessage';
 import { savedStatus } from './savedMessage';
 import { humanSize } from '../../shared-ui/sizeText';
 import { copyDestination } from './copyDestination';
+import { startFolder } from '../../shared-ui/savePlace';
 import { describeOpenFailure, describePreviewFailure, describeSaveFailure, logFailure, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -645,7 +646,8 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             if (kind === 'number')
                 operation.start = start;
             if (kind === 'raster') {
-                const outputDir = await open({ directory: true });
+                // Pencere belgenin klasöründe açılır (bkz. shared-ui/savePlace).
+                const outputDir = await open({ directory: true, multiple: false, title: 'Görsel paketinin kaydedileceği klasör', defaultPath: (await startFolder(sources[0]?.path)) ?? undefined });
                 if (typeof outputDir !== 'string')
                     return;
                 setBusy(true);
@@ -654,7 +656,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                 setStatus('Görsel paketi kaydedildi: ' + result); setStatusTone('success');
                 return;
             }
-            const outputPath = await copyDestination(`GolgeDosya-${kind}`, folderOnly);
+            const outputPath = await copyDestination(`GolgeDosya-${kind}`, folderOnly, sources[0]?.path);
             if (!outputPath)
                 return;
             setBusy(true);

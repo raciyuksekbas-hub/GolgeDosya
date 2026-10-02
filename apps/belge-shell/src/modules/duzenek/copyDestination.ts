@@ -1,5 +1,6 @@
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { join } from '@tauri-apps/api/path';
+import { dialogPath, startFolder } from '../../shared-ui/savePlace';
 
 /**
  * Dosya adındaki damga: YEREL saat, `YYYY-MM-DD_HHMMSS`.
@@ -27,15 +28,20 @@ export function copyName(base: string, now = new Date()): string {
  * `base` ürün adını taşır (`GolgeDosya-<araç>`): kaydedilen kopyanın adı
  * kullanıcıya görünür ve eski ürün adını taşımamalıdır. ASCII yazım bilerek:
  * dosya adı her dosya sisteminde ve her arşivde aynı kalsın.
+ *
+ * `source`: açık belge. İki pencere de ONUN klasöründe açılır (bkz.
+ * `shared-ui/savePlace`); kaynak geçici bir yerdeyse işletim sisteminin
+ * varsayılanı kalır. Kullanıcı yine istediği yeri seçer.
  */
-export async function copyDestination(base: string, folderOnly: boolean): Promise<string | null> {
+export async function copyDestination(base: string, folderOnly: boolean, source?: string): Promise<string | null> {
     const name = copyName(base);
+    const folder = await startFolder(source);
     if (!folderOnly) {
-        const picked = await save({ defaultPath: name, filters: [{ name: 'Yeni PDF', extensions: ['pdf'] }] });
+        const picked = await save({ defaultPath: dialogPath(folder, name), filters: [{ name: 'Yeni PDF', extensions: ['pdf'] }] });
         return picked ? withPdfExtension(picked) : null;
     }
-    const folder = await open({ directory: true, multiple: false, title: 'Yeni PDF kopyasının kaydedileceği klasör' });
-    return typeof folder === 'string' ? join(folder, name) : null;
+    const chosen = await open({ directory: true, multiple: false, title: 'Yeni PDF kopyasının kaydedileceği klasör', defaultPath: folder ?? undefined });
+    return typeof chosen === 'string' ? join(chosen, name) : null;
 }
 
 /**

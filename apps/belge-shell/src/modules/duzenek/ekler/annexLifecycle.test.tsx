@@ -138,6 +138,16 @@ describe("kabuk sözleşmesi", () => {
     expect(app).toContain('documents.length > 0 && active?.key !== "ekler"');
   });
 
+  // Saha: "Kayıt klasörleri arasında birlik yok." Klasör penceresi başlangıç
+  // almıyor, işletim sisteminin en son hatırladığı yerde açılıyordu.
+  it("paket klasörü penceresi ilk belgenin klasöründe, başlıklı açılır", () => {
+    const at = annex.indexOf("const prepare = useCallback");
+    const body = annex.slice(at, annex.indexOf('invoke<PreparedPackage>("ekler_prepare_package"', at));
+    expect(body).toContain('title: "Ek paketinin kaydedileceği klasör"');
+    expect(body).toContain("defaultPath: (await startFolder(project.sources[0]?.path)) ?? undefined");
+    expect(body).not.toContain("open({ directory: true })");
+  });
+
   it("klasör, üst klasörü açan reveal ile değil kendi komutuyla açılır", () => {
     expect(annex).toContain('invoke("ekler_open_package_folder", { path: prepared.result.package_dir })');
     expect(annex).not.toMatch(/reveal/i);
