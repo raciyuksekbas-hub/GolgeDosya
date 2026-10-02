@@ -20,7 +20,7 @@ interface SourceToken {
   end: number;
 }
 
-function sourceTokens(text: string): SourceToken[] {
+export function sourceTokens(text: string): SourceToken[] {
   return Array.from(text.matchAll(TOKEN_RE), (match) => ({
     text: match[0],
     start: match.index,

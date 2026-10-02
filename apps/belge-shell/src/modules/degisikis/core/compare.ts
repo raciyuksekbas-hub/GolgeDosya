@@ -1,7 +1,7 @@
 import { comparisonForm, displayLocation, looseMatchForm } from "./normalize";
 import { splitStructuralPrefix, type StructuralText } from "./structure";
 import type { ComparisonResult, ComparisonRow, DocumentBlock, DocumentChange, DiffFragment } from "./types";
-import { tokenize, wordDiff, type WordDiffHunk } from "./wordDiff";
+import { sourceTokens, tokenize, wordDiff, type WordDiffHunk } from "./wordDiff";
 
 function tokenSet(text: string): Set<string> {
   return new Set(tokenize(looseMatchForm(splitStructuralPrefix(text).body)));
@@ -992,14 +992,70 @@ interface PhraseReplacement {
   revised: string;
 }
 
+// Parça metni kaynaktan kesilir; aynı tutar bir belgede "18.000 TL", ötekinde
+// "18.000TL" yazılmış olabilir. Sözcük farkı ikisini eşit sayar ve panelde
+// işaretlenecek bir şey olmaz; özet de "değişti" dememeli. Özet ham metni
+// karşılaştırınca satır değişmiş sayılıyor, rayda işaretsiz bir değişiklik
+// çıkıyordu. Bu yüzden özetin tutar, süre ve mahkeme ifadeleri sözcüklerin
+// tek biçimli birleşiminde aranır ve sözcüklerle karşılaştırılır (parça metni
+// kaynaktan kesilmeden önceki davranış); yalnız gösterilen metin kaynaktan
+// gelir.
+
+/** Eşitlik anahtarı: sözcük birimleri, aralarındaki boşluk hariç. */
+function wordsKey(text: string): string {
+  return tokenize(comparisonForm(text)).join(" ");
+}
+
+const NO_SPACE_BEFORE_RE = /^[,.;:!?%)\]}»”’]$/u;
+const NO_SPACE_AFTER_RE = /^[([{«“‘]$/u;
+
+interface PhraseText {
+  /** Sözcükler tek biçimde birleşmiş: "18.000 TL", "olup 30 (otuz) gün". */
+  words: string;
+  /** `words` içindeki bir aralığın kaynaktaki yazımı. */
+  shown(start: number, end: number): string;
+}
+
+/**
+ * İfadeler `words` üzerinde aranır: "olup30 (otuz) gün" de "olup 30 (otuz)
+ * gün" de aynı süreyi, aynı sırada verir; böylece yalnız boşluğu farklı iki
+ * yazımda ifadelerin sayısı ve eşleşmesi değişmez.
+ */
+function phraseText(fragments: DiffFragment[]): PhraseText {
+  const source = fragments.map((fragment) => fragment.text).join(" ");
+  const toSource: number[] = [];
+  let words = "";
+  let fragmentStart = 0;
+  fragments.forEach((fragment, fragmentIndex) => {
+    if (fragmentIndex > 0) words += " ";
+    let previous: string | undefined;
+    for (const token of sourceTokens(fragment.text)) {
+      if (previous !== undefined && !NO_SPACE_BEFORE_RE.test(token.text) && !NO_SPACE_AFTER_RE.test(previous)) words += " ";
+      for (let offset = 0; offset < token.text.length; offset++) toSource[words.length + offset] = fragmentStart + token.start + offset;
+      words += token.text;
+      previous = token.text;
+    }
+    fragmentStart += fragment.text.length + 1;
+  });
+  return {
+    words,
+    shown: (start, end) => {
+      const from = toSource[start];
+      const to = toSource[end - 1];
+      return from === undefined || to === undefined ? words.slice(start, end) : source.slice(from, to + 1);
+    },
+  };
+}
+
 const DURATION_RE = /(?<![\p{L}\p{N}])\d+\s*\(\s*\p{L}+\s*\)\s*(?:(?:iş|takvim)\s+)?(?:gün(?:ü|dür)?|hafta(?:dan)?|ay|yıl)(?!\p{L})/giu;
 
 function durationReplacements(base: DiffFragment[], revised: DiffFragment[]): PhraseReplacement[] {
   const collect = (fragments: DiffFragment[]) => {
-    const text = fragments.map((fragment) => fragment.text).join(" ");
-    return Array.from(text.matchAll(DURATION_RE), (match) => ({
-      display: match[0].replace(/\s+/gu, " ").replace(/\(\s+/gu, "(").replace(/\s+\)/gu, ")").trim(),
-      position: (match.index ?? 0) / Math.max(1, text.length),
+    const text = phraseText(fragments);
+    return Array.from(text.words.matchAll(DURATION_RE), (match) => ({
+      display: text.shown(match.index, match.index + match[0].length)
+        .replace(/\s+/gu, " ").replace(/\(\s+/gu, "(").replace(/\s+\)/gu, ")").trim(),
+      position: match.index / Math.max(1, text.words.length),
     }));
   };
   const left = collect(base);
@@ -1008,7 +1064,7 @@ function durationReplacements(base: DiffFragment[], revised: DiffFragment[]): Ph
   return left.flatMap((item, index) => {
     const counterpart = right[index];
     if (
-      comparisonForm(item.display) === comparisonForm(counterpart.display)
+      wordsKey(item.display) === wordsKey(counterpart.display)
       || (left.length > 1 && Math.abs(item.position - counterpart.position) > 0.25)
     ) return [];
     return [{ base: item.display, revised: counterpart.display }];
@@ -1042,24 +1098,30 @@ function typedValueReplacements(base: DiffFragment[], revised: DiffFragment[]): 
 const MONEY_PHRASE_RE = /\d+(?:[.,:]\d+)*\s*(?:TL|TRY|₺|USD|EUR|€|\$)/giu;
 
 function moneyReplacements(base: DiffFragment[], revised: DiffFragment[]): PhraseReplacement[] {
-  const collect = (fragments: DiffFragment[]) => Array.from(
-    fragments.map((fragment) => fragment.text).join(" ").matchAll(MONEY_PHRASE_RE),
-    (match) => match[0].replace(/\s+/gu, " ").trim(),
-  );
+  const collect = (fragments: DiffFragment[]) => {
+    const text = phraseText(fragments);
+    return Array.from(
+      text.words.matchAll(MONEY_PHRASE_RE),
+      (match) => text.shown(match.index, match.index + match[0].length).replace(/\s+/gu, " ").trim(),
+    );
+  };
   const left = collect(base);
   const right = collect(revised);
   if (!left.length || left.length !== right.length) return [];
-  return left.flatMap((value, index) => comparisonForm(value) === comparisonForm(right[index])
+  return left.flatMap((value, index) => wordsKey(value) === wordsKey(right[index])
     ? []
     : [{ base: value, revised: right[index] }]);
 }
 
 function venueReplacements(base: DiffFragment[], revised: DiffFragment[]): PhraseReplacement[] {
-  const collect = (fragments: DiffFragment[]) => fragments.map((fragment) => fragment.text).join(" ")
-    .match(/İstanbul(?:\s+Anadolu)?(?=\s+Mahkemeleri)/iu)?.[0];
+  const collect = (fragments: DiffFragment[]) => {
+    const text = phraseText(fragments);
+    const match = text.words.match(/İstanbul(?:\s+Anadolu)?(?=\s+Mahkemeleri)/iu);
+    return match?.index === undefined ? undefined : text.shown(match.index, match.index + match[0].length).replace(/\s+/gu, " ");
+  };
   const left = collect(base);
   const right = collect(revised);
-  return left && right && comparisonForm(left) !== comparisonForm(right) ? [{ base: left, revised: right }] : [];
+  return left && right && wordsKey(left) !== wordsKey(right) ? [{ base: left, revised: right }] : [];
 }
 
 function summarizeBodyDiff(base: DiffFragment[], revised: DiffFragment[]): string[] {
@@ -1071,9 +1133,12 @@ function summarizeBodyDiff(base: DiffFragment[], revised: DiffFragment[]): strin
     { kind: pair.revised.match(CURRENCY_RE) ? "money" : "number", display: pair.revised, start: 0, end: 1, position: 0.5 },
     durationPairs,
   ));
+  // Tutar iki kaynaktan gelir: tutar ifadesi belgedeki yazımla ("18.500TL"),
+  // sayı adayı sözcüklerden ("18.500 TL"). Aynı değişiklik iki kez yazılmasın;
+  // ilk gelen, yani belgedeki yazım kalır.
   const priorityPairs = [...durationPairs, ...moneyPairs, ...typedPairs, ...venuePairs].filter((pair, index, all) => (
-    all.findIndex((candidate) => comparisonForm(candidate.base) === comparisonForm(pair.base)
-      && comparisonForm(candidate.revised) === comparisonForm(pair.revised)) === index
+    all.findIndex((candidate) => wordsKey(candidate.base) === wordsKey(pair.base)
+      && wordsKey(candidate.revised) === wordsKey(pair.revised)) === index
   ));
   const prioritySummaries = priorityPairs.map((pair) => `${quote(pair.base)} → ${quote(pair.revised)}`).slice(0, 3);
   if (isSubstantialRewrite(base, revised)) {
@@ -1110,7 +1175,7 @@ function summarizeBodyDiff(base: DiffFragment[], revised: DiffFragment[]): strin
       if (summaries.length >= 3) break;
       if (!coveredByPhraseReplacement(oldValue, newValue, durationPairs)) {
         const replacement = `${quote(oldValue.display)} → ${quote(newValue.display)}`;
-        if (!summaries.includes(replacement)) summaries.push(replacement);
+        if (!summaries.some((line) => wordsKey(line) === wordsKey(replacement))) summaries.push(replacement);
       }
       for (let token = oldValue.start; token < oldValue.end; token++) usedBase.add(token);
       for (let token = newValue.start; token < newValue.end; token++) usedRevised.add(token);
@@ -1487,6 +1552,21 @@ function summaryUsesOneHunk(line: string, hunks: WordDiffHunk[]): boolean {
   return hunks.some((hunk) => hunk.removed.includes(literals[0]) && hunk.added.includes(literals[1]));
 }
 
+/**
+ * Özet satırları, tekrarsız. Satırın genel özeti sözcüklerden, parçanın
+ * kendi özeti kaynaktan yazılır; aynı ekleme "md. 119/1 - e" ve "md.119/1-e"
+ * diye iki kez çıkmasın. Yalnız boşluğu farklı satırlardan ilki kalır.
+ */
+function uniqueLines(lines: string[]): string[] {
+  const seen = new Set<string>();
+  return lines.filter((line) => {
+    const key = wordsKey(line);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function cardPresentation(
   hunks: WordDiffHunk[],
   fallbackSummary: string[],
@@ -1495,14 +1575,14 @@ function cardPresentation(
   const segments = hunks.map((hunk, index) => ({ hunk, id: `segment-${index}`, index }));
   if (segments.length <= CARD_SEGMENT_LIMIT) {
     const localFallback = hunks.length > 1
-      ? [...new Set([
+      ? uniqueLines([
         ...fallbackSummary.filter((line) => summaryUsesOneHunk(line, hunks)),
         ...hunks.flatMap((hunk) => hunkSummary(hunk)),
-      ])]
+      ])
       : fallbackSummary;
     const missingPreview = missingShortHunkSummaries(hunks, localFallback);
     return {
-      summary: [...new Set([...localFallback, ...missingPreview])],
+      summary: uniqueLines([...localFallback, ...missingPreview]),
       presentation: {
         segmentCount: segments.length,
         visibleSegmentIds: segments.map(({ id }) => id),
@@ -1524,7 +1604,7 @@ function cardPresentation(
   return {
     summary: [
       ...priorityFallback,
-      ...previewLines.filter((line) => !priorityFallback.includes(line)),
+      ...previewLines.filter((line) => !priorityFallback.some((kept) => wordsKey(kept) === wordsKey(line))),
       `+ ${collapsed.length} değişiklik daha`,
     ],
     presentation: {

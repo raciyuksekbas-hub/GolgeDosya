@@ -111,6 +111,103 @@ describe("panel belgedeki metni gösterir", () => {
   });
 });
 
+function compareParagraphs(base: string[], revised: string[]): ComparisonResult {
+  return compareDocuments(
+    makeBlocks(base.map((text) => ({ text })), "base"),
+    makeBlocks(revised.map((text) => ({ text })), "revised"),
+  );
+}
+
+// Yalnız boşluğu farklı iki yazım aynı sözcüklerdir; sözcük farkı onları eşit
+// sayar ve panelde işaretlenecek bir şey yoktur. Parça metni kaynaktan
+// kesildikten sonra özet tutar, süre ve yetkili mahkeme ifadelerini bu ham
+// metinle karşılaştırıyordu: "18.000 TL" ile "18.000TL" farklı çıkıyor, satır
+// "değişti" sayılıyor, rayda bir değişiklik görünüyor ama iki panelde de
+// hiçbir işaret yoktu. Eşitlik sözcüklerle kurulur, gösterim kaynaktan gelir.
+const SPACING_ONLY: Array<[string, string]> = [
+  ["Kira bedeli 18.000 TL'dir.", "Kira bedeli 18.000TL'dir."],
+  ["Toplam 1.250,50 TL ödenecektir.", "Toplam 1.250,50TL ödenecektir."],
+  ["Bedel 500 USD olarak ödenir.", "Bedel 500USD olarak ödenir."],
+  ["Fesih bildirimi 30 (otuz) gün önceden yapılır.", "Fesih bildirimi 30(otuz) gün önceden yapılır."],
+  ["Uyuşmazlıklarda İstanbul Anadolu Mahkemeleri yetkilidir.", "Uyuşmazlıklarda İstanbul\tAnadolu Mahkemeleri yetkilidir."],
+];
+
+describe("yalnız boşluk farkı değişiklik sayılmaz", () => {
+  it.each(SPACING_ONLY)("%s ↔ %s", (first, second) => {
+    for (const [base, revised] of [[first, second], [second, first]]) {
+      const comparison = compareParagraphs([base], [revised]);
+      expect(comparison.rows.map((row) => row.kind)).toEqual(["unchanged"]);
+      expect(comparison.rawChanges).toEqual([]);
+      expect(comparison.changes).toEqual([]);
+      expect(paneRows(comparison, "base")).toEqual([base]);
+      expect(paneRows(comparison, "revised")).toEqual([revised]);
+    }
+  });
+
+  const summaries = (comparison: ComparisonResult) => comparison.changes.map((change) => change.summary);
+
+  it("gerçek değişikliğin yanındaki boşluk farkı özete girmez", () => {
+    const base = ["Kira bedeli 18.000 TL olup 5 (beş) gün içinde ödenir."];
+    const glued = compareParagraphs(base, ["Kira bedeli 18.000TL olup 7 (yedi) gün içinde ödenir."]);
+    const spaced = compareParagraphs(base, ["Kira bedeli 18.000 TL olup 7 (yedi) gün içinde ödenir."]);
+    expect(summaries(glued)).toEqual(summaries(spaced));
+    expect(summaries(glued)[0][0]).toBe("“5 (beş) gün” → “7 (yedi) gün”");
+    expect(summaries(glued).flat().filter((line) => line.includes("18.000"))).toEqual([]);
+  });
+
+  // Süre ifadeleri iki tarafta sayılıp sırayla eşleştirilir. Önündeki sözcüğe
+  // bitişik "Kiracı30 (otuz) gün" ham metinde süre sayılmıyordu; değişik
+  // tarafta tek süre kalıyor ve özet, yerinde duran 30 günü yeni eklenen
+  // 15 iş gününe "değişti" diye bağlıyordu.
+  it("sözcüğe bitişik yazılmış süre başka bir süreyle eşleştirilmez", () => {
+    const base = ["Kiracı 30 (otuz) gün içinde tahliye eder."];
+    const glued = compareParagraphs(base, ["Kiracı30 (otuz) gün içinde, en geç 15 (onbeş) iş günü sonra tahliye eder."]);
+    const spaced = compareParagraphs(base, ["Kiracı 30 (otuz) gün içinde, en geç 15 (onbeş) iş günü sonra tahliye eder."]);
+    expect(summaries(glued)).toEqual(summaries(spaced));
+    expect(summaries(glued).flat().filter((line) => line.startsWith("“30 (otuz) gün” →"))).toEqual([]);
+  });
+
+  // Tutar özeti iki yoldan çıkar: tutar ifadesi belgedeki yazımla ("18.500TL"),
+  // sayı adayı sözcüklerden ("18.500 TL"). İkisi aynı değişikliktir.
+  it("aynı tutar değişikliği özette bir kez, belgedeki yazımıyla geçer", () => {
+    const comparison = compareParagraphs(["Kira bedeli 18.000 TL'dir."], ["Kira bedeli 18.500TL'ydi."]);
+    expect(comparison.changes.flatMap((change) => change.summary)).toEqual(["“18.000 TL” → “18.500TL”"]);
+  });
+
+  // Birden çok parçalı değişiklikte kart özeti satırın genel özetiyle her
+  // parçanın kendi özetini birleştirir. Biri sözcüklerden, öteki kaynaktan
+  // yazıldığı için aynı ekleme iki kez çıkıyordu: "md. 119/1 - e" ve
+  // "md.119/1-e".
+  it("çok parçalı değişiklikte aynı ekleme özette bir kez geçer", () => {
+    const comparison = compareParagraphs(
+      ["Davalı ödeme yapmadı ve dava açıldı."],
+      ["Davalı HMK md.119/1-e uyarınca ödeme yapmadı ve dava bugün açıldı."],
+    );
+    expect(comparison.changes).toHaveLength(1);
+    expect(comparison.changes[0].summary.filter((line) => line.includes("119/1"))).toHaveLength(1);
+    expect(comparison.changes[0].summary.filter((line) => line.includes("bugün"))).toHaveLength(1);
+  });
+
+  // Sahada görülen bileşik satır: iki paragraf tek paragrafa birleşmiş, tutar
+  // değişmiş. Eskiden cümle bölücü "17.500"ün noktasında da bölüyor, panel
+  // "aylık 17 .   500 TL olup% 18" gösteriyor, özet "17" → "18" diyordu.
+  it("iki paragraf birleşince tutar bölünmez; panel kaynağı, özet tutarı gösterir", () => {
+    const base = [
+      "Davalı ABC A.Ş.'nin kira borcu aylık 17.500 TL olup %18 KDV hariçtir.",
+      "Fazlaya ilişkin haklarımız (HMK md. 119/1-e) saklıdır.",
+    ];
+    const revised = "Davalı ABC A.Ş.'nin kira borcu aylık 18.500 TL olup %18 KDV hariçtir. Fazlaya ilişkin haklarımız (HMK md. 119/1-e) saklıdır.";
+    const comparison = compareParagraphs(base, [revised]);
+    expect(comparison.rows.map((row) => row.kind)).toEqual(["modified"]);
+    expect(comparison.rows[0].composite).toBe(true);
+    expect(paneRows(comparison, "base")).toEqual([base.join(" ")]);
+    expect(paneRows(comparison, "revised")).toEqual([revised]);
+    expect(comparison.changes.flatMap((change) => change.summary)).toEqual(["“17.500” → “18.500”"]);
+    expect(paneHtml(comparison, "base")).toContain('<del class="fragment removed">17.500 </del>');
+    expect(paneHtml(comparison, "revised")).toContain('<ins class="fragment added">18.500 </ins>');
+  });
+});
+
 describe("gerçek DOCX ve UDF çifti", () => {
   const browserDomParser = globalThis.DOMParser;
   beforeAll(() => {
