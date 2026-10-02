@@ -94,11 +94,13 @@ describe("tamamlandı yüzeyi (maddeler 10, 9)", () => {
     expect(html).not.toContain(">C:\\Users");
   });
 
-  it("Klasörü Aç ve Yeni Ekler İşlemi gerçekten bağlı", () => {
+  // Eylemin adı öteki araçlarla aynı: "Klasörde Göster" (eskiden "Klasörü
+  // Aç"). Davranış aynı: paketin KENDİSİ açılır (aşağıdaki kabuk sözleşmesi).
+  it("Klasörde Göster ve Yeni Ekler İşlemi gerçekten bağlı", () => {
     const onOpenFolder = vi.fn();
     const onNew = vi.fn();
     const tree = AnnexDone({ result, stale: false, onOpenFolder, onNew });
-    findButton(tree, "Klasörü Aç")!.props.onClick();
+    findButton(tree, "Klasörde Göster")!.props.onClick();
     expect(onOpenFolder).toHaveBeenCalledTimes(1);
     findButton(tree, "Yeni Ekler İşlemi")!.props.onClick();
     expect(onNew).toHaveBeenCalledTimes(1);
@@ -109,7 +111,8 @@ describe("tamamlandı yüzeyi (maddeler 10, 9)", () => {
     const done = renderToStaticMarkup(
       <AnnexWorkspace project={ready} onProject={noop} prepared={{ snapshot: ready, result }} onPrepared={noop} onNewOperation={noop} />,
     );
-    expect(done).toContain("Klasörü Aç");
+    expect(done).toContain("Klasörde Göster");
+    expect(done).not.toContain("Klasörü Aç");
     expect(done).toContain("Yeni Ekler İşlemi");
     expect(done).not.toContain("Ekleri Hazırla ve Kaydet");
     // Düzen değişince paket bayat sayılır ve hazırlama geri gelir.

@@ -576,6 +576,26 @@ test("aynı kavramın tek adı var", () => {
     assert.ok(visible(src).includes("Çıktı klasörü"), `${name} "Çıktı klasörü" demeli`);
   }
 
+  // Kaydın yeri de tek adla gösterilir. Dönüştür "Klasörde Göster", Ekler
+  // "Klasörü Aç" diyordu; Düzenle ve Denetle'de eylem hiç yoktu. Ad tek
+  // sözlükten gelir ve platforma özgü dosya yöneticisi adı taşımaz.
+  const place = readFileSync("src/shared-ui/savePlace.tsx", "utf8");
+  assert.match(place, /export const SHOW_IN_FOLDER = "Klasörde Göster";/u);
+  for (const file of ["src/modules/duzenek/PdfWorkspace.tsx", "src/modules/ikincigoz/ReviewWorkspace.tsx"]) {
+    assert.match(readFileSync(file, "utf8"), /<SavedPlace /u, `${file}: kaydın yeri SavedPlace ile gösterilmeli`);
+  }
+  assert.ok(
+    readFileSync("src/modules/duzenek/ekler/AnnexWorkspace.tsx", "utf8").includes("{SHOW_IN_FOLDER}"),
+    "Ekler aynı adı kullanmalı",
+  );
+  assert.ok(visible(convert).includes("Klasörde Göster"), "Dönüştür aynı adı kullanmalı");
+  for (const file of sources) {
+    const text = readFileSync(file, "utf8");
+    assert.ok(!visible(text).includes("Klasörü Aç"), `${file}: ikinci ad kalmamalı ("Klasörü Aç")`);
+    assert.ok(!/"[^"\n]*\b(Finder|Explorer|Gezgin)\b[^"\n]*"/u.test(text) || file.endsWith("platform.ts"),
+      `${file}: kullanıcı metninde dosya yöneticisinin adı geçmemeli`);
+  }
+
   // Menü dili tek elden: kenar çubuğu ile tercih sekmeleri aynı yazımı taşır.
   const sidebar = readFileSync("src/shell/Sidebar.tsx", "utf8");
   for (const src of [sidebar, settings]) {

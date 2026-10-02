@@ -14,9 +14,25 @@
 //! önermek, rastgele bir klasörden kötüdür. Dönüştür bu kuralın dışındadır;
 //! kendi çıktı klasörüne yazar (Ayarlar).
 //!
-//! Bu modül kabuğa aittir, bir modüle değil: `duzenek.rs` bağımsız
-//! uygulamayla gövde eşitliği taşır (`check-command-parity.py`).
+//! İkinci yarı sonucun yeridir: kaydedilen dosya "Klasörde Göster" ile
+//! klasöründe seçili gösterilir. Arayüzün opener izni yoktur ve olmayacaktır;
+//! yalnız bu oturumda yazılmış, var olan ve uygulamanın ürettiği türde bir
+//! yol kabul edilir. Dosya HİÇBİR ZAMAN uygulamasıyla açılmaz.
+//!
+//! Bu modül kabuğa aittir, bir modüle değil: Denetle'nin Rust tarafına opener
+//! girmez (`check-architecture.sh`, 5c) ve `duzenek.rs` bağımsız uygulamayla
+//! gövde eşitliği taşır (`check-command-parity.py`).
 use std::path::{Component, Path, PathBuf};
+use std::sync::OnceLock;
+use std::time::{Duration, SystemTime};
+
+/// Uygulamanın bu açılışı. "Bu oturumda yazıldı" bundan sonra değişmiş demektir.
+static SESSION_START: OnceLock<SystemTime> = OnceLock::new();
+
+/// Uygulama açılırken bir kez çağrılır (`run`).
+pub fn mark_session_start() {
+    let _ = SESSION_START.set(SystemTime::now());
+}
 
 /// Kaynağın klasörünün öneri olamayacağı yerler.
 #[derive(Debug, Default)]
@@ -150,6 +166,76 @@ pub async fn output_start_folder(source: String) -> Option<String> {
     .flatten()
 }
 
+/// "Klasörde Göster" neyi yapacak?
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Reveal {
+    /// Dosyanın klasörünü aç ve dosyayı seç.
+    Select(PathBuf),
+    /// Paket klasörünün KENDİSİNİ aç (Görsel paketi; Ekler ile aynı karar,
+    /// saha #10). Klasör "üst klasörde seç"e verilmez (saha #13).
+    OpenFolder(PathBuf),
+}
+
+/// Düzenle (PDF) ve Denetle (DOCX, UDF) çıktılarının türleri.
+const SAVED_EXTENSIONS: [&str; 3] = ["pdf", "docx", "udf"];
+
+const NOT_FOUND: &str = "Dosya bulunamadı. Taşınmış veya silinmiş olabilir.";
+
+/// Ağ paylaşımındaki dosyanın zamanını sunucunun saati yazar; o saat bu
+/// bilgisayarınkinden biraz geri olabilir. Açılıştan hemen sonra kaydedilen
+/// dosya bu yüzden "eski" sayılmasın.
+const CLOCK_SKEW: Duration = Duration::from_secs(120);
+
+/// Yalnız bu oturumda yazılmış, var olan ve uygulamanın ürettiği türde yol.
+///
+/// Kullanıcı kaydetme penceresinde adı değiştirebilir; bu yüzden ad önekine
+/// değil türe ve ZAMANA bakılır: dosya uygulama açıldıktan sonra yazılmış
+/// olmalıdır. Klasör ise yalnız uygulamanın paket adını (`GolgeDosya-…`)
+/// taşıyorsa ve uzantısızsa kabul edilir: macOS'ta `….app` gibi bir klasör
+/// "açılınca" bir program çalışır. Bağlantı (symlink) izlenmez.
+pub(crate) fn reveal_target(path: &Path, session_start: SystemTime) -> Result<Reveal, String> {
+    if !path.is_absolute() {
+        return Err(NOT_FOUND.into());
+    }
+    let meta = std::fs::symlink_metadata(path).map_err(|_| NOT_FOUND.to_string())?;
+    let since = session_start
+        .checked_sub(CLOCK_SKEW)
+        .unwrap_or(session_start);
+    let fresh = meta.modified().is_ok_and(|m| m >= since);
+    if !fresh || meta.file_type().is_symlink() {
+        return Err(NOT_FOUND.into());
+    }
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if meta.is_file() {
+        let ext = Path::new(name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .unwrap_or_default();
+        if SAVED_EXTENSIONS.contains(&ext.as_str()) {
+            return Ok(Reveal::Select(path.to_path_buf()));
+        }
+    } else if meta.is_dir()
+        && name.starts_with("GolgeDosya-")
+        && Path::new(name).extension().is_none()
+    {
+        return Ok(Reveal::OpenFolder(path.to_path_buf()));
+    }
+    Err(NOT_FOUND.into())
+}
+
+/// Az önce kaydedilen dosyayı klasöründe göster.
+#[tauri::command]
+pub fn output_reveal(path: String) -> Result<(), String> {
+    // Başlangıç işaretlenmemişse (olmamalı) yalnız az önce yazılmış yol sayılır.
+    let since = SESSION_START.get().copied().unwrap_or_else(SystemTime::now);
+    let opened = match reveal_target(Path::new(&path), since)? {
+        Reveal::Select(file) => tauri_plugin_opener::reveal_item_in_dir(file),
+        Reveal::OpenFolder(dir) => tauri_plugin_opener::open_path(dir, None::<&str>),
+    };
+    opened.map_err(|_| "Klasör açılamadı.".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,5 +341,94 @@ mod tests {
         let suggested = start_folder(&source, &places(root.path(), &[]));
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(suggested, None);
+    }
+
+    #[test]
+    fn a_file_saved_in_this_session_is_shown_selected_in_its_folder() {
+        let (_root, dir) = case_folder();
+        let start = SystemTime::now() - Duration::from_secs(5);
+        for name in [
+            "GolgeDosya-compress-2026-10-01_213331.pdf",
+            "Ek 3 bilirkişi.PDF",
+            "dava - Düzeltilmiş.docx",
+            "dava - Düzeltilmiş (2).udf",
+        ] {
+            let file = dir.join(name);
+            std::fs::write(&file, b"x").unwrap();
+            assert_eq!(
+                reveal_target(&file, start),
+                Ok(Reveal::Select(file.clone())),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_network_share_clock_a_little_behind_is_tolerated() {
+        // Sunucunun saati bir dakika geri: dosya açılıştan "önce" yazılmış
+        // görünür ama bu oturumun çıktısıdır.
+        let (_root, dir) = case_folder();
+        let file = dir.join("GolgeDosya-merge-2026-10-02_093000.pdf");
+        std::fs::write(&file, b"%PDF").unwrap();
+        let start = SystemTime::now() + Duration::from_secs(60);
+        assert_eq!(
+            reveal_target(&file, start),
+            Ok(Reveal::Select(file.clone()))
+        );
+    }
+
+    #[test]
+    fn an_image_package_folder_is_opened_itself() {
+        let (_root, dir) = case_folder();
+        let package = dir.join("GolgeDosya-Gorseller-jyT24K");
+        std::fs::create_dir_all(&package).unwrap();
+        std::fs::write(package.join("sayfa-001.png"), b"x").unwrap();
+        let start = SystemTime::now() - Duration::from_secs(5);
+        assert_eq!(
+            reveal_target(&package, start),
+            Ok(Reveal::OpenFolder(package.clone()))
+        );
+    }
+
+    #[test]
+    fn nothing_else_is_revealed() {
+        let (_root, dir) = case_folder();
+        let start = SystemTime::now() - Duration::from_secs(5);
+        // Var olmayan yol.
+        assert!(reveal_target(&dir.join("silinmiş.pdf"), start).is_err());
+        // Göreli yol.
+        assert!(reveal_target(Path::new("GolgeDosya-a.pdf"), start).is_err());
+        // Uygulamanın üretmediği tür: çalıştırılabilir ya da betik seçtirilmez.
+        for name in ["kur.app", "betik.sh", "not.txt", "program.exe"] {
+            let other = dir.join(name);
+            std::fs::write(&other, b"x").unwrap();
+            assert!(reveal_target(&other, start).is_err(), "{name}");
+        }
+        // Paket adını taşımayan klasör.
+        assert!(reveal_target(&dir, start).is_err());
+        // Paket adını taşısa da uzantılı klasör: macOS'ta açılınca çalışan
+        // bir uygulama paketi olabilir.
+        for name in ["GolgeDosya-kur.app", "GolgeDosya-x.bundle"] {
+            let bundle = dir.join(name);
+            std::fs::create_dir_all(&bundle).unwrap();
+            assert!(reveal_target(&bundle, start).is_err(), "{name}");
+        }
+        // Uygulama açılmadan ÖNCE yazılmış dosya: bu oturumun çıktısı değil.
+        let old = dir.join("eski.pdf");
+        std::fs::write(&old, b"%PDF").unwrap();
+        let later = SystemTime::now() + CLOCK_SKEW + Duration::from_secs(60);
+        assert!(reveal_target(&old, later).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_is_not_followed() {
+        let (_root, dir) = case_folder();
+        let start = SystemTime::now() - Duration::from_secs(5);
+        let target = dir.join("GolgeDosya-hedef.pdf");
+        std::fs::write(&target, b"%PDF").unwrap();
+        let link = dir.join("GolgeDosya-link.pdf");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(reveal_target(&link, start).is_err());
     }
 }

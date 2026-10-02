@@ -6,7 +6,7 @@ import { announce } from "../../shared-ui/Announcer";
 import { logFailure, safeMessage } from "../../shared-ui/failure";
 import { Button, EmptyState, Status } from "../../shared-ui/primitives";
 import { InspectorPanel, InspectorSection, ToolbarActions, ToolbarStatus } from "../../shell/chrome";
-import { startFolder } from "../../shared-ui/savePlace";
+import { inFolder, SavedPlace, startFolder } from "../../shared-ui/savePlace";
 import { correctedSaveOptions } from "./saveTarget";
 
 /**
@@ -452,6 +452,8 @@ export function ReviewWorkspace({ path }: { path: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [active, setActive] = useState<string | null>(null);
   const [written, setWritten] = useState<string | null>(null);
+  // Kaydedilen kopyanın tam yolu: klasör satırı ve "Klasörde Göster" için.
+  const [writtenPath, setWrittenPath] = useState<string | null>(null);
   // Kurtarılabilir uygulama hatası. `failure`den AYRIDIR: `failure` belge hiç
   // incelenemediğinde çalışma alanının var olamayacağı ölümcül durumdur.
   const [applyError, setApplyError] = useState("");
@@ -543,6 +545,7 @@ export function ReviewWorkspace({ path }: { path: string }) {
       const chosenName = cut >= 0 ? target.slice(cut + 1) : target;
       const r = await api.applyFixes(path, chosen, dir || undefined, chosenName || undefined);
       setWritten(`${r.fileName} · ${r.applied} düzeltme uygulandı`);
+      setWrittenPath(inFolder(r.directory, r.fileName));
       announce(`${r.applied} düzeltme uygulandı. Kopya kaydedildi.`);
       // Kaynak değişmediği için bulgular geçerliliğini korur; seçim sıfırlanır.
       setSelected(new Set());
@@ -598,6 +601,7 @@ export function ReviewWorkspace({ path }: { path: string }) {
       <div className="surface review">
         {applyError ? <Status tone="error">{applyError}</Status> : null}
         {written ? <Status tone="success">{written}</Status> : null}
+        {written && writtenPath ? <SavedPlace path={writtenPath} /> : null}
 
         {result.findings.length === 0 ? (
           <ReviewClear doc={result.document} />

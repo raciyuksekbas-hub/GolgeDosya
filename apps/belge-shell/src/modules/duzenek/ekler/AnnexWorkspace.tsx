@@ -17,7 +17,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { Button, EmptyState, Status } from "../../../shared-ui/primitives";
 import { ConfirmSheet } from "../../../shared-ui/ConfirmSheet";
-import { startFolder } from "../../../shared-ui/savePlace";
+import { SHOW_IN_FOLDER, startFolder } from "../../../shared-ui/savePlace";
 import { announce } from "../../../shared-ui/Announcer";
 import { logFailure, safeMessage } from "../../../shared-ui/failure";
 import { ToolbarActions } from "../../../shell/chrome";
@@ -71,10 +71,12 @@ const nextId = () => `ek-${(seq += 1)}`;
  * Tamamlanmış işlemin yüzeyi: ne üretildi, nerede, sırada ne var.
  *
  * Dönüştür'ün sonuç yüzeyiyle aynı dil (işaretli sonuç satırı, klasör satırı,
- * tek baskın eylem). Klasör OTOMATİK açılmaz, güçlü bir "Klasörü Aç" verilir
- * (madde 10): uygulama dış bir uygulamayı yalnız istenince açar; istenmeden
- * açılan Gezgin penceresi odağı çalar ve ekran okuyucu kullanıcısını
- * yerinden eder (WCAG 3.2.5), açılamazsa da sessizce kalırdı.
+ * tek baskın eylem). Klasör OTOMATİK açılmaz, güçlü bir "Klasörde Göster"
+ * verilir (madde 10): uygulama dış bir uygulamayı yalnız istenince açar;
+ * istenmeden açılan Gezgin penceresi odağı çalar ve ekran okuyucu
+ * kullanıcısını yerinden eder (WCAG 3.2.5), açılamazsa da sessizce kalırdı.
+ * Eylem paketin KENDİSİNİ açar; adı öteki araçlarla aynıdır (eskiden
+ * "Klasörü Aç", bkz. shared-ui/savePlace).
  *
  * Paketteki iki yardımcı dosya da burada tek satırla söylenir (madde 9:
  * "Manifest ve txt'yi anlamadım"). Kullanıcıya "düzenleyin" diye bir
@@ -126,7 +128,7 @@ export function AnnexDone({ result, stale, onOpenFolder, onNew, headingRef }: {
       <p className="flow-note">Kaynak belgeleriniz değiştirilmedi.</p>
       <div className="flow-action">
         <Button variant="primary" onClick={onOpenFolder}>
-          Klasörü Aç
+          {SHOW_IN_FOLDER}
         </Button>
         <Button variant="quiet" onClick={onNew}>
           Yeni Ekler İşlemi
@@ -157,8 +159,8 @@ export function AnnexWorkspace({ project, onProject, prepared, onPrepared, onNew
   const setProject = onProject;
   const phase = annexPhase(project, prepared);
   const [confirming, setConfirming] = useState(false);
-  // Tamamlanınca klavye kullanıcısı sonucun başına gelir; "Klasörü Aç" bir
-  // Sekme ötede. Kip değişip dönünce de sonuç orada karşılar.
+  // Tamamlanınca klavye kullanıcısı sonucun başına gelir; "Klasörde Göster"
+  // bir Sekme ötede. Kip değişip dönünce de sonuç orada karşılar.
   const doneHeading = useRef<HTMLParagraphElement>(null);
   const completedResult = phase === "completed" ? prepared?.result : undefined;
   useEffect(() => {

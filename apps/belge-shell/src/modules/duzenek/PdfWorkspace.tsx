@@ -27,7 +27,7 @@ import { noBenefitStatus } from './noBenefitMessage';
 import { savedStatus } from './savedMessage';
 import { humanSize } from '../../shared-ui/sizeText';
 import { copyDestination } from './copyDestination';
-import { startFolder } from '../../shared-ui/savePlace';
+import { SavedPlace, startFolder } from '../../shared-ui/savePlace';
 import { describeOpenFailure, describePreviewFailure, describeSaveFailure, logFailure, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -389,6 +389,9 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const [failure, setFailure] = useState('');
     const [statusTone, setStatusTone] = useState<'info' | 'busy' | 'success' | 'error'>('info');
     const [margin, setMargin] = useState(10), [text, setText] = useState('KOPYA'), [imageFormat, setImageFormat] = useState('png'), [start, setStart] = useState(1), [level, setLevel] = useState('balanced_compression'), [approved, setApproved] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
+    // Son kaydın yeri. Yalnız kendi durum metni ekrandayken gösterilir: durum
+    // başka bir cümleye geçince (yeni araç, hata, yeni kayıt) satır da gider.
+    const [saved, setSaved] = useState<{ text: string; path: string; isFolder: boolean } | null>(null);
     const build = (list: SourceFile[]) => { setRotations({}); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setBaseline(next); setHistory([]); setAnchor(next[0]?.key || ''); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
     // Her tarama bir nesil alır. Kabuk tarama sürerken başka bir belge açarsa
     // (bar, son kullanılanlar) eski taramanın sonucu yenisinin üstüne yazılmaz;
@@ -653,7 +656,10 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                 setBusy(true);
                 setStatus('Görseller hazırlanıyor…'); setStatusTone('busy');
                 const result = await invoke<string>('duzenek_pdf_to_images', { path: sources[0].path, outputDir, format: imageFormat, dpi: 150, approved });
-                setStatus('Görsel paketi kaydedildi: ' + result); setStatusTone('success');
+                // Paket bir klasördür: adı "Klasör" satırında, tam yolu ipucunda.
+                const done = 'Görsel paketi kaydedildi.';
+                setStatus(done); setStatusTone('success');
+                setSaved({ text: done, path: result, isFolder: true });
                 return;
             }
             const outputPath = await copyDestination(`GolgeDosya-${kind}`, folderOnly, sources[0]?.path);
@@ -676,14 +682,16 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             const receipt = await invoke<ScanBatchResult>('duzenek_scan_source_files', { paths: [outputPath] });
             if (receipt.errors.length || receipt.sources.length !== 1 || receipt.sources[0].size_bytes === 0)
                 throw new Error('Kaydedilen PDF yeniden doğrulanamadı.');
-            setStatus(savedStatus({
+            const done = savedStatus({
                 kind,
                 outputPath,
                 pageCount: receipt.sources[0].page_count,
                 outputBytes: receipt.sources[0].size_bytes,
                 sourceBytes: outcome.source_bytes || sources.reduce((n, s) => n + s.size_bytes, 0),
-            }));
+            });
+            setStatus(done);
             setStatusTone('success');
+            setSaved({ text: done, path: outputPath, isFolder: false });
             // Bu düzen artık bir kopyada: kip değiştirmek bir şey kaybettirmez.
             setSavedSignature(signature);
         }
@@ -854,6 +862,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     da kayboluyordu — kullanıcı düğmeye basıp hiçbir şey
                     olmadığını sanıyordu. */}
                 <Status tone={statusTone}>{status}</Status>
+                {saved && statusTone === 'success' && saved.text === status && <SavedPlace path={saved.path} isFolder={saved.isFolder}/>}
                 {surfaces.strip && kind !== 'images' ? <>
                 <div className="pdf-strip">
                     <div className="tool-segment" role="group" aria-label="Sayfa araçları">

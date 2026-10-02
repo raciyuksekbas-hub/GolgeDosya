@@ -147,6 +147,8 @@ fn migrate_legacy_settings() -> Result<legacy::MigrationReport, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // "Klasörde Göster" yalnız bu açılıştan sonra yazılmış yolu kabul eder.
+    output_place::mark_session_start();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -249,7 +251,8 @@ pub fn run() {
                 forget_documents,
                 migrate_legacy_settings,
                 clipboard::pasted_document_paths,
-                output_place::output_start_folder
+                output_place::output_start_folder,
+                output_place::output_reveal
                 $(, $extra)*
             ]
         };

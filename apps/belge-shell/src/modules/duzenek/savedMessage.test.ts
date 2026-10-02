@@ -2,8 +2,9 @@
 //
 // Sıkıştırmada sonuç ilk satırda insan diliyle söylenir; motorun iç ölçüsü
 // ("Sıkıştırılmış belge … · Marka dahil …") kullanıcı metninden çıktı.
-// Alındı (yol ve sayfa) her araçta kalır: kullanıcı dosyanın yerini oradan
-// öğrenir.
+// Alındı (ad ve sayfa) her araçta kalır. Yer (klasör ve "Klasörde Göster")
+// metnin altındaki ayrı satırdadır (shared-ui/savePlace); tam yol metinde
+// tekrarlanmaz.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -12,6 +13,7 @@ import { compressResultLine, savedStatus } from "./savedMessage";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PATH = "/Users/ornek/Belgeler/GolgeDosya-compress.pdf";
+const NAME = "GolgeDosya-compress.pdf";
 
 describe("sıkıştırma başarı satırı", () => {
   it("kullanıcının örneği: 9,8 MB → 4,1 MB", () => {
@@ -30,7 +32,7 @@ describe("sıkıştırma başarı satırı", () => {
     });
     expect(text.split("\n")).toEqual([
       "Sıkıştırıldı: 13,2 MB → 522 KB (yaklaşık %96 küçüldü).",
-      `PDF kaydedildi ve yeniden açılarak doğrulandı: ${PATH}`,
+      `PDF kaydedildi ve yeniden açılarak doğrulandı: ${NAME}`,
       "1 sayfa",
     ]);
     expect(text).not.toMatch(/Marka dahil|Sıkıştırılmış belge/);
@@ -59,7 +61,7 @@ describe("öteki araçlar aynı sayı dilini konuşur", () => {
         sourceBytes: 10_276_045,
         outputBytes: 4_299_161,
       });
-      expect(text).toBe(`PDF kaydedildi ve yeniden açılarak doğrulandı: ${PATH}\n30 sayfa · 4,1 MB`);
+      expect(text).toBe(`PDF kaydedildi ve yeniden açılarak doğrulandı: ${NAME}\n30 sayfa · 4,1 MB`);
     },
   );
 });
@@ -68,10 +70,23 @@ describe("kabuğa bağlanma", () => {
   const workspace = readFileSync(resolve(here, "PdfWorkspace.tsx"), "utf8");
 
   it("başarı durumu bu modülden kurulur, kabukta sayı biçimlenmez", () => {
-    expect(workspace).toContain("setStatus(savedStatus(");
+    expect(workspace).toContain("const done = savedStatus({");
+    expect(workspace).toContain("setStatus(done);");
     // toFixed nokta koyar: kullanıcı metninde Türkçe ondalık kalmaz.
     expect(workspace).not.toContain("toFixed(");
     expect(workspace).not.toContain("Marka dahil");
     expect(workspace).not.toContain("küçültüldü.");
+  });
+
+  it("kaydın yeri durum satırının altında: klasörün adı ve Klasörde Göster", () => {
+    // Satır yalnız KENDİ durum metni ekrandayken çizilir; yeni araç, hata
+    // ya da yeni kayıt durumu değiştirince eski kaydın yeri kaybolur.
+    expect(workspace).toContain("setSaved({ text: done, path: outputPath, isFolder: false })");
+    expect(workspace).toContain("setSaved({ text: done, path: result, isFolder: true })");
+    expect(workspace).toContain(
+      "{saved && statusTone === 'success' && saved.text === status && <SavedPlace path={saved.path} isFolder={saved.isFolder}/>}",
+    );
+    // Görsel paketinin tam yolu durum metnine yazılmaz.
+    expect(workspace).not.toContain("'Görsel paketi kaydedildi: ' + result");
   });
 });

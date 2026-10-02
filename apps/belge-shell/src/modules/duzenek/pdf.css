@@ -217,6 +217,9 @@
 .pdf-root .zoom select { font-size: var(--text-body); }
 
 .pdf-root .status { margin: var(--space-3) var(--space-4) 0; white-space: pre-wrap; }
+/* Kaydın yeri (shared-ui/savePlace): durumun hemen altında, onunla aynı hizada. */
+.pdf-root .saved-place,
+.pdf-root .saved-place-error { margin: var(--space-1) var(--space-4) 0; }
 
 .pdf-root .pdf-canvas {
   display: flex;

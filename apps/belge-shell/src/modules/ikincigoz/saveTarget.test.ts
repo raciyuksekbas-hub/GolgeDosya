@@ -1,7 +1,8 @@
-// Denetle — düzeltilmiş kopyanın kaydetme penceresi.
+// Denetle — düzeltilmiş kopyanın kaydetme penceresi ve sonucu.
 //
 // Pencere öneri almıyordu (`defaultPath: undefined`): ad yok, klasör yok,
-// filtre yok ("kayıt klasörleri arasında birlik yok").
+// filtre yok. Sonuç yalnız dosya adını söylüyor, kopyanın HANGİ klasöre
+// yazıldığını hiç göstermiyordu ("kayıt klasörleri arasında birlik yok").
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -30,5 +31,14 @@ describe("Denetle'nin kaydetme penceresi", () => {
   it("pencere bu seçeneklerle ve belgenin klasöründe açılır", () => {
     expect(review).toContain("await save(correctedSaveOptions(path, await startFolder(path)))");
     expect(review).not.toContain("defaultPath: undefined");
+  });
+});
+
+describe("Denetle'nin sonucu", () => {
+  it("kopyanın klasörü ve Klasörde Göster, motorun gerçekten yazdığı yerden", () => {
+    // Ad çakışırsa motor " (2)" türetir; gösterilen yol motorun döndürdüğüdür,
+    // pencerede onaylanan değil.
+    expect(review).toContain("setWrittenPath(inFolder(r.directory, r.fileName))");
+    expect(review).toContain("{written && writtenPath ? <SavedPlace path={writtenPath} /> : null}");
   });
 });
