@@ -12,19 +12,30 @@ const here = dirname(fileURLToPath(import.meta.url));
 const app = readFileSync(resolve(here, "../App.tsx"), "utf8");
 
 describe("Düzenle: kaydedilmemiş düzenleme", () => {
+  // Üçüncü argüman KAYNAK sırasıdır: sıra ona göre ölçülür, "elle değişti mi"
+  // bayrağına göre değil (a06 — taşıyıp geri getirmek kaybettirmez).
   const order = [{ key: "a#1" }, { key: "a#2" }];
   it("sıra ya da döndürme yoksa kirli değildir; 360° dönüş de değildir", () => {
-    expect(editSignature(order, {}, false)).toBe("");
-    expect(editSignature(order, { "a#1": 360 }, false)).toBe("");
+    expect(editSignature(order, {}, order)).toBe("");
+    expect(editSignature(order, { "a#1": 360 }, order)).toBe("");
     expect(hasUnsavedEdits("", "")).toBe(false);
   });
   it("döndürme ya da sıralama kirletir; AYNI düzen kaydedilince temizlenir", () => {
-    const turned = editSignature(order, { "a#2": 90 }, false);
+    const turned = editSignature(order, { "a#2": 90 }, order);
     expect(hasUnsavedEdits(turned, "")).toBe(true);
     expect(hasUnsavedEdits(turned, turned)).toBe(false);
     // Kayıttan sonra bir değişiklik daha: yeniden kirli.
-    expect(hasUnsavedEdits(editSignature(order, { "a#2": 180 }, false), turned)).toBe(true);
-    expect(hasUnsavedEdits(editSignature([order[1], order[0]], {}, true), "")).toBe(true);
+    expect(hasUnsavedEdits(editSignature(order, { "a#2": 180 }, order), turned)).toBe(true);
+    expect(hasUnsavedEdits(editSignature([order[1], order[0]], {}, order), "")).toBe(true);
+  });
+  it("sayfayı taşıyıp yerine geri getirmek kirli değildir", () => {
+    // Kopya dizi: kimlik değil anahtar sırası karşılaştırılır.
+    const movedBack = [{ key: "a#1" }, { key: "a#2" }];
+    expect(editSignature(movedBack, {}, order)).toBe("");
+    expect(hasUnsavedEdits(editSignature(movedBack, {}, order), "")).toBe(false);
+    // Kaydedilmiş bir sıradan kaynağa dönmek de kaybettirecek bir şey değildir.
+    const saved = editSignature([order[1], order[0]], {}, order);
+    expect(hasUnsavedEdits(editSignature(movedBack, {}, order), saved)).toBe(false);
   });
 });
 

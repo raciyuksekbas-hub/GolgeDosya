@@ -35,6 +35,7 @@ import { ScanBatchResult, SourceFile } from './types';
 import { InspectorPanel, InspectorSection, ToolbarActions, ToolbarStatus, useRevealInspector } from '../../shell/chrome';
 import { Button, EmptyState, IconButton, Status } from '../../shared-ui/primitives';
 import { announce } from '../../shared-ui/Announcer';
+import { isReordered } from './pageOrder';
 import './pdf.css';
 const tools = {
     merge: ['Birleştir', 'Açık belgeye eklediğiniz PDF’leri listedeki sırayla tek dosyada birleştirir.'],
@@ -283,9 +284,14 @@ export function PreviewPlaceholder({ state, detail, onOpenAnother, forImages = f
  * düzen bir kopyaya kaydedilene dek yalnız bellektedir; kip değiştirmek, Kapat
  * ya da pencereyi kapatmak onu uyarısız siliyordu. Kaydedilen düzenin imzası
  * tutulur: aynı düzen kaydedildiyse kaybolacak bir şey yoktur.
+ *
+ * Sıra, KAYNAK sırasıyla karşılaştırılır. Eskiden "sıra elle değişti mi"
+ * bayrağına bakılıyordu: sayfayı taşıyıp yerine geri getiren kullanıcı
+ * kaybedecek bir şeyi olmadığı hâlde kapatırken uyarılıyordu.
  */
-export function editSignature(order: { key: string }[], rotations: Record<string, number>, reordered: boolean): string {
+export function editSignature(order: { key: string }[], rotations: Record<string, number>, source: { key: string }[]): string {
     const turned = Object.entries(rotations).filter(([, d]) => d % 360 !== 0).sort(([a], [b]) => a.localeCompare(b));
+    const reordered = isReordered(order, source);
     if (!reordered && turned.length === 0) return '';
     return JSON.stringify([reordered ? order.map(p => p.key) : [], turned]);
 }
@@ -297,8 +303,9 @@ export function hasUnsavedEdits(signature: string, saved: string): boolean {
 export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths: string[]) => void; onDirtyChange?: (dirty: boolean) => void }> = ({ paths: initialPaths, onOpenDocument, onDirtyChange }) => {
     const [kind, setKind] = useState<Kind>('merge'), [sources, setSources] = useState<SourceFile[]>([]), [order, setOrder] = useState<Page[]>([]), [selected, setSelected] = useState<string[]>([]), [current, setCurrent] = useState(''), [zoom, setZoom] = useState<PreviewMode>('fit-page');
     const [rotations, setRotations] = useState<Record<string, number>>({});
-    // Araç değiştirirken neyin kaybolacağını söyleyebilmek için: sıra elle değişti mi?
-    const [reordered, setReordered] = useState(false);
+    // Kaynağın sayfa sırası: sıranın gerçekten değişip değişmediği buna göre
+    // ölçülür (bkz. editSignature).
+    const [baseline, setBaseline] = useState<Page[]>([]);
     // Son başarılı kaydın düzen imzası (bkz. editSignature).
     const [savedSignature, setSavedSignature] = useState('');
     // "Sayfa yok" ile "belge açılamadı" aynı şey değildir: araç paneli yalnız
@@ -307,7 +314,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const [failure, setFailure] = useState('');
     const [statusTone, setStatusTone] = useState<'info' | 'busy' | 'success' | 'error'>('info');
     const [margin, setMargin] = useState(10), [text, setText] = useState('KOPYA'), [imageFormat, setImageFormat] = useState('png'), [start, setStart] = useState(1), [level, setLevel] = useState('balanced_compression'), [approved, setApproved] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
-    const build = (list: SourceFile[]) => { setRotations({}); setReordered(false); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
+    const build = (list: SourceFile[]) => { setRotations({}); const next = list.flatMap(source => Array.from({ length: source.page_count }, (_, i) => ({ source, page: i + 1, key: source.path + '#' + (i + 1) }))); setOrder(next); setBaseline(next); setCurrent(next[0]?.key || ''); setSelected(next.length ? [next[0].key] : []); };
     // Her tarama bir nesil alır. Kabuk tarama sürerken başka bir belge açarsa
     // (bar, son kullanılanlar) eski taramanın sonucu yenisinin üstüne yazılmaz;
     // yalnız en son başlatılan tarama listeyi ve meşgul durumunu değiştirir.
@@ -447,14 +454,14 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     // Kabuk belgeyi belge yüzeyinde açtırdı; aynı yolları burada tara.
     const opened = initialPaths?.join('\u0000') ?? '';
     useEffect(() => { if (opened) void load(opened.split('\u0000')); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [opened]);
-    const shiftPage = (index: number, delta: number) => { const next = [...order]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; setOrder(next); setReordered(true); };
+    const shiftPage = (index: number, delta: number) => { const next = [...order]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; setOrder(next); };
     // Liste değişince son ekleme/kaydetme notu artık bu listeyi anlatmaz
     // ("A.pdf zaten listede" dendikten sonra A çıkarılmış olabilir): susar.
     const relist = (next: SourceFile[]) => { setSources(next); build(next); setStatus(''); setStatusTone('info'); };
     const moveSource = (index: number, delta: -1 | 1) => relist(shiftSource(sources, index, delta));
     // Yanlış eklenen belgeyi geri almanın yolu. Kaynak dosyaya dokunulmaz.
     const dropSource = (index: number) => relist(removeSource(sources, index));
-    const signature = editSignature(order, rotations, reordered);
+    const signature = editSignature(order, rotations, baseline);
     const dirty = hasUnsavedEdits(signature, savedSignature);
     useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -561,7 +568,7 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         // sessizce oluyordu — kullanıcı üç belge açıp ya da sayfaları sıralayıp
         // araç değiştirince emeği uyarısız siliniyordu. Kayıp artık SÖYLENİYOR.
         const droppedDocs = sources.length - kept.length;
-        const lostEdits = Object.values(rotations).some(Boolean) || reordered;
+        const lostEdits = Object.values(rotations).some(Boolean) || isReordered(order, baseline);
         const notes = [
             droppedDocs > 0 && (kept.length
                 ? `bu araç tek belgeyle çalışır, ${droppedDocs} belge kapatıldı`
