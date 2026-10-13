@@ -21,6 +21,9 @@
 //! - Birleşik UDF satırının kendi `columnSpans`'ı okunmuyordu: hücreler ızgaraya
 //!   eşit dağıtılıyor, birleşik hücre çoğu zaman yanlış sütunlara oturuyordu
 //!   (21 gerçek UDF'te 201 satırın 199'u).
+//! - Word iki tablonun bitişik durmasına izin vermez; UDF → Word araya zorunlu
+//!   boş bir paragraf koyar. O paragraf Word → UDF'te içerik sanılıyor, bitişik
+//!   UDF tabloları her turda araya boş bir satır kazanıyordu.
 //!
 //! Bütün belgeler bu dosyada sentetik olarak kurulur; gerçek dava dosyası yok.
 
@@ -867,4 +870,57 @@ fn a_word_merge_at_the_end_of_a_row_survives_word_to_udf_to_word() {
         vec![s(0, "a"), s(1, "b+c")],
         "birleşik hücre yer değiştirdi"
     );
+}
+
+// ------------------------------------------------------------ bitişik tablolar
+
+fn adjacent_udf_tables() -> (Vec<u8>, String) {
+    let mut u = Udf::default();
+    let a = u.p("Birinci tablo");
+    let b = u.p("İkinci tablo");
+    let tail = u.p("Son.");
+    let el = format!(
+        "{}{}{tail}",
+        utable("100", &urow("", &[a])),
+        utable("100", &urow("", &[b]))
+    );
+    (u.build(&el), buffer_ink(&u))
+}
+
+#[test]
+fn adjacent_udf_tables_come_back_adjacent_after_word() {
+    let (src, ink_src) = adjacent_udf_tables();
+    let (word, _) = convert(&src, Direction::UdfToDocx);
+    let (again, _) = convert(&word, Direction::DocxToUdf);
+    let xml = zip_part(&again, "content.xml");
+    let between = &xml[xml.find("</table>").unwrap()..xml.rfind("<table").unwrap()];
+    assert!(
+        !between.contains("<paragraph"),
+        "tabloların arasına paragraf girdi: {between}"
+    );
+    let (back, _) = read_udf(&again);
+    assert_eq!(ink(&text(&back)), ink_src);
+}
+
+#[test]
+fn the_word_filler_between_adjacent_tables_is_not_shown() {
+    // Zorunlu ara paragrafın işareti gizlidir: Word iki tabloyu UYAP'taki gibi
+    // bitişik gösterir; araya UDF'te olmayan boş bir satır koymaz.
+    let (src, _) = adjacent_udf_tables();
+    let (word, _) = convert(&src, Direction::UdfToDocx);
+    let doc = zip_part(&word, "word/document.xml");
+    let between = &doc[doc.find("</w:tbl>").unwrap()..doc.rfind("<w:tbl>").unwrap()];
+    assert!(between.contains("<w:vanish/>"), "{between}");
+}
+
+#[test]
+fn a_blank_line_the_author_put_between_tables_is_kept() {
+    // Koruma: Word belgesinde iki tablo arasındaki görünür boş paragraf
+    // yazarındır; UDF'e boş bir satır olarak gider.
+    let t = |s: &str| tbl("", &[3000], &[tr("", &[tc("", &p(s))])]);
+    let body = format!("{}<w:p/>{}{}", t("A"), t("B"), p("Son."));
+    let (udf_bytes, _) = convert(&docx_package(&body), Direction::DocxToUdf);
+    let xml = zip_part(&udf_bytes, "content.xml");
+    let between = &xml[xml.find("</table>").unwrap()..xml.rfind("<table").unwrap()];
+    assert!(between.contains("<paragraph"), "{between}");
 }

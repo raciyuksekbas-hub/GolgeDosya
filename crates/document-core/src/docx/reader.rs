@@ -1912,7 +1912,9 @@ impl<'a> BodyBuilder<'a> {
         let mut deleted_depth: usize = 0;
         // Paragraf İŞARETİ silinmiş ya da taşınmış mı (`w:pPr/w:rPr` içinde
         // boş `w:del`/`w:moveFrom`). İçeriği de silinmiş böyle bir paragraf
-        // kabul edilmiş belgede yoktur.
+        // kabul edilmiş belgede yoktur. Gizli işaret (`w:pPr/w:rPr/w:vanish`)
+        // aynı sonucu verir: boş paragraf yazdırılmaz (yazıcının bitişik
+        // tablolar arasına koyduğu zorunlu paragraf böyledir).
         let mut para_mark_removed = false;
         // Word "complex field" komut metni (`<w:instrText>`): HYPERLINK hedefi,
         // REF/PAGEREF yer imi, MERGEFIELD veri adı gibi KULLANICIYA GÖSTERİLMEYEN
@@ -2423,6 +2425,12 @@ impl<'a> BodyBuilder<'a> {
                                 }
                             }
                             self.warn.warn(WarningCode::TrackedChangesFlattened);
+                        }
+                        // Gizli paragraf işareti: içeriksiz paragraf yazdırılmaz.
+                        b"vanish" if in_para_rpr => {
+                            if toggle(e) {
+                                para_mark_removed = true;
+                            }
                         }
                         b"ins" | b"moveTo" => self.warn.warn(WarningCode::TrackedChangesFlattened),
                         b"commentReference" => self.warn.warn(WarningCode::CommentsDropped),

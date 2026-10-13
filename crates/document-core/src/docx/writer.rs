@@ -630,12 +630,17 @@ fn write_blocks(
     for (i, b) in blocks.iter().enumerate() {
         write_block(b, doc, out, rels, media, warn, text_width_tw)?;
         if matches!(b, Block::Table(_)) {
-            let next_is_paragraph = matches!(
-                blocks.get(i + 1),
-                Some(Block::Paragraph(_)) | Some(Block::PageBreak)
-            );
-            if !next_is_paragraph {
-                out.push_str("<w:p/>");
+            match blocks.get(i + 1) {
+                Some(Block::Paragraph(_)) | Some(Block::PageBreak) => {}
+                // İki tablo arasındaki zorunlu paragrafın İŞARETİ gizlidir: Word
+                // tabloları UDF'teki gibi bitişik gösterir (araya UDF'te olmayan
+                // boş bir satır koymaz) ve okuyucu onu içerik saymaz. Eskiden
+                // düz <w:p/> idi; Word -> UDF'te bitişik tablolar her turda araya
+                // boş bir paragraf kazanıyordu.
+                Some(Block::Table(_)) => {
+                    out.push_str("<w:p><w:pPr><w:rPr><w:vanish/></w:rPr></w:pPr></w:p>")
+                }
+                None => out.push_str("<w:p/>"),
             }
         }
     }
