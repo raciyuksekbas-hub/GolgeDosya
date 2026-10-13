@@ -20,13 +20,29 @@ export const OPEN_FAILURE_FALLBACK = "Farklı bir dosya seçip yeniden deneyin."
 export const SAVE_FAILURE_FALLBACK = "Kopya oluşturulamadı. Yeniden deneyin.";
 
 /**
+ * Ham hatanın metni.
+ *
+ * Tauri komutu `Err(AppError)` döndürdüğünde `invoke` bir `Error` ile değil,
+ * düz bir nesneyle (`{code, message, detail}`) reddeder. `String(nesne)`
+ * "[object Object]" verir: Belgeyi Aç, Klasörde Göster ve klasör seçimi
+ * hataları ekranda ve ekran okuyucuda böyle görünüyordu.
+ */
+function rawText(raw: unknown): string {
+  if (raw instanceof Error) return raw.message;
+  if (raw && typeof raw === "object" && typeof (raw as { message?: unknown }).message === "string") {
+    return (raw as { message: string }).message;
+  }
+  return String(raw);
+}
+
+/**
  * Teknik önek ve sarmalayıcı etiketleri düşürür.
  *
  * Motorun kendi cümlesini koruması gereken yerlerde (kaydetme sonucu gibi)
  * kullanılır: bilgi kaybetmeden yalnız sınıf adlarını temizler.
  */
 export function plainMessage(raw: unknown): string {
-  const text = raw instanceof Error ? raw.message : String(raw);
+  const text = rawText(raw);
   return text
     .replace(/^(?:[A-Za-z_$][\w$]*Error|Error):[ \t]*/gm, "")
     .replace(/^Doğrulama hatası \(Validation Failed\):[ \t]*/gm, "")
@@ -144,7 +160,7 @@ export function logFailure(scope: string, raw: unknown): void {
  * kaybettirir. Bu yollarda metin olduğu gibi taşınır — ama yalnız temizse.
  */
 const TECHNICAL =
-  /(^|\s)\/[\w.\-/]+|(^|[\s'"(])(?:[A-Za-z]:\\|\\\\)|os error|\bpanic\b|\bunwrap\b|\.rs\b|[a-z_]{2,}::[a-z_]{2,}|\bError\b|Failed\b|\bcommand\b|\bundefined\b|Validation/i;
+  /(^|\s)\/[\w.\-/]+|(^|[\s'"(])(?:[A-Za-z]:\\|\\\\)|os error|\bpanic\b|\bunwrap\b|\.rs\b|[a-z_]{2,}::[a-z_]{2,}|\bError\b|Failed\b|\bcommand\b|\bundefined\b|\[object \w+\]|Validation/i;
 
 /**
  * Motorun kendi kullanıcı cümlesini taşıyan yollar için güvenli geçiş.
@@ -265,7 +281,7 @@ const SAVE_CATEGORIES: { match: RegExp; detail: string }[] = [
 
 /** Kaydetme/dışa aktarma hatasının kullanıcı cümlesi. Teknik metin DÖNMEZ. */
 export function describeSaveFailure(raw: unknown): string {
-  const text = raw instanceof Error ? raw.message : String(raw);
+  const text = rawText(raw);
   return SAVE_CATEGORIES.find((c) => c.match.test(text))?.detail ?? SAVE_FAILURE_FALLBACK;
 }
 
@@ -277,6 +293,6 @@ export function describeSaveFailure(raw: unknown): string {
  * hata tanınamaz ve yedeğe düşerdi.
  */
 export function describeOpenFailure(raw: unknown): string {
-  const text = raw instanceof Error ? raw.message : String(raw);
+  const text = rawText(raw);
   return CATEGORIES.find((c) => c.match.test(text))?.detail ?? OPEN_FAILURE_FALLBACK;
 }

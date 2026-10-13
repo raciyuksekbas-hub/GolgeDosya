@@ -195,3 +195,32 @@ describe("Windows yolları (§55)", () => {
     expect(text).not.toContain("C:\\");
   });
 });
+
+// Tauri komutu `Err(AppError)` döndürdüğünde `invoke` bir Error ile değil,
+// serde'nin ürettiği düz nesneyle ({code, message, detail}) reddeder.
+// `String(nesne)` "[object Object]" verir; Belgeyi Aç, Klasörde Göster,
+// Varsayılana Dön ve Kabul Ediyorum'un hataları ekranda ve ekran okuyucuda
+// böyle görünüyordu.
+describe("Tauri AppError reddi", () => {
+  const appError = (code: string, message: string) => ({ code, message, detail: "os error 2" });
+
+  it("motorun Türkçe cümlesi gösterilir, '[object Object]' değil", () => {
+    const fallback = "Belge açılamadı.";
+    expect(safeMessage(appError("NOT_FOUND", "Belge bulunamadı. Taşınmış veya silinmiş olabilir."), fallback)).toBe(
+      "Belge bulunamadı. Taşınmış veya silinmiş olabilir.",
+    );
+    expect(plainMessage(appError("BUSY", "Hâlihazırda bir dönüştürme sürüyor."))).toBe(
+      "Hâlihazırda bir dönüştürme sürüyor.",
+    );
+  });
+
+  it("cümlesi olmayan ya da teknik görünen nesne yedeğe düşer", () => {
+    expect(safeMessage({ code: "X" }, "Yedek.")).toBe("Yedek.");
+    expect(safeMessage(appError("IO", "os error 13: /Users/ornek/a.udf"), "Yedek.")).toBe("Yedek.");
+    expect(safeMessage("[object Object]", "Yedek.")).toBe("Yedek.");
+  });
+
+  it("kaydetme ve açma kategorileri de nesnenin cümlesine bakar", () => {
+    expect(describeSaveFailure(appError("EXISTS", "Hedef zaten mevcut; üzerine yazılmaz."))).toMatch(/zaten var/);
+  });
+});
