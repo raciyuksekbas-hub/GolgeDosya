@@ -213,3 +213,61 @@ fn a_udf_content_that_inflates_past_its_declared_size_is_refused() {
     let bomb = lie_about_size(zip, "content.xml", 200);
     assert_eq!(code(to_docx(&bomb)), "UNSAFE_ARCHIVE");
 }
+
+// ------------------------------------------------------------ UDF: başvuru çoğaltma
+
+#[test]
+fn reading_one_buffer_many_times_over_is_refused() {
+    // 300 000 karakterlik tek tampon, 20 paragrafta baştan sona yeniden
+    // okutuluyor: 6 milyon karakter, birkaç KB'lık bir dosyadan. Gerçek
+    // UYAP belgeleri tamponun her parçasına bir kez başvurur (gerçek
+    // derlemde en yüksek oran 1,0).
+    let n = 300_000;
+    let mut elements = String::new();
+    for _ in 0..20 {
+        elements.push_str(&format!(
+            r#"<paragraph><content startOffset="0" length="{}"/></paragraph>"#,
+            n + 1
+        ));
+    }
+    let xml = udf_xml(&format!("{}\n", "a".repeat(n)), &elements);
+    let zip = zip_of(
+        &[("content.xml", xml.into_bytes())],
+        zip::CompressionMethod::Deflated,
+    );
+    assert!(zip.len() < 8 * 1024, "girdi küçük olmalı: {}", zip.len());
+    assert_eq!(code(to_docx(&zip)), "UNSAFE_ARCHIVE");
+}
+
+#[test]
+fn a_large_buffer_read_once_is_not_mistaken_for_amplification() {
+    // Sınır meşru büyük belgeyi düşürmemeli: 2 milyon karakter, 2000
+    // paragrafa bölünmüş, her parça bir kez okunuyor. Metin gerçek bir
+    // dilekçe gibi az sıkışır (sabit bir harf dizisi sıkıştırma oranı
+    // denetimine takılırdı; o ayrı bir koruma).
+    let letters: Vec<char> = "abcçdefgğhıijklmnoöprsştuüvyz ".chars().collect();
+    let mut seed: u32 = 0x2026_1013;
+    let mut buffer = String::new();
+    let mut elements = String::new();
+    for i in 0..2000 {
+        for _ in 0..999 {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            buffer.push(letters[(seed >> 24) as usize % letters.len()]);
+        }
+        buffer.push('\n');
+        elements.push_str(&format!(
+            r#"<paragraph><content startOffset="{}" length="1000"/></paragraph>"#,
+            i * 1000
+        ));
+    }
+    let xml = udf_xml(&buffer, &elements);
+    let zip = zip_of(
+        &[("content.xml", xml.into_bytes())],
+        zip::CompressionMethod::Deflated,
+    );
+    assert_eq!(
+        code(to_docx(&zip)),
+        "OK",
+        "tek okunan büyük tampon dönüşmeli"
+    );
+}

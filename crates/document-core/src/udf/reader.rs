@@ -76,18 +76,60 @@ struct Ctx<'a> {
     saw_field: bool,
     /// Set when a `<field>` declared a span that resolved to nothing — visible text lost.
     lost_field_text: bool,
+    /// Tamponun okunmuş birimleri (bit kümesi, birim başına bir bit).
+    covered: Vec<u64>,
+    /// Başvurularla istenen birimlerin toplamı ve üst sınırı (OR-03).
+    referenced: usize,
+    reference_limit: usize,
 }
 
 impl<'a> Ctx<'a> {
     /// Slice the buffer, clamping rather than failing: real specimens occasionally declare
     /// a length that runs one unit past the end, and refusing the whole document over that
     /// would be the wrong trade.
-    fn slice(&self, start: usize, len: usize) -> String {
+    ///
+    /// Her birim bir kez yayımlanır. Gerçek UYAP belgesi tamponun her birimine
+    /// en çok bir kez başvurur (294 gerçek belgede çakışma 0). Çakışan aralık
+    /// ortak kısmı iki kez yazıyordu ("abcd" + "cdef" = "abcdcdef", UF-15);
+    /// aynı tamponu yüzlerce kez okutan bir dosya da belleği tüketiyordu
+    /// (OR-03). Artık daha önce okunmuş birim atlanır ve söylenir; istenen
+    /// toplam tamponun [`security::MAX_CONTENT_REFERENCE_RATIO`] katını
+    /// aşarsa belge güvenlik gerekçesiyle reddedilir.
+    fn slice(&mut self, start: usize, len: usize) -> Result<String> {
         if start >= self.buf.len() {
-            return String::new();
+            return Ok(String::new());
         }
         let end = start.saturating_add(len).min(self.buf.len());
-        String::from_utf16_lossy(&self.buf[start..end])
+        self.referenced = self.referenced.saturating_add(end - start);
+        if self.referenced > self.reference_limit {
+            return Err(ConvError::unsafe_archive(format!(
+                "content elements reference more than {} UTF-16 units of a {}-unit buffer",
+                self.reference_limit,
+                self.buf.len()
+            )));
+        }
+        let mut units = Vec::with_capacity(end - start);
+        let mut overlapped = false;
+        for i in start..end {
+            let (word, bit) = (i / 64, 1u64 << (i % 64));
+            if self.covered[word] & bit != 0 {
+                overlapped = true;
+                continue;
+            }
+            self.covered[word] |= bit;
+            units.push(self.buf[i]);
+        }
+        if overlapped {
+            self.warn.warn(WarningCode::TextRangeOverlap);
+        }
+        Ok(String::from_utf16_lossy(&units))
+    }
+
+    /// Konumu okunamayan ya da tamponun dışına düşen öğe: metni bilinemez.
+    /// Atlanır ve söylenir; eskiden konum 0 sayılıp ilk satır yineleniyordu.
+    fn invalid_range(&mut self) -> Vec<Run> {
+        self.warn.warn(WarningCode::TextRangeInvalid);
+        Vec::new()
     }
 }
 
@@ -113,8 +155,13 @@ fn parse_content_xml(
         ));
     }
     let buf: Vec<u16> = buf_str.encode_utf16().collect();
+    let reference_limit = buf
+        .len()
+        .saturating_mul(security::MAX_CONTENT_REFERENCE_RATIO)
+        .max(security::CONTENT_REFERENCE_FLOOR);
 
     let mut ctx = Ctx {
+        covered: vec![0; buf.len().div_ceil(64)],
         buf,
         warn,
         budget,
@@ -122,6 +169,8 @@ fn parse_content_xml(
         lists: Vec::new(),
         saw_field: false,
         lost_field_text: false,
+        referenced: 0,
+        reference_limit,
     };
 
     let page = parse_page_format(text);
@@ -165,21 +214,47 @@ fn attr_of_root(text: &str, key: &str) -> Option<String> {
     Some(head[j..e].to_string())
 }
 
-/// Pull the text between `<content><![CDATA[` and the matching `]]></content>`, rejoining
-/// any CDATA sections that were split to escape a literal `]]>`.
+/// Pull the text of `<content>`: every CDATA section in order, plus any character data
+/// after the first one, exactly as an XML parser defines the element's text.
+///
+/// Eskiden ilk `<![CDATA[` ile `]]></content>` arası harfiyen alınıyor, yalnız
+/// `]]]]><![CDATA[>` kaçışı birleştiriliyordu. CDATA başka yerden (yasal
+/// olarak) bölündüğünde tampon "ab]]><![CDATA[cd" gibi bozuluyor, bütün
+/// konumlar kayıyordu (UF-15). İlk CDATA'dan önceki boşluk eskisi gibi
+/// sayılmaz: gerçek belgelerde konumlar CDATA'nın içinden başlar.
 fn extract_content_buffer(text: &str) -> Result<String> {
     let open = text
         .find("<content>")
         .ok_or_else(|| ConvError::invalid_udf("no <content> element"))?;
-    let cd = text[open..]
-        .find("<![CDATA[")
-        .map(|i| open + i + "<![CDATA[".len())
-        .ok_or_else(|| ConvError::invalid_udf("<content> has no CDATA section"))?;
-    let close = text[cd..]
-        .find("]]></content>")
-        .map(|i| cd + i)
-        .ok_or_else(|| ConvError::invalid_udf("unterminated content buffer"))?;
-    Ok(text[cd..close].replace("]]]]><![CDATA[>", "]]>"))
+    let mut rd = Reader::from_str(&text[open..]);
+    rd.config_mut().trim_text(false);
+    let bad = |e: &dyn std::fmt::Display| ConvError::invalid_udf(format!("content buffer: {e}"));
+    match rd.read_event() {
+        Ok(Event::Start(_)) => {}
+        Ok(_) => return Err(ConvError::invalid_udf("no <content> element")),
+        Err(e) => return Err(bad(&e)),
+    }
+    let mut buf = String::new();
+    let mut saw_cdata = false;
+    loop {
+        match rd.read_event() {
+            Ok(Event::CData(c)) => {
+                saw_cdata = true;
+                buf.push_str(std::str::from_utf8(&c).map_err(|e| bad(&e))?);
+            }
+            Ok(Event::Text(t)) if saw_cdata => {
+                buf.push_str(&t.unescape().map_err(|e| bad(&e))?);
+            }
+            Ok(Event::End(_)) => break,
+            Ok(Event::Eof) => return Err(ConvError::invalid_udf("unterminated content buffer")),
+            Ok(_) => {}
+            Err(e) => return Err(bad(&e)),
+        }
+    }
+    if !saw_cdata {
+        return Err(ConvError::invalid_udf("<content> has no CDATA section"));
+    }
+    Ok(buf)
 }
 
 fn parse_page_format(text: &str) -> PageSetup {
@@ -258,8 +333,8 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
     rd.config_mut().check_end_names = false;
 
     let mut guard = DepthGuard::new();
-    let mut header = None;
-    let mut footer = None;
+    let mut header: Option<HeaderFooter> = None;
+    let mut footer: Option<HeaderFooter> = None;
     let mut body: Vec<Block> = Vec::new();
 
     // Stack of block sinks: body, header/footer, table cell.
@@ -377,10 +452,29 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
                     }
                     "header" | "footer" => {
                         if let Some((kind, hf)) = hf_stack.pop() {
-                            if kind == "header" {
-                                header = Some(hf);
+                            let slot = if kind == "header" {
+                                &mut header
                             } else {
-                                footer = Some(hf);
+                                &mut footer
+                            };
+                            match slot {
+                                // UDF'te bir üst ve bir alt bilgi vardır. İkincisi
+                                // birincinin yerine geçip onu sessizce siliyordu
+                                // (UF-15). Metin kaybolmasın: ikincinin blokları
+                                // birincinin ardına eklenir, ayrı sayfa düzeni
+                                // korunamadığı söylenir.
+                                Some(first) => {
+                                    first.blocks.extend(hf.blocks);
+                                    ctx.warn.push(
+                                        Warning::new(WarningCode::HeaderFooterVariantDropped)
+                                            .detail(if kind == "header" {
+                                                "ikinci üst bilgi birinciyle birleştirildi"
+                                            } else {
+                                                "ikinci alt bilgi birinciyle birleştirildi"
+                                            }),
+                                    );
+                                }
+                                None => *slot = Some(hf),
                             }
                         }
                     }
@@ -667,8 +761,6 @@ fn parse_run_props(e: &BytesStart) -> RunProps {
 /// which does emit a real `<w:tab/>` for every tab, would disagree with the UDF side about
 /// how many tabs a document has, and tab stops carry the layout of a legal pleading.
 fn parse_leaf(name: &str, e: &BytesStart, ctx: &mut Ctx) -> Result<Vec<Run>> {
-    let start = attr_usize(e, "startOffset").unwrap_or(0);
-    let len = attr_usize(e, "length").unwrap_or(0);
     let props = parse_run_props(e);
 
     match name {
@@ -677,9 +769,16 @@ fn parse_leaf(name: &str, e: &BytesStart, ctx: &mut Ctx) -> Result<Vec<Run>> {
                 return Ok(Vec::new());
             };
             let cleaned: String = b64.chars().filter(|c| !c.is_whitespace()).collect();
-            let data = base64::engine::general_purpose::STANDARD
-                .decode(cleaned.as_bytes())
-                .map_err(|e| ConvError::invalid_udf(format!("image is not valid base64: {e}")))?;
+            // Tek bir bozuk görsel bütün belgeyi "geçerli bir UDF değil" diye
+            // düşürüyordu (UF-16); metnin geri kalanı sağlamdı. Görsel atlanır,
+            // kayıp söylenir.
+            let Ok(data) = base64::engine::general_purpose::STANDARD.decode(cleaned.as_bytes())
+            else {
+                ctx.warn.push(
+                    Warning::new(WarningCode::ImageFormatUnsupported).detail("bozuk görsel verisi"),
+                );
+                return Ok(Vec::new());
+            };
             ctx.budget.add_image(data.len())?;
             let format = ImageFormat::sniff(&data);
             Ok(vec![Run::Image(Image {
@@ -691,7 +790,28 @@ fn parse_leaf(name: &str, e: &BytesStart, ctx: &mut Ctx) -> Result<Vec<Run>> {
         }
         "tab" => Ok(vec![Run::Tab { props }]),
         _ => {
-            let text = ctx.slice(start, len);
+            // Uzunluk yoksa okunacak metin de yoktur. Uzunluk varken konum
+            // okunamıyorsa, ya da konum tamponun ötesindeyse, metin bilinemez:
+            // eskiden konum 0 sayılıp belgenin başı yineleniyordu (UF-15).
+            // Konum tam tampon sonundaysa (Swing'in örtük son satır sonu)
+            // okunacak bir şey yoktur, söylenecek bir şey de.
+            let len = match attr(e, "length") {
+                None => 0,
+                Some(v) => match v.trim().parse::<usize>() {
+                    Ok(len) => len,
+                    Err(_) => return Ok(ctx.invalid_range()),
+                },
+            };
+            if len == 0 {
+                return Ok(Vec::new());
+            }
+            let Some(start) = attr_usize(e, "startOffset") else {
+                return Ok(ctx.invalid_range());
+            };
+            if start > ctx.buf.len() {
+                return Ok(ctx.invalid_range());
+            }
+            let text = ctx.slice(start, len)?;
             if text.is_empty() {
                 return Ok(Vec::new());
             }

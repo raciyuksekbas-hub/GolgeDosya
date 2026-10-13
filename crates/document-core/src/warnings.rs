@@ -76,6 +76,9 @@ pub enum WarningCode {
     PageSizeChanged,
     PageNumberFieldApproximated,
     PageNumberStartDropped,
+    // --- bozuk UDF konumları ---
+    TextRangeOverlap,
+    TextRangeInvalid,
 }
 
 impl WarningCode {
@@ -116,6 +119,8 @@ impl WarningCode {
             PageSizeChanged => "PAGE_SIZE_CHANGED",
             PageNumberFieldApproximated => "PAGE_NUMBER_FIELD_APPROXIMATED",
             PageNumberStartDropped => "PAGE_NUMBER_START_DROPPED",
+            TextRangeOverlap => "TEXT_RANGE_OVERLAP",
+            TextRangeInvalid => "TEXT_RANGE_INVALID",
         }
     }
 
@@ -182,6 +187,16 @@ impl WarningCode {
             PageNumberStartDropped => {
                 "Sayfa numarası 1'den başlıyor; kaynaktaki başlangıç numarası aktarılmadı"
             }
+            // UDF'in metin öğeleri tek bir tampona (startOffset, length) ile
+            // başvurur; gerçek UYAP belgesi her birime bir kez başvurur (293
+            // belgede çakışma 0). Çakışan kısım iki kez yazılmaz; başlık bunu
+            // söyler ki metin kontrol edilsin.
+            TextRangeOverlap => {
+                "Belgede üst üste binen metin aralıkları vardı; tekrar eden metin bir kez aktarıldı"
+            }
+            // Konumu okunamayan ya da tamponun dışına düşen öğe: metni
+            // bilinemez. Eskiden konum 0 sayılıp ilk satır yineleniyordu.
+            TextRangeInvalid => "Konumu bozuk olduğu için bazı metin parçaları aktarılamadı",
         }
     }
 
@@ -214,7 +229,8 @@ impl WarningCode {
             | TrackedChangesFlattened
             | RunFeatureDropped
             | TableVerticalMergeFlattened
-            | PageNumberStartDropped => Approximation,
+            | PageNumberStartDropped
+            | TextRangeOverlap => Approximation,
 
             // Something visible is gone.
             FormContentLost
@@ -228,7 +244,8 @@ impl WarningCode {
             | EmbeddedObjectDropped
             | HeaderFooterVariantDropped
             | UdfFormFieldsDropped
-            | PageSizeChanged => Loss,
+            | PageSizeChanged
+            | TextRangeInvalid => Loss,
         }
     }
 

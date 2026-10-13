@@ -38,6 +38,16 @@ pub const MAX_TOTAL_IMAGE_BYTES: usize = 256 * 1024 * 1024;
 pub const MAX_CONTENT_CHARS: usize = 64 * 1024 * 1024;
 /// Maximum structural elements we will build from one document.
 pub const MAX_ELEMENTS: usize = 2_000_000;
+/// UDF öğelerinin içerik tamponundan toplam en çok kaç katını okuyabileceği.
+///
+/// Saha denetimi (OR-03): tampon boyutu sınırlıydı ama aynı tampona yapılan
+/// başvuruların toplamı değildi. 1 milyon karakterlik tamponu 300 paragrafta
+/// baştan sona okutan 1,5 KB'lık bir UDF 1,5 GB bellek tüketti. Gerçek UYAP
+/// belgesi her birime en çok bir kez başvurur: 294 gerçek belgede en yüksek
+/// oran 1,0. İki kat, gerçek belgelere geniş pay bırakır.
+pub const MAX_CONTENT_REFERENCE_RATIO: usize = 2;
+/// Bu kadar UTF-16 birime kadar başvuru oranına bakılmaz (küçük tampon).
+pub const CONTENT_REFERENCE_FLOOR: usize = 1024 * 1024;
 
 /// Reject an archive entry name that could escape the extraction root, even though Tavzih
 /// never extracts to disk. Enforced anyway: defence in depth costs nothing here, and it
