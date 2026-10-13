@@ -16,6 +16,28 @@ pub const NS_PIC: &str = "http://schemas.openxmlformats.org/drawingml/2006/pictu
 pub const NS_CT: &str = "http://schemas.openxmlformats.org/package/2006/content-types";
 pub const NS_PKG_REL: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
 
+/// Word'ün vurgulayıcı renkleri (`ST_HighlightColor`) ve RGB karşılıkları.
+/// Okurken ad → renk; yazarken tam eşleşen renk vurgulayıcı olur, öteki renk
+/// run gölgelemesi (`w:shd`) olarak yazılır.
+pub const HIGHLIGHT_COLORS: &[(&str, &str)] = &[
+    ("yellow", "FFFF00"),
+    ("green", "00FF00"),
+    ("cyan", "00FFFF"),
+    ("magenta", "FF00FF"),
+    ("blue", "0000FF"),
+    ("red", "FF0000"),
+    ("darkBlue", "000080"),
+    ("darkCyan", "008080"),
+    ("darkGreen", "008000"),
+    ("darkMagenta", "800080"),
+    ("darkRed", "800000"),
+    ("darkYellow", "808000"),
+    ("darkGray", "808080"),
+    ("lightGray", "C0C0C0"),
+    ("black", "000000"),
+    ("white", "FFFFFF"),
+];
+
 pub const REL_DOCUMENT: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
 pub const REL_IMAGE: &str =

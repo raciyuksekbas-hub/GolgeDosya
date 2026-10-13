@@ -824,6 +824,18 @@ fn rpr(r: &RunProps, doc: &Document) -> String {
             s.push_str(&format!("<w:sz w:val=\"{hp}\"/><w:szCs w:val=\"{hp}\"/>"));
         }
     }
+    // UDF `content@background`: Word'ün adlı vurgulayıcı rengiyle tam eşleşiyorsa
+    // vurgulayıcı (Word'de vurguyu kaldır düğmesi çalışsın), değilse aynı RGB'yle
+    // run gölgelemesi.
+    if let Some(bg) = r.background {
+        let hex = bg.to_hex();
+        match HIGHLIGHT_COLORS.iter().find(|(_, h)| *h == hex) {
+            Some((name, _)) => s.push_str(&format!("<w:highlight w:val=\"{name}\"/>")),
+            None => s.push_str(&format!(
+                "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"{hex}\"/>"
+            )),
+        }
+    }
     if s.is_empty() {
         String::new()
     } else {

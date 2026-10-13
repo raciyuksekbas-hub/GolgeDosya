@@ -92,6 +92,7 @@ pub fn write_content_xml(doc: &Document, warn: &mut WarningSink) -> Result<Vec<u
     }
     out.push_str("</elements>\n");
 
+    warn_fractional_size(doc.meta.default_font.size_pt, warn);
     out.push_str(&styles(&doc.meta.default_font));
     out.push_str("</template>");
 
@@ -129,6 +130,19 @@ fn page_properties(p: &PageSetup, warn: &mut WarningSink) -> String {
         udf_float(p.header_offset_pt),
         udf_float(p.footer_offset_pt),
     )
+}
+
+/// UDF yazı boyutu tamsayıdır: gerçek 293 UDF'te tek bir kesirli `size` yok ve
+/// Swing'in `StyleConstants.FontSize`'ı bir `Integer`'dır. UYAP'ın "11.5"i okuyacağı
+/// doğrulanmadan yazılmaz; en yakın tam puntoya yuvarlanır ve bu SÖYLENİR (eskiden
+/// sessizdi: gerçek 12 Word belgesinde 337 run'da yarım punto vardı).
+fn warn_fractional_size(size_pt: f32, warn: &mut WarningSink) {
+    if (size_pt - size_pt.round()).abs() > 0.01 {
+        warn.push(
+            Warning::new(WarningCode::RunFeatureDropped)
+                .detail("kesirli yazı boyutu tam puntoya yuvarlandı"),
+        );
+    }
 }
 
 fn styles(f: &FontSpec) -> String {
@@ -533,6 +547,7 @@ impl<'a> UdfWriter<'a> {
         }
         if let Some(s) = r.font_size_pt {
             if (s - doc.meta.default_font.size_pt).abs() > 0.01 {
+                warn_fractional_size(s, self.warn);
                 a.push_str(&format!(" size=\"{}\"", s.round() as i32));
             }
         }
@@ -540,6 +555,11 @@ impl<'a> UdfWriter<'a> {
             if c != Color::BLACK {
                 a.push_str(&format!(" foreground=\"{}\"", c.to_java_argb()));
             }
+        }
+        // Vurgulama: Swing `StyleConstants.Background`, gerçek imzalı UYAP
+        // belgelerinde `content@background` (-256 = sarı). Eskiden düşüyordu.
+        if let Some(c) = r.background {
+            a.push_str(&format!(" background=\"{}\"", c.to_java_argb()));
         }
         a
     }

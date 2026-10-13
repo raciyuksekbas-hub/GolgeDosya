@@ -208,6 +208,10 @@ struct PartialRun {
     vanish: Option<bool>,
     /// `w:rStyle`: karakter stili (yalnız doğrudan biçimde anlamlı).
     char_style: Option<String>,
+    /// `w:highlight`: `Some(None)` açıkça "none" demektir (alttakini siler).
+    highlight: Option<Option<Color>>,
+    /// Run gölgelemesi (`w:rPr/w:shd` dolgusu); `Some(None)` = "auto".
+    shading: Option<Option<Color>>,
 }
 
 impl PartialRun {
@@ -242,6 +246,12 @@ impl PartialRun {
         if o.vanish.is_some() {
             self.vanish = o.vanish;
         }
+        if o.highlight.is_some() {
+            self.highlight = o.highlight;
+        }
+        if o.shading.is_some() {
+            self.shading = o.shading;
+        }
     }
 
     fn into_props(self) -> RunProps {
@@ -254,6 +264,8 @@ impl PartialRun {
             font_family: self.family,
             font_size_pt: self.size,
             color: self.color,
+            // Word vurgulamayı gölgelemenin ÜSTÜNE çizer.
+            background: self.highlight.flatten().or(self.shading.flatten()),
         }
     }
 }
@@ -742,6 +754,7 @@ fn parse_styles(xml: Option<&[u8]>) -> Result<Styles> {
     let mut cur: Option<(String, StyleEntry, bool)> = None; // (id, entry, is_default)
     let mut in_doc_defaults = false;
     let mut in_tbl_borders = false;
+    let mut in_rpr = false;
     let mut guard = DepthGuard::new();
 
     loop {
@@ -784,8 +797,15 @@ fn parse_styles(xml: Option<&[u8]>) -> Result<Styles> {
                             None if in_doc_defaults => (&mut s.default_para, &mut s.default_run),
                             None => continue,
                         };
+                        if e.local_name().as_ref() == b"rPr" && !empty {
+                            in_rpr = true;
+                        }
                         apply_ppr_child(&e, p);
-                        apply_rpr_child(&e, r);
+                        // `w:shd` paragrafta (`w:pPr`) ve hücrede (`w:tcPr`) de var;
+                        // yalnız `w:rPr` içindeki metnin arka planıdır.
+                        if in_rpr || e.local_name().as_ref() != b"shd" {
+                            apply_rpr_child(&e, r);
+                        }
                     }
                 }
             }
@@ -794,6 +814,7 @@ fn parse_styles(xml: Option<&[u8]>) -> Result<Styles> {
                 match e.local_name().as_ref() {
                     b"docDefaults" => in_doc_defaults = false,
                     b"tblBorders" => in_tbl_borders = false,
+                    b"rPr" => in_rpr = false,
                     b"style" => {
                         if let Some((id, entry, is_def)) = cur.take() {
                             if is_def {
@@ -970,6 +991,29 @@ fn apply_rpr_child(e: &BytesStart, r: &mut PartialRun) {
                     r.color = Color::from_hex(&v);
                 }
             }
+        }
+        // Vurgulama ve run gölgelemesi UDF'te `content@background` olur. Eskiden
+        // ikisi de sessizce düşüyordu (12 gerçek belgede 64 vurgulu run). Beyaz,
+        // sayfanın kendi rengidir (UDF'te hücre gölgesi de yok): görünür bir şey
+        // taşımaz; webden yapıştırılmış metindeki beyaz `w:shd` gürültü olarak
+        // UDF'e taşınmaz.
+        b"highlight" => {
+            let name = a(e, "val").unwrap_or_default();
+            r.highlight = Some(
+                HIGHLIGHT_COLORS
+                    .iter()
+                    .find(|(n, _)| *n == name)
+                    .and_then(|(_, hex)| Color::from_hex(hex))
+                    .filter(|c| c.to_hex() != "FFFFFF"),
+            );
+        }
+        b"shd" => {
+            r.shading = Some(
+                a(e, "fill")
+                    .filter(|f| !f.eq_ignore_ascii_case("auto"))
+                    .and_then(|f| Color::from_hex(&f))
+                    .filter(|c| c.to_hex() != "FFFFFF"),
+            );
         }
         _ => {}
     }

@@ -366,6 +366,10 @@ pub struct RunProps {
     pub font_family: Option<String>,
     pub font_size_pt: Option<f32>,
     pub color: Option<Color>,
+    /// Metnin arka plan rengi (vurgulama): Word `w:highlight` / run `w:shd`,
+    /// UDF `content@background` (Swing `StyleConstants.Background`; gerçek imzalı
+    /// UYAP belgelerinde -256 = sarı).
+    pub background: Option<Color>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

@@ -966,6 +966,13 @@ fn parse_run_props(e: &BytesStart, ctx: &Ctx) -> RunProps {
         color: get("foreground")
             .and_then(|v| v.trim().parse::<i32>().ok())
             .map(Color::from_java_argb),
+        // Swing `StyleConstants.Background`: metnin vurgu rengi (gerçek imzalı UYAP
+        // belgelerinde -256 = sarı). Eskiden okunmuyordu. Beyaz (-1) sayfanın kendi
+        // rengidir, görünür bir vurgu değildir.
+        background: get("background")
+            .and_then(|v| v.trim().parse::<i32>().ok())
+            .map(Color::from_java_argb)
+            .filter(|c| c.to_hex() != "FFFFFF"),
     }
 }
 
