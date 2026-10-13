@@ -245,24 +245,14 @@ pub fn unique_output_path_in(dir: &Path, source: &Path, target_ext: &str) -> Res
 pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write;
     let dir = target.parent().unwrap_or_else(|| Path::new("."));
-    let stem = target
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("tavzih");
-    let tmp = dir.join(format!(".{stem}.tavzih-tmp"));
+    let (tmp, mut f) = create_temp_in(dir).map_err(|e| write_error(target, e))?;
 
-    let write = || -> std::io::Result<()> {
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(bytes)?;
-        f.sync_all()?;
-        Ok(())
-    };
-    if let Err(e) = write() {
+    let written = f.write_all(bytes).and_then(|()| f.sync_all());
+    // Yeniden adlandırmadan önce kapatılır (Windows açık dosyayı taşımayabilir).
+    drop(f);
+    if let Err(e) = written {
         let _ = std::fs::remove_file(&tmp);
-        return Err(ConvError::new(
-            ErrorCode::OutputWriteFailed,
-            format!("{}: {e}", target.display()),
-        ));
+        return Err(write_error(target, e));
     }
     // Refuse to clobber if something appeared at the target since we chose the name.
     if target.exists() {
@@ -274,12 +264,63 @@ pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<()> {
     }
     if let Err(e) = std::fs::rename(&tmp, target) {
         let _ = std::fs::remove_file(&tmp);
-        return Err(ConvError::new(
-            ErrorCode::OutputWriteFailed,
-            format!("{}: {e}", target.display()),
-        ));
+        return Err(write_error(target, e));
     }
     Ok(())
+}
+
+/// Hedef klasörde kısa, benzersiz bir geçici dosya aç.
+///
+/// Ad hedefin adından TÜRETİLMEZ. Eskiden ".{hedef}.tavzih-tmp" idi ve hedef
+/// adına 13 bayt ekliyordu: 255 baytlık ad sınırında 244–254 baytlık, kendisi
+/// yasal çıktı adları "File name too long" ile düşüyordu (OR-05). Ad sabit
+/// uzunluktadır; var olan bir dosyanın üstüne yazılmaz (`create_new`).
+fn create_temp_in(dir: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static SEQ: AtomicU32 = AtomicU32::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id();
+    let mut last = None;
+    for _ in 0..16 {
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let tmp = dir.join(format!(
+            ".{nanos:08x}{:04x}{:04x}.tavzih-tmp",
+            pid & 0xffff,
+            seq & 0xffff
+        ));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+        {
+            Ok(f) => return Ok((tmp, f)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::other("no free temporary name")))
+}
+
+/// Yazma hatasını kullanıcının anlayacağı koda çevir: diskin ad sınırı
+/// (ENAMETOOLONG; Windows'ta ERROR_FILENAME_EXCED_RANGE) "klasör izinleri"
+/// değildir.
+fn write_error(target: &Path, e: std::io::Error) -> ConvError {
+    let name_too_long = if cfg!(windows) {
+        206
+    } else if cfg!(any(target_os = "linux", target_os = "android")) {
+        36
+    } else {
+        63
+    };
+    let code = if e.raw_os_error() == Some(name_too_long) {
+        ErrorCode::OutputNameTooLong
+    } else {
+        ErrorCode::OutputWriteFailed
+    };
+    ConvError::new(code, format!("{}: {e}", target.display()))
 }
 
 /// Word → UDF dönüşümünde paragraf aralıkları.

@@ -22,6 +22,7 @@ pub enum ErrorCode {
     SourceChanged,
     OutputExistsConflict,
     OutputWriteFailed,
+    OutputNameTooLong,
     OutputValidationFailed,
     EngineFailure,
 }
@@ -43,6 +44,7 @@ impl ErrorCode {
             SourceChanged => "SOURCE_CHANGED",
             OutputExistsConflict => "OUTPUT_EXISTS_CONFLICT",
             OutputWriteFailed => "OUTPUT_WRITE_FAILED",
+            OutputNameTooLong => "OUTPUT_NAME_TOO_LONG",
             OutputValidationFailed => "OUTPUT_VALIDATION_FAILED",
             EngineFailure => "ENGINE_FAILURE",
         }
@@ -86,6 +88,11 @@ impl ErrorCode {
             }
             OutputWriteFailed => {
                 "Dönüştürülen belge kaydedilemedi. Klasör izinlerini kontrol edin."
+            }
+            // Disk adı reddetti (ENAMETOOLONG / ERROR_FILENAME_EXCED_RANGE).
+            // Eskiden "klasör izinlerini kontrol edin" deniyordu: yanlış öğüt (OR-05).
+            OutputNameTooLong => {
+                "Dosya adı çok uzun. Kaynak belgeyi daha kısa bir adla kaydedip yeniden deneyin."
             }
             OutputValidationFailed => {
                 "Dönüştürülen belge doğrulamayı geçemedi ve bu nedenle kaydedilmedi."
