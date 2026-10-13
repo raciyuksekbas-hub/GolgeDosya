@@ -174,6 +174,22 @@ pub fn utc_stamp() -> String {
     )
 }
 
+/// Damga tam olarak `YYYY-MM-DD_HHMM` biçiminde mi (yalnız rakam, `-` ve `_`)?
+///
+/// Damga pencereden gelir ve arşivin ADINA girer. Saha denetimi (OR-08):
+/// doğrulanmadığı için "x/../../kacis" gibi bir damga arşivi çıktı
+/// klasörünün dışına yazdırdı. Biçime uymayan damga yerine [`utc_stamp`]
+/// kullanılır.
+pub fn is_valid_stamp(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 15
+        && b.iter().enumerate().all(|(i, c)| match i {
+            4 | 7 => *c == b'-',
+            10 => *c == b'_',
+            _ => c.is_ascii_digit(),
+        })
+}
+
 /// Infer the direction from the extension, case-insensitively.
 pub fn detect_direction(path: &Path) -> Result<Direction> {
     let ext = path
@@ -634,6 +650,11 @@ pub struct BatchResult {
     pub output_name: Option<String>,
     /// True when `output` is a ZIP holding several converted documents.
     pub is_zip: bool,
+    /// Arşiv yazılamadıysa neden. Dönüştürülen belgeler o zaman klasörde tek
+    /// tek durur. Eskiden hata `.ok()` ile yutuluyor, kullanıcı tek arşiv
+    /// beklerken dağınık dosyalarla ve hiçbir açıklama olmadan kalıyordu (OR-08).
+    #[serde(default)]
+    pub zip_error: Option<ErrorInfo>,
     /// Every source file was byte-identical afterwards. A release-critical invariant.
     pub all_sources_unchanged: bool,
     pub elapsed_ms: u128,
@@ -681,6 +702,7 @@ pub fn convert_batch_to_with(
             output: one.output.clone(),
             output_name: one.output_name.clone(),
             is_zip: false,
+            zip_error: None,
             all_sources_unchanged: one.source_unchanged,
             elapsed_ms: started.elapsed().as_millis(),
             items: vec![one],
@@ -705,12 +727,24 @@ pub fn convert_batch_to_with(
 
     // A ZIP is still produced when only some files converted: the user should receive the
     // work that succeeded rather than nothing.
-    let zip = if produced.is_empty() {
-        None
+    let (zip, zip_error) = if produced.is_empty() {
+        (None, None)
     } else {
         // A ZIP that cannot be written leaves the individual outputs in place rather than
-        // failing the whole batch: the user still has the converted documents.
-        build_batch_zip(out_dir, &produced, stamp).ok()
+        // failing the whole batch: the user still has the converted documents. Neden
+        // ise sonuçta söylenir; yutulmaz.
+        match build_batch_zip(out_dir, &produced, stamp) {
+            Ok(p) => (Some(p), None),
+            Err(e) => (
+                None,
+                Some(ErrorInfo {
+                    code: e.code.as_str().to_string(),
+                    message: e.code.message_tr().to_string(),
+                    detail: e.detail,
+                    source_untouched: e.code.source_untouched(),
+                }),
+            ),
+        }
     };
 
     // Once the outputs are inside the ZIP, the loose copies would be duplicates.
@@ -722,7 +756,7 @@ pub fn convert_batch_to_with(
 
     let status = if failed == items.len() {
         Status::Failure
-    } else if failed > 0 || warned > 0 {
+    } else if failed > 0 || warned > 0 || zip_error.is_some() {
         Status::Warning
     } else {
         Status::Success
@@ -742,6 +776,7 @@ pub fn convert_batch_to_with(
             .and_then(|s| s.to_str())
             .map(|s| s.to_string()),
         is_zip: zip.is_some(),
+        zip_error,
         all_sources_unchanged: all_unchanged,
         elapsed_ms: started.elapsed().as_millis(),
         items,
@@ -765,7 +800,12 @@ fn build_batch_zip(
             format!("{}: {e}", dir.display()),
         )
     })?;
-    let stamp = stamp.map(|s| s.to_string()).unwrap_or_else(utc_stamp);
+    // Damga dosya ADINA girer; biçime uymayan (ör. "x/../../kacis") yerine saat
+    // damgası kullanılır (OR-08).
+    let stamp = stamp
+        .filter(|s| is_valid_stamp(s))
+        .map(|s| s.to_string())
+        .unwrap_or_else(utc_stamp);
     let base = format!("GölgeDosya_Dönüşüm_{stamp}");
 
     let mut zip_path = dir.join(format!("{base}.zip"));
@@ -779,6 +819,16 @@ fn build_batch_zip(
                 "exhausted candidate ZIP names",
             ));
         }
+    }
+    // Arşiv çıktı klasörünün doğrudan içinde kalır; başka hiçbir yere yazılmaz.
+    if zip_path.parent() != Some(dir.as_path()) {
+        return Err(ConvError::new(
+            ErrorCode::OutputWriteFailed,
+            format!(
+                "archive path leaves the output folder: {}",
+                zip_path.display()
+            ),
+        ));
     }
 
     // A single target format needs no folder split, but keeping one folder is consistent
@@ -941,6 +991,23 @@ mod tests {
         assert_eq!(&s[4..5], "-");
         assert_eq!(&s[10..11], "_");
         assert!(s[..4].parse::<u32>().unwrap() >= 2024);
+        assert!(is_valid_stamp(&s));
+    }
+
+    #[test]
+    fn only_a_plain_date_stamp_reaches_the_archive_name() {
+        assert!(is_valid_stamp("2026-10-13_0930"));
+        for bad in [
+            "x/../../kacis",
+            "2026-10-13_0930/..",
+            "2026-10-13 0930",
+            "2026-10-13_093",
+            "2026-1a-13_0930",
+            "..\\..\\kacis",
+            "",
+        ] {
+            assert!(!is_valid_stamp(bad), "{bad:?}");
+        }
     }
 
     #[test]

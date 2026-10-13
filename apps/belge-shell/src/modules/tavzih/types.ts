@@ -69,6 +69,8 @@ export interface BatchResult {
   output: string | null;
   output_name: string | null;
   is_zip: boolean;
+  /** Arşiv yazılamadıysa nedeni; belgeler o zaman klasörde tek tek durur. */
+  zip_error?: ErrorInfo | null;
   all_sources_unchanged: boolean;
   elapsed_ms: number;
 }

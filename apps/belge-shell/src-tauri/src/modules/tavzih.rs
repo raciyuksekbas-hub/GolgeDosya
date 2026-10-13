@@ -323,6 +323,9 @@ pub async fn tavzih_convert_file(
 ///
 /// `stamp`, pencerenin ürettiği yerel `YYYY-MM-DD_HHMM` damgasıdır: motorda saat
 /// dilimi veritabanı yoktur ve UTC bir dosya adı kullanıcıya yanlış saati gösterirdi.
+/// Damga arşivin adına girer; tam olarak bu biçimde değilse yok sayılır ve motor
+/// UTC damgası kullanır (OR-08: "x/../../kacis" arşivi çıktı klasörünün dışına
+/// yazdırıyordu).
 #[tauri::command]
 pub async fn tavzih_convert_batch(
     paths: Vec<String>,
@@ -330,6 +333,7 @@ pub async fn tavzih_convert_batch(
     busy: tauri::State<'_, Busy>,
     produced: tauri::State<'_, Produced>,
 ) -> Result<BatchResult, AppError> {
+    let stamp = stamp.filter(|s| convert::is_valid_stamp(s));
     claim_slot(&busy.0)?;
     let flag = busy.0.clone();
     let sources: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();

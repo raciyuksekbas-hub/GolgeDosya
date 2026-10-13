@@ -212,3 +212,27 @@ describe("sonuç ekran okuyucuda da aynı", () => {
     expect(inspect).toContain("announce(message)");
   });
 });
+
+// Denetim (OR-08): toplu işin arşivi yazılamayınca motor hatayı yutuyordu;
+// kullanıcı tek arşiv beklerken dağınık belgelerle, açıklamasız kalıyordu.
+describe("toplu işin arşivi yazılamadı", () => {
+  const two = [RESULT[0], { ...RESULT[0], source: "/Users/ornek/b.docx", source_name: "b.docx" }] as unknown as ConversionResult[];
+
+  it("söylenir; belgelerin klasörde ayrı ayrı durduğu yazılır", () => {
+    const html = renderToStaticMarkup(
+      <ConvertDone items={two} from="Word (.docx)" to="UYAP (.udf)" folder={FOLDER} archiveFailed onReveal={noop} onNew={noop} />,
+    );
+    expect(html).toContain("Belgeler tek bir arşivde toplanamadı; dönüştürülen belgeler klasörde ayrı ayrı duruyor.");
+  });
+
+  it("arşiv yazıldıysa söylenmez", () => {
+    const html = renderToStaticMarkup(
+      <ConvertDone items={two} from="Word (.docx)" to="UYAP (.udf)" folder={FOLDER} archiveName="a.zip" onReveal={noop} onNew={noop} />,
+    );
+    expect(html).not.toContain("toplanamadı");
+  });
+
+  it("çalışma alanı motorun zip_error'unu sonuca iletir", () => {
+    expect(source).toContain('archiveFailed={Boolean(outcome && "items" in outcome && outcome.zip_error)}');
+  });
+});

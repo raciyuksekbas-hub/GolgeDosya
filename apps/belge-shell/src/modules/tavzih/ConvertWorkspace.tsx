@@ -224,7 +224,7 @@ export function resultAnnouncement(items: ConversionResult[]): string {
  *
  * Kaynağın değişmediği her sonuçta açıkça yazılır; motor bunu hash'le kanıtlar.
  */
-export function ConvertDone({ items, from, to, folder, archiveName, onReveal, onOpen, onNew, headingRef }: {
+export function ConvertDone({ items, from, to, folder, archiveName, archiveFailed, onReveal, onOpen, onNew, headingRef }: {
   items: ConversionResult[];
   /** Kaynağın biçim etiketi — akışın sol durağı için. */
   from: string | null;
@@ -235,6 +235,9 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
    *  tekil çıktıları SİLER; bu ad gösterilmezse kullanıcı diskte olmayan
    *  dosyaları arar. */
   archiveName?: string | null;
+  /** Toplu işin arşivi yazılamadı (motor `zip_error`): belgeler klasörde tek
+   *  tek durur. Eskiden hata yutuluyor, kullanıcı arşivi arıyordu (OR-08). */
+  archiveFailed?: boolean;
   onReveal: () => void;
   /** Tek belge başarıyla dönüştüyse onu varsayılan uygulamasıyla aç. */
   onOpen?: (path: string) => void;
@@ -270,6 +273,12 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
       {archiveName ? (
         <p className="flow-note">
           Dönüştürülen belgeler tek arşivde toplandı: <strong>{archiveName}</strong>
+        </p>
+      ) : null}
+
+      {archiveFailed ? (
+        <p className="flow-note" data-tone="error">
+          Belgeler tek bir arşivde toplanamadı; dönüştürülen belgeler klasörde ayrı ayrı duruyor.
         </p>
       ) : null}
 
@@ -545,6 +554,7 @@ export function ConvertWorkspace({ paths, onNewConversion }: {
             <ConvertDone
               items={items}
               archiveName={outcome && "items" in outcome && outcome.is_zip ? outcome.output_name : null}
+              archiveFailed={Boolean(outcome && "items" in outcome && outcome.zip_error)}
               from={usable[0]?.info?.source_format ?? null}
               to={target}
               folder={folder}
