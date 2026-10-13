@@ -285,6 +285,24 @@ fn parse_content_xml(
 
     let (header, footer, blocks) = parse_elements(text, &mut ctx)?;
 
+    // Güvenlik ağı: tamponda görünen her karakter bir öğe aracılığıyla modele
+    // ulaşmalı. Tanımadığımız bir yapı (gerçek bir UYAP dosyasında satır yerine
+    // yazılmış paragraf gibi) metni sessizce düşürüyordu; düşürürse en azından
+    // kaç karakter gittiği söylenir.
+    let buffered = buf_str.chars().filter(|c| !c.is_whitespace()).count();
+    let placed = placed_ink(&blocks)
+        + [&header, &footer]
+            .into_iter()
+            .flatten()
+            .map(|h| placed_ink(&h.blocks))
+            .sum::<usize>();
+    if placed < buffered {
+        ctx.warn.push(
+            Warning::new(WarningCode::UnrecognizedTextDropped)
+                .detail(format!("{} karakter", buffered - placed)),
+        );
+    }
+
     if ctx.saw_field {
         // The interactivity is gone, but the text the reader could see is preserved.
         // That is an expected transformation, not a loss — unless a span failed to resolve.
@@ -454,6 +472,25 @@ fn parse_styles(text: &str) -> StyleMap {
 
 type Parsed = (Option<HeaderFooter>, Option<HeaderFooter>, Vec<Block>);
 
+/// Açık yapı öğeleri, en içteki sonda.
+///
+/// UYAP'ın kendi dosyalarında satır her zaman `<row>` değildir: gerçek bir
+/// UYAP dosyasında tablonun ikinci satırı `<paragraph height=".."><cell>…</cell>
+/// </paragraph>` olarak yazılmış. Bir hücrenin hangi satıra ait olduğu ancak
+/// hangi öğenin İÇİNDE açıldığına bakılarak bilinir; ayrı yığınlar (tablo,
+/// satır, hücre) bunu söylemez.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Frame {
+    Table,
+    Row,
+    /// Tablonun doğrudan çocuğu olan `<paragraph>`: satır yerine geçer.
+    ParagraphRow,
+    /// Tabloda satırsız açılmış `<cell>` için kurulan satır; hücreyle kapanır.
+    ImplicitRow,
+    Cell,
+    Paragraph,
+}
+
 fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
     let start = text
         .find("<elements")
@@ -475,9 +512,30 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
     let mut row_stack: Vec<TableRow> = Vec::new();
     let mut cell_stack: Vec<TableCell> = Vec::new();
     let mut para: Option<Paragraph> = None;
+    let mut frames: Vec<Frame> = Vec::new();
+    // İçinde başka bir paragraf açılmış paragrafların biçimi: içteki kapanınca
+    // dıştakinin kalan metni aynı biçimle sürer.
+    let mut outer_paras: Vec<ParaProps> = Vec::new();
+    // Dıştaki paragrafın öznitelikleri (yapraklar onlara düşer); içteki kapanınca geri gelir.
+    let mut outer_attrs: Vec<Attrs> = Vec::new();
 
     loop {
-        match rd.read_event() {
+        let event = match rd.read_event() {
+            // Başlangıç ve bitiş etiketiyle yazılmış yaprak (`<content …></content>`)
+            // boş yazılmışıyla aynı şeydir; eskiden sessizce atlanıyordu. Bitiş
+            // etiketi derinlik sayacını yine düşürür.
+            Ok(Event::Start(e))
+                if matches!(
+                    local_name(&e).as_str(),
+                    "content" | "tab" | "space" | "image" | "field"
+                ) =>
+            {
+                guard.enter()?;
+                Ok(Event::Empty(e))
+            }
+            other => other,
+        };
+        match event {
             Err(e) => return Err(ConvError::invalid_udf(format!("XML error: {e}"))),
             Ok(Event::Eof) => break,
             Ok(Event::Start(e)) => {
@@ -487,15 +545,55 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
                     "header" | "footer" => {
                         hf_stack.push((name.clone(), parse_hf_attrs(&e)));
                     }
-                    "table" => table_stack.push(parse_table_attrs(&e, ctx)),
-                    "row" => row_stack.push(parse_row_attrs(&e)),
-                    "cell" => cell_stack.push(parse_cell_attrs(&e)),
+                    "table" => {
+                        table_stack.push(parse_table_attrs(&e, ctx));
+                        frames.push(Frame::Table);
+                    }
+                    "row" => {
+                        row_stack.push(parse_row_attrs(&e));
+                        frames.push(Frame::Row);
+                    }
+                    "cell" => {
+                        if frames.last() == Some(&Frame::Table) {
+                            // Satırsız hücre eskiden kapanınca atılıyordu; kendi
+                            // satırını kurar.
+                            row_stack.push(TableRow::default());
+                            frames.push(Frame::ImplicitRow);
+                        }
+                        cell_stack.push(parse_cell_attrs(&e));
+                        frames.push(Frame::Cell);
+                    }
+                    "paragraph" if frames.last() == Some(&Frame::Table) && opens_a_cell(&rd) => {
+                        // Tablonun doğrudan çocuğu olan ve hücre taşıyan paragraf bir
+                        // satırdır (`height` dâhil satır öznitelikleriyle). Hücre
+                        // taşımayan paragraf eskisi gibi paragraftır.
+                        row_stack.push(parse_row_attrs(&e));
+                        frames.push(Frame::ParagraphRow);
+                    }
                     "paragraph" => {
+                        if let Some(outer) = para.take() {
+                            // Paragraf içinde paragraf: dıştakinin buraya kadarki
+                            // metni kendi paragrafı olur, kalanı içteki kapanınca
+                            // aynı biçimle sürer. Eskiden dıştaki siliniyordu.
+                            outer_paras.push(outer.props.clone());
+                            outer_attrs.push(std::mem::take(&mut ctx.para_attrs));
+                            if !outer.runs.is_empty() {
+                                push_block(
+                                    Block::Paragraph(outer),
+                                    &mut cell_stack,
+                                    &mut row_stack,
+                                    &mut table_stack,
+                                    &mut hf_stack,
+                                    &mut body,
+                                );
+                            }
+                        }
                         ctx.para_attrs = attr_map(&e);
                         para = Some(Paragraph {
                             props: parse_para_props(&e, ctx),
                             runs: vec![],
-                        })
+                        });
+                        frames.push(Frame::Paragraph);
                     }
                     _ => {}
                 }
@@ -543,7 +641,14 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
                 guard.leave();
                 let name = local_name_end(&e);
                 match name.as_str() {
+                    "paragraph" if frames.last() == Some(&Frame::ParagraphRow) => {
+                        frames.pop();
+                        close_row(&mut row_stack, &mut table_stack);
+                    }
                     "paragraph" => {
+                        if frames.last() == Some(&Frame::Paragraph) {
+                            frames.pop();
+                        }
                         if let Some(mut p) = para.take() {
                             trim_paragraph_terminator(&mut p);
                             line_feeds_to_breaks(&mut p);
@@ -556,22 +661,61 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
                                 &mut body,
                             );
                         }
+                        if let Some(props) = outer_paras.pop() {
+                            ctx.para_attrs = outer_attrs.pop().unwrap_or_default();
+                            para = Some(Paragraph {
+                                props,
+                                runs: vec![],
+                            });
+                        } else {
+                            // Paragrafın öznitelikleri yalnız kendi yapraklarına
+                            // düşer; paragraf dışında kalan bir yaprak (tanınmayan
+                            // yapı) öncekinin kalın/yazı tipini devralmamalı.
+                            ctx.para_attrs = Attrs::new();
+                        }
                     }
                     "cell" => {
+                        if frames.last() == Some(&Frame::Cell) {
+                            frames.pop();
+                        }
                         if let Some(c) = cell_stack.pop() {
-                            if let Some(r) = row_stack.last_mut() {
-                                r.cells.push(c);
+                            let in_row = matches!(
+                                frames.last(),
+                                Some(Frame::Row | Frame::ParagraphRow | Frame::ImplicitRow)
+                            );
+                            match row_stack.last_mut() {
+                                Some(r) if in_row => r.cells.push(c),
+                                _ => {
+                                    // Satıra bağlanamayan hücre eskiden sessizce
+                                    // atılıyordu. İçeriği kapsayan yere yazılır.
+                                    for b in c.blocks {
+                                        push_block(
+                                            b,
+                                            &mut cell_stack,
+                                            &mut row_stack,
+                                            &mut table_stack,
+                                            &mut hf_stack,
+                                            &mut body,
+                                        );
+                                    }
+                                }
+                            }
+                            if frames.last() == Some(&Frame::ImplicitRow) {
+                                frames.pop();
+                                close_row(&mut row_stack, &mut table_stack);
                             }
                         }
                     }
                     "row" => {
-                        if let Some(r) = row_stack.pop() {
-                            if let Some(t) = table_stack.last_mut() {
-                                t.rows.push(r);
-                            }
+                        if frames.last() == Some(&Frame::Row) {
+                            frames.pop();
                         }
+                        close_row(&mut row_stack, &mut table_stack);
                     }
                     "table" => {
+                        if frames.last() == Some(&Frame::Table) {
+                            frames.pop();
+                        }
                         if let Some(mut t) = table_stack.pop() {
                             reconcile_table_grid(&mut t);
                             push_block(
@@ -652,6 +796,41 @@ fn push_block(
     }
 }
 
+/// Close the innermost open row and hand it to the innermost open table.
+fn close_row(rows: &mut Vec<TableRow>, tables: &mut [Table]) {
+    if let Some(r) = rows.pop() {
+        if let Some(t) = tables.last_mut() {
+            t.rows.push(r);
+        }
+    }
+}
+
+/// Modele ulaşan görünür birim sayısı: boşluk dışı karakterler ve her resim
+/// için bir (resim tamponda tek bir yer tutucu karakter kaplar).
+fn placed_ink(blocks: &[Block]) -> usize {
+    blocks
+        .iter()
+        .map(|b| match b {
+            Block::Paragraph(p) => p
+                .runs
+                .iter()
+                .map(|r| match r {
+                    Run::Text { text, .. } => text.chars().filter(|c| !c.is_whitespace()).count(),
+                    Run::Image(_) => 1,
+                    Run::Tab { .. } | Run::LineBreak { .. } => 0,
+                })
+                .sum::<usize>(),
+            Block::Table(t) => t
+                .rows
+                .iter()
+                .flat_map(|r| r.cells.iter())
+                .map(|c| placed_ink(&c.blocks))
+                .sum(),
+            Block::PageBreak => 0,
+        })
+        .sum()
+}
+
 /// The buffer's paragraph terminator belongs to the format, not to the text. Drop the
 /// trailing newline that the last run carries so the canonical model holds clean text.
 ///
@@ -702,6 +881,19 @@ fn line_feeds_to_breaks(p: &mut Paragraph) {
         }
     }
     p.runs = out;
+}
+
+/// Az önce açılan öğenin ilk çocuk öğesi `<cell>` mi? Okuyucunun bir kopyasıyla
+/// ileriye bakar; asıl okuyucu ilerlemez.
+fn opens_a_cell(rd: &Reader<&[u8]>) -> bool {
+    let mut peek = rd.clone();
+    loop {
+        match peek.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => return local_name(&e) == "cell",
+            Ok(Event::Text(_)) | Ok(Event::Comment(_)) | Ok(Event::CData(_)) => continue,
+            _ => return false,
+        }
+    }
 }
 
 fn local_name(e: &BytesStart) -> String {

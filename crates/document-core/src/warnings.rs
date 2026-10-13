@@ -82,6 +82,7 @@ pub enum WarningCode {
     TextRangeOverlap,
     TextRangeInvalid,
     UdfPageNumberApproximated,
+    UnrecognizedTextDropped,
 }
 
 impl WarningCode {
@@ -125,6 +126,7 @@ impl WarningCode {
             TextRangeOverlap => "TEXT_RANGE_OVERLAP",
             TextRangeInvalid => "TEXT_RANGE_INVALID",
             UdfPageNumberApproximated => "UDF_PAGE_NUMBER_APPROXIMATED",
+            UnrecognizedTextDropped => "UNRECOGNIZED_TEXT_DROPPED",
         }
     }
 
@@ -209,6 +211,12 @@ impl WarningCode {
             UdfPageNumberApproximated => {
                 "Sayfa numarası UYAP'ın otomatik sayfa numarasına çevrildi; yeri ve görünümü yaklaşık"
             }
+            // UDF okuyucusunun güvenlik ağı: tamponda görünen metnin bir kısmı
+            // tanınmayan bir yapıda durduğu için modele ulaşmadı. Ayrıntı kaç
+            // karakter olduğunu söyler; metnin kendisi uyarıya girmez.
+            UnrecognizedTextDropped => {
+                "Belgedeki bazı metinler tanınmayan bir yapıda olduğu için aktarılamadı"
+            }
         }
     }
 
@@ -258,7 +266,8 @@ impl WarningCode {
             | HeaderFooterVariantDropped
             | UdfFormFieldsDropped
             | PageSizeChanged
-            | TextRangeInvalid => Loss,
+            | TextRangeInvalid
+            | UnrecognizedTextDropped => Loss,
         }
     }
 

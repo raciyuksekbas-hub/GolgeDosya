@@ -14,6 +14,10 @@
 //!   kayıp başka sütunlara oturuyordu. Değişiklik izlemede silinmiş satır
 //!   (`w:trPr/w:del`) bütün değişiklikler kabul edilince yoktur; boş bir satır
 //!   olarak kalıyor ve tablonun kenarlık kararına da katılıyordu.
+//! - UDF okuyucusu, UYAP'ın kendi bir dosyasında satır yerine yazılmış
+//!   `<paragraph height=..>` içindeki hücreyi (20 görünür karakter) sessizce
+//!   atıyordu; satırsız hücre, bitiş etiketli yaprak ve paragraf içindeki
+//!   paragraf da metin kaybettiriyordu.
 //!
 //! Bütün belgeler bu dosyada sentetik olarak kurulur; gerçek dava dosyası yok.
 
@@ -640,4 +644,145 @@ fn a_table_whose_every_row_was_deleted_is_not_left_behind() {
     let (d, _) = read_docx(&docx_package(&body));
     assert!(table_depths(&d).is_empty(), "boş tablo kaldı");
     assert_eq!(ink(&text(&d)), "Önce.Sonra.");
+}
+
+// ------------------------------------------------------------ UDF'in alışılmadık yapıları
+
+/// Tampondaki bütün görünen metin (yalnız paragraf sonlandırıcıları değil).
+fn buffer_ink(u: &Udf) -> String {
+    ink(&u.buf)
+}
+
+fn read_udf_full(bytes: &[u8]) -> (Document, Vec<tavzih_core::warnings::Warning>) {
+    let mut w = WarningSink::new();
+    let d = udf::reader::read_udf(bytes, &mut w).expect("read udf");
+    (d, w.into_vec())
+}
+
+/// Okuyucunun yerleştiremediği metin için verilen kayıp uyarısı.
+const UNPLACED: &str = "UNRECOGNIZED_TEXT_DROPPED";
+
+#[test]
+fn a_row_written_as_a_paragraph_keeps_its_cell() {
+    // Gerçek bir UYAP dosyasının şekli (D591): tablonun ikinci satırı <row>
+    // değil, <paragraph height=".."> olarak yazılmış ve hücreyi o taşıyor.
+    // Hücre (beş paragraf, 20 görünür karakter) sessizce düşüyordu.
+    let mut u = Udf::default();
+    let a = u.p("Borçlu: Örnek Ltd.");
+    let b1 = u.p("Alacak: 1.250.000,00 TL");
+    let b2 = u.p("Faiz %12");
+    let after = u.p("Sonuç.");
+    let row1 = urow("", std::slice::from_ref(&a));
+    let el = format!(
+        r#"{}{after}"#,
+        utable(
+            "100",
+            &format!(r#"{row1}<paragraph height="22.0"><cell>{b1}{b2}</cell></paragraph>"#)
+        )
+    );
+    let src = u.build(&el);
+    let (d, warns) = read_udf_full(&src);
+    assert_eq!(ink(&text(&d)), buffer_ink(&u), "metin kayboldu: {warns:?}");
+    let t = first_table(&d);
+    assert_eq!(t.rows.len(), 2, "satır kayboldu");
+    assert_eq!(t.rows[1].height_pt, Some(22.0));
+    assert!(warns.iter().all(|w| w.code.as_str() != UNPLACED));
+    // Word'e dönüşte de iki satır ve bütün metin.
+    let (word, _) = convert(&src, Direction::UdfToDocx);
+    let (wd, _) = read_docx(&word);
+    assert_eq!(first_table(&wd).rows.len(), 2);
+    assert_eq!(ink(&text(&wd)), buffer_ink(&u));
+}
+
+#[test]
+fn a_cell_placed_directly_in_a_table_is_kept() {
+    let mut u = Udf::default();
+    let a = u.p("Satırsız hücre: 2026/129 E.");
+    let tail = u.p("Son.");
+    let src = u.build(&format!(
+        "{}{tail}",
+        utable("100", &format!("<cell>{a}</cell>"))
+    ));
+    let (d, warns) = read_udf_full(&src);
+    assert_eq!(ink(&text(&d)), buffer_ink(&u), "{warns:?}");
+    assert_eq!(first_table(&d).rows.len(), 1);
+}
+
+#[test]
+fn a_paragraph_directly_in_a_table_without_a_cell_stays_a_paragraph() {
+    // Koruma: tablonun doğrudan çocuğu olan paragraf yalnız hücre taşıyorsa
+    // satırdır; kendi metni olan paragraf eskisi gibi paragraf olarak okunur
+    // (eskisi gibi tablonun dışına yazılır; burada yalnız kaybolmadığına bakılır).
+    let mut u = Udf::default();
+    let a = u.p("Satır");
+    let stray = u.p("Tablo içinde serbest paragraf");
+    let tail = u.p("Son.");
+    let src = u.build(&format!(
+        "{}{tail}",
+        utable("100", &format!("{}{stray}", urow("", &[a])))
+    ));
+    let (d, warns) = read_udf_full(&src);
+    let got = text(&d);
+    assert!(got.contains("Tablo içinde serbest paragraf"), "{warns:?}");
+    assert_eq!(
+        ink(&got).chars().count(),
+        buffer_ink(&u).chars().count(),
+        "{warns:?}"
+    );
+    assert_eq!(first_table(&d).rows.len(), 1);
+}
+
+#[test]
+fn a_leaf_written_with_an_end_tag_is_read_like_an_empty_one() {
+    let mut u = Udf::default();
+    let leaf = u
+        .leaf("content", "Açık etiketli yaprak.\n")
+        .replace(" />", "></content>");
+    let tab = u.leaf("tab", "\t").replace(" />", "></tab>");
+    let tail = u.leaf("content", "son\n");
+    let src = u.build(&format!(
+        "<paragraph>{leaf}</paragraph><paragraph>{tab}{tail}</paragraph>"
+    ));
+    let (d, warns) = read_udf_full(&src);
+    assert_eq!(ink(&text(&d)), buffer_ink(&u), "{warns:?}");
+    assert!(text(&d).contains("\tson"), "sekme kayboldu: {:?}", text(&d));
+}
+
+#[test]
+fn a_paragraph_opened_inside_another_keeps_the_outer_text_in_order() {
+    let mut u = Udf::default();
+    let before = u.leaf("content", "Önce ");
+    let inner = u.p("İçteki");
+    let after = u.leaf("content", "sonra.\n");
+    let src = u.build(&format!(
+        r#"<paragraph Alignment="1">{before}{inner}{after}</paragraph>"#
+    ));
+    let (d, warns) = read_udf_full(&src);
+    let lines: Vec<String> = text(&d).lines().map(|l| l.trim().to_string()).collect();
+    assert_eq!(lines, vec!["Önce", "İçteki", "sonra."], "{warns:?}");
+    // Dıştaki paragrafın biçimi iki parçasında da kalır.
+    let aligned = d.sections[0]
+        .blocks
+        .iter()
+        .filter(|b| matches!(b, Block::Paragraph(p) if p.props.alignment == Alignment::Center))
+        .count();
+    assert_eq!(aligned, 2);
+}
+
+#[test]
+fn text_the_reader_cannot_place_is_reported_as_lost() {
+    // Güvenlik ağı: tamponda görünen metin modele ulaşmadıysa sessiz kalınmaz.
+    // Burada metni, okuyucunun tanımadığı bir öğe gösteriyor.
+    let mut u = Udf::default();
+    let known = u.p("Bilinen paragraf.");
+    let unknown = u.leaf("ozelAlan", "Bilinmeyen 2026/1");
+    let tail = u.leaf("content", "\n");
+    let src = u.build(&format!("{known}<paragraph>{unknown}{tail}</paragraph>"));
+    let (_, warns) = read_udf_full(&src);
+    let w = warns
+        .iter()
+        .find(|w| w.code.as_str() == UNPLACED)
+        .unwrap_or_else(|| panic!("kayıp sessiz kaldı: {warns:?}"));
+    assert!(w.data_loss);
+    assert_eq!(w.detail.as_deref(), Some("16 karakter"));
 }
