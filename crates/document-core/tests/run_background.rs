@@ -9,6 +9,10 @@
 //! - Kesirli punto (11,5) UDF'e sessizce tam sayıya yuvarlanıyordu. Gerçek
 //!   293 UDF'te tek bir kesirli `size` yok ve Swing'in yazı boyutu tamsayıdır;
 //!   UYAP'ın "10.5"i okuyacağı doğrulanmadan yazılmaz: yuvarlanır ve SÖYLENİR.
+//! - UDF paragraf kenarlığı (`paragraph@border="borderCell"` + `borderSpec`,
+//!   `borderStyle`, `borderWidth`, `borderColor`; gerçek bir belgede 111
+//!   paragraf) sessizce düşüyordu. `borderSpec`'in kodlaması tek örnekten
+//!   çözülemez; tahminle `w:pBdr` yazılmaz, kayıp SÖYLENİR.
 //!
 //! Bütün belgeler bu dosyada sentetik olarak kurulur; gerçek dava dosyası yok.
 
@@ -48,6 +52,11 @@ fn docx_package(body: &str, styles: &str) -> Vec<u8> {
 }
 
 fn udf_package(leaves: &[(&str, &str)]) -> Vec<u8> {
+    udf_package_with("", leaves)
+}
+
+/// `para_attrs`: tek paragrafın öznitelikleri.
+fn udf_package_with(para_attrs: &str, leaves: &[(&str, &str)]) -> Vec<u8> {
     let mut buf = String::new();
     let mut el = String::new();
     let mut at = 0;
@@ -66,7 +75,7 @@ fn udf_package(leaves: &[(&str, &str)]) -> Vec<u8> {
     let xml = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<template format_id=\"1.8\" >\n\
          <content><![CDATA[{buf}]]></content>\n\
-         <elements resolver=\"hvl-default\" ><paragraph>{el}</paragraph></elements>\n\
+         <elements resolver=\"hvl-default\" ><paragraph{para_attrs}>{el}</paragraph></elements>\n\
          <styles><style name=\"hvl-default\" family=\"Times New Roman\" size=\"12\" /></styles>\n</template>"
     );
     let mut cur = std::io::Cursor::new(Vec::new());
@@ -192,6 +201,29 @@ fn udf_background_becomes_word_highlight_or_shading() {
     assert!(x.contains(r#"<w:highlight w:val="yellow"/>"#), "{x}");
     assert!(x.contains(r#"w:fill="CCCCCC""#), "{x}");
     assert_eq!(x.matches("<w:highlight").count(), 1);
+}
+
+#[test]
+fn a_udf_paragraph_border_is_reported_not_silently_dropped() {
+    let boxed = udf_package_with(
+        " border=\"borderCell\" borderSpec=\"31\" borderStyle=\"borderStyle-plain\" borderWidth=\"1.0\" borderColor=\"-16777216\"",
+        &[("", "Kutulu paragraf")],
+    );
+    let mut w = WarningSink::new();
+    convert_bytes(&boxed, Direction::UdfToDocx, &mut w).unwrap();
+    let warns = w.into_vec();
+    assert!(
+        warns
+            .iter()
+            .any(|x| x.code == WarningCode::RunFeatureDropped
+                && x.detail.as_deref() == Some("paragraf kenarlığı")),
+        "{warns:?}"
+    );
+    // Kenarlıksız paragraf uyarı üretmez.
+    let plain = udf_package_with(" border=\"borderNone\"", &[("", "Düz paragraf")]);
+    let mut w = WarningSink::new();
+    convert_bytes(&plain, Direction::UdfToDocx, &mut w).unwrap();
+    assert!(w.is_empty(), "{:?}", w.into_vec());
 }
 
 #[test]

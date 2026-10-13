@@ -926,6 +926,15 @@ fn parse_para_props(e: &BytesStart, ctx: &mut Ctx) -> ParaProps {
         }
     }
 
+    // Paragraf kenarlığı (`border="borderCell"` + borderSpec/borderStyle/
+    // borderWidth/borderColor; gerçek bir belgede 111 paragraf). `borderSpec`'in
+    // hangi kenarları kodladığı tek örnekten çözülemez: tahminle `w:pBdr` yazılmaz,
+    // ama kayıp da sessiz kalmaz.
+    if own.get("border").map(String::as_str) == Some("borderCell") {
+        ctx.warn
+            .push(Warning::new(WarningCode::RunFeatureDropped).detail("paragraf kenarlığı"));
+    }
+
     if let Some(id) = attr(e, "ListId").and_then(|v| v.parse::<u32>().ok()) {
         let level = attr(e, "ListLevel")
             .and_then(|v| v.parse::<u32>().ok())
