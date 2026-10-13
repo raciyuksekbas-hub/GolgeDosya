@@ -115,6 +115,46 @@ fn effective_output_dir() -> PathBuf {
     }
 }
 
+const PACKAGE_DIR: &str = "Seçilen klasör bir uygulama ya da paket; çıktı klasörü olamaz.";
+
+/// macOS'un tek dosya gibi davrandığı ve "açılınca" bir program çalıştırabilen
+/// paket uzantıları (uygulama, eklenti, kurulum paketi…).
+const PACKAGE_EXTENSIONS: [&str; 16] = [
+    "app",
+    "appex",
+    "bundle",
+    "component",
+    "framework",
+    "kext",
+    "mdimporter",
+    "mpkg",
+    "pkg",
+    "plugin",
+    "prefpane",
+    "qlgenerator",
+    "saver",
+    "service",
+    "workflow",
+    "xpc",
+];
+
+/// Klasör bir uygulama/paket mi?
+///
+/// Saha denetimi (OR-11): "Klasörde Göster" belge bulunamayınca çıktı
+/// klasörünü `open_path` ile açar; macOS'ta `X.app` "açılınca" uygulama
+/// çalışır. Çıktı klasörü arayüzden ayarlanabildiği için böyle bir klasör hiç
+/// kabul edilmemeli (`output_place.rs::reveal_target` aynı kuralı uygular).
+/// Uzantısı olan her klasör reddedilmez: "Dava 2024.10" ya da "Müvekkil A.Ş."
+/// gerçek çalışma klasörleridir. Paket uzantısı ya da paket yapısı
+/// (`Contents/Info.plist`) taşıyan klasör reddedilir.
+fn is_package_dir(dir: &Path) -> bool {
+    let by_name = dir
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| PACKAGE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()));
+    by_name || dir.join("Contents").join("Info.plist").exists()
+}
+
 /// Bu klasöre gerçekten yazabiliyor muyuz?
 ///
 /// İzin bitlerine bakılmaz; bir deneme dosyası yazılıp silinir. Bitler salt-okunur
@@ -125,6 +165,9 @@ fn validate_dir(dir: &Path) -> Result<(), String> {
     }
     if dir.exists() && !dir.is_dir() {
         return Err("Seçilen yol bir klasör değil.".into());
+    }
+    if is_package_dir(dir) {
+        return Err(PACKAGE_DIR.into());
     }
     std::fs::create_dir_all(dir).map_err(|e| format!("Klasör oluşturulamadı: {e}"))?;
     let probe = dir.join(".belge-yazma-denemesi");
@@ -202,10 +245,27 @@ fn check_container(head: &[u8], direction: Direction) -> Result<(), AppError> {
 
 /// Bırakılan veya seçilen dosyayı tanımla. Ucuzdur: dosyayı stat'lar, uzantısını ve
 /// konteyner başlığını okur; belgenin tamamını asla okumaz.
+///
+/// Ana iş parçacığında çalışmaz (bkz. [`tavzih_open_output`]): dosya bir ağ
+/// paylaşımında olabilir.
 #[tauri::command]
-pub fn tavzih_inspect_file(path: String) -> Result<FileInfo, AppError> {
-    let p = PathBuf::from(&path);
-    let meta = std::fs::metadata(&p).map_err(|e| {
+pub async fn tavzih_inspect_file(path: String) -> Result<FileInfo, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        inspect_file_in(Path::new(&path), &effective_output_dir())
+    })
+    .await
+    .map_err(|e| engine_failure(e.to_string()))?
+}
+
+/// [`tavzih_inspect_file`]'ın işi. Planlanan çıktı adı ve çakışma, dönüştürmenin
+/// GERÇEKTEN yazacağı klasöre (`out_dir`) göre hesaplanır. Eskiden varsayılan
+/// klasöre bakılıyordu; kullanıcı başka bir çıktı klasörü seçtiyse ad ve
+/// "çakışır" bilgisi yanlış klasörü anlatıyordu (OR-13).
+///
+/// `pub`: kabul testleri komutun işini kendi klasörleriyle çağırır; komut
+/// kullanıcının ayar dosyasını okur, test paketi onu okumamalı (bkz. `paths.rs`).
+pub fn inspect_file_in(p: &Path, out_dir: &Path) -> Result<FileInfo, AppError> {
+    let meta = std::fs::metadata(p).map_err(|e| {
         let code = if e.kind() == std::io::ErrorKind::NotFound {
             tavzih_core::ErrorCode::InputNotFound
         } else {
@@ -219,22 +279,22 @@ pub fn tavzih_inspect_file(path: String) -> Result<FileInfo, AppError> {
             "path is a directory",
         )));
     }
-    let direction = convert::detect_direction(&p).map_err(AppError::from)?;
+    let direction = convert::detect_direction(p).map_err(AppError::from)?;
     // Konteyner başlığını gerçekten doğrula. `detect_direction` yalnız UZANTIYA
     // bakar; yanlış adlandırılmış ya da bozuk bir dosya (ör. .docx uzantılı düz
     // metin) arayüzde "Word (.docx) → UDF (.udf)" diye listelenip çıktı adı bile
     // vaat ediliyordu — dönüştürme ancak çok sonra düşüyordu. DOCX ve UDF'nin
     // ikisi de ZIP konteyneridir; dört baytlık bu denetim vaadi dürüst kılar
     // ve bu komutun sözleşmesi de zaten "konteyner başlığını okur" diyor.
-    let head = read_head(&p).ok_or_else(|| {
+    let head = read_head(p).ok_or_else(|| {
         AppError::from(tavzih_core::ConvError::new(
             tavzih_core::ErrorCode::InputUnreadable,
             "dosya açılamadı",
         ))
     })?;
     check_container(&head, direction)?;
-    let planned =
-        convert::unique_output_path(&p, direction.target_ext()).map_err(AppError::from)?;
+    let planned = convert::unique_output_path_in(out_dir, p, direction.target_ext())
+        .map_err(AppError::from)?;
     let default_name = format!(
         "{}.{}",
         p.file_stem().and_then(|s| s.to_str()).unwrap_or(""),
@@ -265,10 +325,27 @@ pub fn tavzih_inspect_file(path: String) -> Result<FileInfo, AppError> {
 
 /// Birden çok dosyayı tanımla; tek dosyanın hatası kümeyi düşürmez.
 #[tauri::command]
-pub fn tavzih_inspect_files(paths: Vec<String>) -> Vec<InspectOutcome> {
+pub async fn tavzih_inspect_files(paths: Vec<String>) -> Vec<InspectOutcome> {
+    let fallback = paths.clone();
+    tauri::async_runtime::spawn_blocking(move || inspect_all(paths, &effective_output_dir()))
+        .await
+        .unwrap_or_else(|e| {
+            let detail = e.to_string();
+            fallback
+                .into_iter()
+                .map(|path| InspectOutcome {
+                    path,
+                    info: None,
+                    error: Some(engine_failure(detail.clone())),
+                })
+                .collect()
+        })
+}
+
+fn inspect_all(paths: Vec<String>, out_dir: &Path) -> Vec<InspectOutcome> {
     paths
         .into_iter()
-        .map(|p| match tavzih_inspect_file(p.clone()) {
+        .map(|p| match inspect_file_in(Path::new(&p), out_dir) {
             Ok(info) => InspectOutcome {
                 path: p,
                 info: Some(info),
@@ -386,8 +463,18 @@ pub fn tavzih_output_folder() -> OutputFolder {
 
 /// Kullanıcının seçtiği çıktı klasörünü benimse — gerçekten yazılabilir olduğunu
 /// doğruladıktan sonra.
+///
+/// Doğrulama klasöre yazar; erişilemeyen bir ağ paylaşımında bu, işletim
+/// sisteminin zaman aşımı kadar sürer. Ana iş parçacığında çalışmaz (bkz.
+/// [`tavzih_open_output`]).
 #[tauri::command]
-pub fn tavzih_set_output_folder(path: Option<String>) -> Result<OutputFolder, AppError> {
+pub async fn tavzih_set_output_folder(path: Option<String>) -> Result<OutputFolder, AppError> {
+    tauri::async_runtime::spawn_blocking(move || set_output_folder(path))
+        .await
+        .map_err(|e| engine_failure(e.to_string()))?
+}
+
+fn set_output_folder(path: Option<String>) -> Result<OutputFolder, AppError> {
     let chosen = path.filter(|p| !p.trim().is_empty());
     if let Some(p) = &chosen {
         validate_dir(Path::new(p)).map_err(|detail| AppError {
@@ -455,11 +542,19 @@ pub(crate) fn reveal_plan(dir: &Path, outputs: &[String]) -> RevealPlan {
 /// başarılı öğeler). Boşsa ya da dosyalar artık yoksa çıktı klasörü açılır;
 /// klasör önce oluşturulur ki henüz kullanılmamış bir dizinde gösterme işlemi
 /// başarısız olmasın.
+///
+/// Ana iş parçacığında çalışmaz (bkz. [`tavzih_open_output`]).
 #[tauri::command]
-pub fn tavzih_reveal_output_folder(
+pub async fn tavzih_reveal_output_folder(
     app: tauri::AppHandle,
     outputs: Option<Vec<String>>,
 ) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || reveal_output(&app, outputs))
+        .await
+        .map_err(|e| engine_failure(e.to_string()))?
+}
+
+fn reveal_output(app: &tauri::AppHandle, outputs: Option<Vec<String>>) -> Result<(), AppError> {
     use tauri_plugin_opener::OpenerExt;
     let dir = effective_output_dir();
     std::fs::create_dir_all(&dir).map_err(|e| AppError {
@@ -471,6 +566,15 @@ pub fn tavzih_reveal_output_folder(
         RevealPlan::SelectItems(files) => app.opener().reveal_items_in_dir(files),
         // Yalnız arka ucun hesapladığı klasör açılır; arayüzden gelen bir yol
         // hiçbir zaman "aç"a verilmez (dosya olsaydı uygulamasıyla açılırdı).
+        // Paket klasörü (macOS'ta `X.app`) "açılınca" program çalıştırır;
+        // ayar elle değiştirilmiş olsa bile açılmaz (OR-11).
+        RevealPlan::OpenFolder(dir) if is_package_dir(&dir) => {
+            return Err(AppError {
+                code: "OPEN_FAILED".into(),
+                message: "Klasör açılamadı.".into(),
+                detail: PACKAGE_DIR.into(),
+            })
+        }
         RevealPlan::OpenFolder(dir) => app.opener().open_path(dir.to_string_lossy(), None::<&str>),
     };
     opened.map_err(|e| AppError {
@@ -514,15 +618,32 @@ pub(crate) fn open_target(path: &Path, produced: &HashSet<PathBuf>) -> Result<Pa
 
 /// Az önce dönüştürülen belgeyi varsayılan uygulamasıyla aç (UDF için UYAP
 /// Doküman Editörü, Word belgesi için Word…).
+///
+/// Ana iş parçacığında çalışmaz. Tauri eşzamanlı komutları orada çalıştırır
+/// (`output_place.rs::output_start_folder` aynı sebeple async'tir): `open_target`
+/// çıktı klasörünü yoklar (ağ paylaşımı olabilir), macOS'ta açma işlemi
+/// `/usr/bin/open` bitene kadar bekler, Windows'ta ilişkilendirilmemiş tür
+/// "Birlikte aç" penceresi açar. Eskiden her tıklama pencereyi bu süre boyunca
+/// donduruyordu (OR-09). Oturum kaydı ([`Produced`]) iş başlamadan okunur.
 #[tauri::command]
-pub fn tavzih_open_output(
+pub async fn tavzih_open_output(
     app: tauri::AppHandle,
     path: String,
     produced: tauri::State<'_, Produced>,
 ) -> Result<(), AppError> {
-    use tauri_plugin_opener::OpenerExt;
     let known = produced.0.lock().map(|set| set.clone()).unwrap_or_default();
-    let file = open_target(Path::new(&path), &known).map_err(|message| AppError {
+    tauri::async_runtime::spawn_blocking(move || open_output(&app, &path, &known))
+        .await
+        .map_err(|e| engine_failure(e.to_string()))?
+}
+
+fn open_output(
+    app: &tauri::AppHandle,
+    path: &str,
+    known: &HashSet<PathBuf>,
+) -> Result<(), AppError> {
+    use tauri_plugin_opener::OpenerExt;
+    let file = open_target(Path::new(path), known).map_err(|message| AppError {
         code: "NOT_FOUND".into(),
         message,
         detail: String::new(),
@@ -767,10 +888,80 @@ mod tests {
         std::fs::remove_dir_all(&d).ok();
     }
 
+    /// İncelemenin işi (`inspect`); komut artık async olduğu için testler işi
+    /// doğrudan, çıktı klasörünü kendileri vererek çağırır.
+    fn inspect_here(path: &Path) -> Result<FileInfo, AppError> {
+        inspect_file_in(path, &std::env::temp_dir().join("belge-inspect-cikti-yok"))
+    }
+
     #[test]
     fn a_directory_is_not_an_inspectable_document() {
-        let e = tavzih_inspect_file(std::env::temp_dir().display().to_string()).unwrap_err();
+        let e = inspect_here(&std::env::temp_dir()).unwrap_err();
         assert_eq!(e.code, "INVALID_EXTENSION");
+    }
+
+    #[test]
+    fn the_planned_name_describes_the_folder_conversion_will_write_to() {
+        // OR-13: planlanan ad ve çakışma varsayılan klasöre göre hesaplanıyordu;
+        // dönüştürme ise kullanıcının seçtiği klasöre yazar.
+        let src_dir = tempfile::tempdir().unwrap();
+        let src = src_dir.path().join("Dilekçe.docx");
+        std::fs::write(&src, b"PK\x03\x04\x14\x00\x00\x00").unwrap();
+        let chosen = tempfile::tempdir().unwrap();
+        let info = inspect_file_in(&src, chosen.path()).unwrap();
+        assert_eq!(info.planned_output_name, "Dilekçe.udf");
+        assert!(!info.output_would_collide);
+        std::fs::write(chosen.path().join("Dilekçe.udf"), b"PK").unwrap();
+        let info = inspect_file_in(&src, chosen.path()).unwrap();
+        assert_eq!(info.planned_output_name, "Dilekçe (2).udf");
+        assert!(info.output_would_collide);
+    }
+
+    #[test]
+    fn a_package_is_never_an_output_folder() {
+        // OR-11: macOS'ta `X.app` "açılınca" uygulama çalışır; çıktı klasörü
+        // arayüzden ayarlanabilir ve "Klasörde Göster" onu açar.
+        let root = tempfile::tempdir().unwrap();
+        for name in ["Kur.app", "Eklenti.PLUGIN", "Paket.pkg"] {
+            let dir = root.path().join(name);
+            assert_eq!(validate_dir(&dir), Err(PACKAGE_DIR.to_string()), "{name}");
+            assert!(!dir.exists(), "{name} oluşturulmamalı");
+        }
+        // Uzantısız ama paket yapısında (Contents/Info.plist) bir klasör de.
+        let hidden = root.path().join("Sıradan görünen");
+        std::fs::create_dir_all(hidden.join("Contents")).unwrap();
+        std::fs::write(hidden.join("Contents").join("Info.plist"), b"<plist/>").unwrap();
+        assert!(validate_dir(&hidden).is_err());
+        assert!(is_package_dir(&hidden));
+        // Noktalı gerçek çalışma klasörleri kabul edilir.
+        for name in ["Dava 2024.10", "Müvekkil A.Ş.", "Av. Çağrı"] {
+            let dir = root.path().join(name);
+            assert!(validate_dir(&dir).is_ok(), "{name}");
+            assert!(!is_package_dir(&dir), "{name}");
+        }
+    }
+
+    #[test]
+    fn commands_that_touch_the_disk_or_launch_apps_do_not_block_the_window() {
+        // OR-09: eşzamanlı Tauri komutları ana iş parçacığında çalışır; ağ
+        // paylaşımını yoklamak ya da `/usr/bin/open`'ı beklemek pencereyi
+        // donduruyordu. Bu komutlar async olmalı ve işi spawn_blocking'e vermeli.
+        let source = include_str!("tavzih.rs");
+        for name in [
+            "open_output",
+            "reveal_output_folder",
+            "set_output_folder",
+            "inspect_file",
+            "inspect_files",
+        ] {
+            // İğne çalışma anında kurulur ki bu testin kendi metnine takılmasın.
+            let command = format!("pub async fn tavzih_{name}(");
+            let at = source
+                .find(&command)
+                .unwrap_or_else(|| panic!("tavzih_{name} async değil"));
+            let body: String = source[at..].chars().take(900).collect();
+            assert!(body.contains("spawn_blocking"), "tavzih_{name}");
+        }
     }
 
     #[test]
@@ -780,7 +971,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let empty = dir.path().join("Boş dilekçe.docx");
         std::fs::write(&empty, b"").unwrap();
-        let e = tavzih_inspect_file(empty.display().to_string()).unwrap_err();
+        let e = inspect_here(&empty).unwrap_err();
         assert_eq!(e.code, "INPUT_EMPTY");
         assert!(e.message.contains("boş"), "{}", e.message);
 
@@ -788,14 +979,14 @@ mod tests {
         let mut bytes = vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
         bytes.resize(1024, 0);
         std::fs::write(&ole, &bytes).unwrap();
-        let e = tavzih_inspect_file(ole.display().to_string()).unwrap_err();
+        let e = inspect_here(&ole).unwrap_err();
         assert_eq!(e.code, "PROTECTED_OR_LEGACY_DOCX");
         assert!(e.message.contains("parola"), "{}", e.message);
 
         // Düz metin hâlâ "desteklenmeyen tür"dür.
         let text = dir.path().join("not.docx");
         std::fs::write(&text, b"merhaba").unwrap();
-        let e = tavzih_inspect_file(text.display().to_string()).unwrap_err();
+        let e = inspect_here(&text).unwrap_err();
         assert_eq!(e.code, "INVALID_EXTENSION");
     }
 
@@ -825,7 +1016,7 @@ mod tests {
 
     #[test]
     fn a_missing_file_is_reported_as_not_found_not_as_unreadable() {
-        let e = tavzih_inspect_file("/olmayan/dosya.docx".into()).unwrap_err();
+        let e = inspect_here(Path::new("/olmayan/dosya.docx")).unwrap_err();
         assert_eq!(e.code, "INPUT_NOT_FOUND");
     }
 }

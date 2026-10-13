@@ -467,8 +467,11 @@ fn donustur_inspect_command_classifies_real_and_unsupported_inputs() {
         "belge.docx",
         &std::fs::read(samples.join("ornek-dilekce-hatali.docx")).expect("örnek"),
     );
-    let info =
-        tavzih::tavzih_inspect_file(docx.to_string_lossy().to_string()).expect("DOCX tanınmalı");
+    // Komut artık async ve kullanıcının çıktı klasörü ayarını okur (OR-09,
+    // OR-13); kabul testi kurulu ayarlara dokunmamak için komutun işini
+    // kendi çıktı klasörüyle çağırır.
+    let out = lab.path("cikti");
+    let info = tavzih::inspect_file_in(&docx, &out).expect("DOCX tanınmalı");
     assert!(
         format!("{info:?}").to_lowercase().contains("docx"),
         "DOCX biçimi bildirilmedi: {info:?}"
@@ -476,7 +479,7 @@ fn donustur_inspect_command_classifies_real_and_unsupported_inputs() {
 
     // Uzantısı .docx ama içeriği DOCX olmayan dosya: sessizce kabul edilmemeli.
     let sahte = lab.write("sahte.docx", b"bu bir docx degil");
-    let r = tavzih::tavzih_inspect_file(sahte.to_string_lossy().to_string());
+    let r = tavzih::inspect_file_in(&sahte, &out);
     assert!(r.is_err(), "bozuk DOCX sahte başarıyla kabul edildi: {r:?}");
 }
 
