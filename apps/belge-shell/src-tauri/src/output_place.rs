@@ -34,19 +34,6 @@ pub fn mark_session_start() {
     let _ = SESSION_START.set(SystemTime::now());
 }
 
-/// Bu açılışın zamanı. İşaretlenmemişse (olmamalı) "şimdi": yalnız bundan
-/// sonra yazılan dosya bu oturumun sayılır.
-pub(crate) fn session_start() -> SystemTime {
-    SESSION_START.get().copied().unwrap_or_else(SystemTime::now)
-}
-
-/// Saat kayması payıyla "bu oturumda yazıldı" alt sınırı.
-pub(crate) fn session_floor(session_start: SystemTime) -> SystemTime {
-    session_start
-        .checked_sub(CLOCK_SKEW)
-        .unwrap_or(session_start)
-}
-
 /// Kaynağın klasörünün öneri olamayacağı yerler.
 #[derive(Debug, Default)]
 pub(crate) struct Places {

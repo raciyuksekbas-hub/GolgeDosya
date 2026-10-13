@@ -10,10 +10,34 @@
 
 use crate::{paths, settings};
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tavzih_core::convert::{self, BatchResult, ConversionResult, Direction};
+
+/// Bu oturumda dönüştürmenin ÜRETTİĞİ belgeler (gerçek yollarıyla).
+///
+/// "Belgeyi Aç" yalnız bunları açar. Eskiden ölçüt "çıktı klasöründe ve
+/// oturum başladıktan sonra yazılmış" idi: kullanıcı sonuç ekranı açıkken
+/// Ayarlar'dan çıktı klasörünü değiştirince az önceki belge "bulunamadı"
+/// oluyordu; aynı ölçüt o klasöre başka yoldan yeni düşen bir dosyayı da
+/// açtırırdı. Kayıt bellekte durur; uygulama kapanınca biter.
+#[derive(Default)]
+pub struct Produced(pub Mutex<HashSet<PathBuf>>);
+
+impl Produced {
+    /// Başarılı bir sonucun çıktısını kaydet. Toplu işin arşivinde tekil
+    /// çıktılar silinmiştir; var olmayan yol kaydedilmez.
+    fn record(&self, result: &ConversionResult) {
+        let Some(output) = result.output.as_deref() else {
+            return;
+        };
+        if let (Ok(real), Ok(mut set)) = (std::fs::canonicalize(output), self.0.lock()) {
+            set.insert(real);
+        }
+    }
+}
 
 /// Aynı anda tek dönüştürme. İkinci istek kuyruğa alınmaz, reddedilir:
 /// kullanıcının bir penceresi ve bir dosyası var; kuyruk yalnız bir hatayı gizler.
@@ -117,7 +141,7 @@ fn claim_slot(flag: &AtomicBool) -> Result<(), AppError> {
     if flag.swap(true, Ordering::SeqCst) {
         return Err(AppError {
             code: "BUSY".into(),
-            message: "Halihazırda bir dönüştürme sürüyor.".into(),
+            message: "Hâlihazırda bir dönüştürme sürüyor.".into(),
             detail: "a conversion is already running".into(),
         });
     }
@@ -249,6 +273,7 @@ fn convert_options() -> convert::ConvertOptions {
 pub async fn tavzih_convert_file(
     path: String,
     busy: tauri::State<'_, Busy>,
+    produced: tauri::State<'_, Produced>,
 ) -> Result<ConversionResult, AppError> {
     claim_slot(&busy.0)?;
     let flag = busy.0.clone();
@@ -260,7 +285,9 @@ pub async fn tavzih_convert_file(
     // Her yolda serbest bırakılır — panikleyen bir join dâhil — ki tek bir bozuk
     // dosya uygulamayı kalıcı olarak meşgul durumda kilitleyemesin.
     flag.store(false, Ordering::SeqCst);
-    result.map_err(|e| engine_failure(e.to_string()))
+    let result = result.map_err(|e| engine_failure(e.to_string()))?;
+    produced.record(&result);
+    Ok(result)
 }
 
 /// Bir dosya kümesini tek iş olarak dönüştür.
@@ -272,6 +299,7 @@ pub async fn tavzih_convert_batch(
     paths: Vec<String>,
     stamp: Option<String>,
     busy: tauri::State<'_, Busy>,
+    produced: tauri::State<'_, Produced>,
 ) -> Result<BatchResult, AppError> {
     claim_slot(&busy.0)?;
     let flag = busy.0.clone();
@@ -283,7 +311,11 @@ pub async fn tavzih_convert_batch(
     })
     .await;
     flag.store(false, Ordering::SeqCst);
-    result.map_err(|e| engine_failure(e.to_string()))
+    let result = result.map_err(|e| engine_failure(e.to_string()))?;
+    for item in &result.items {
+        produced.record(item);
+    }
+    Ok(result)
 }
 
 /// Kullanım koşullarının kabul edilip edilmediği. Kabul yalnız yerelde saklanır;
@@ -415,19 +447,15 @@ pub fn tavzih_reveal_output_folder(
     })
 }
 
-/// "Belgeyi Aç"ın açabileceği tek şey: Dönüştür'ün BU oturumda, çıktı
-/// klasörüne yazdığı bir UDF ya da Word belgesi.
+/// "Belgeyi Aç"ın açabileceği tek şey: Dönüştür'ün BU oturumda ürettiği bir
+/// UDF ya da Word belgesi ([`Produced`]).
 ///
 /// "Klasörde Göster"den farklı olarak bu, belgeyi uygulamasıyla AÇAR; arayüzden
 /// gelen bir yol bu yüzden sıkı denetlenir: mutlak, bağlantı (symlink) değil,
-/// gerçek bir dosya, uzantısı `.udf`/`.docx`, doğrudan çıktı klasöründe ve
-/// uygulama açıldıktan sonra yazılmış. Arşiv (`.zip`) açılmaz; toplu işte
-/// "Klasörde Göster" kullanılır.
-pub(crate) fn open_target(
-    path: &Path,
-    out_dir: &Path,
-    session_start: std::time::SystemTime,
-) -> Result<PathBuf, String> {
+/// gerçek bir dosya, uzantısı `.udf`/`.docx` ve gerçek yolu bu oturumun
+/// dönüştürme kaydında. Arşiv (`.zip`) açılmaz; toplu işte "Klasörde Göster"
+/// kullanılır.
+pub(crate) fn open_target(path: &Path, produced: &HashSet<PathBuf>) -> Result<PathBuf, String> {
     const NOT_FOUND: &str = "Belge bulunamadı. Taşınmış veya silinmiş olabilir.";
     if !path.is_absolute() {
         return Err(NOT_FOUND.into());
@@ -444,31 +472,24 @@ pub(crate) fn open_target(
     if !matches!(ext.as_str(), "udf" | "docx") {
         return Err(NOT_FOUND.into());
     }
-    let fresh = meta
-        .modified()
-        .is_ok_and(|m| m >= crate::output_place::session_floor(session_start));
-    let same = |a: &Path, b: &Path| match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => false,
-    };
-    let in_output = path.parent().is_some_and(|parent| same(parent, out_dir));
-    if !fresh || !in_output {
+    let real = std::fs::canonicalize(path).map_err(|_| NOT_FOUND.to_string())?;
+    if !produced.contains(&real) {
         return Err(NOT_FOUND.into());
     }
-    Ok(path.to_path_buf())
+    Ok(real)
 }
 
 /// Az önce dönüştürülen belgeyi varsayılan uygulamasıyla aç (UDF için UYAP
 /// Doküman Editörü, Word belgesi için Word…).
 #[tauri::command]
-pub fn tavzih_open_output(app: tauri::AppHandle, path: String) -> Result<(), AppError> {
+pub fn tavzih_open_output(
+    app: tauri::AppHandle,
+    path: String,
+    produced: tauri::State<'_, Produced>,
+) -> Result<(), AppError> {
     use tauri_plugin_opener::OpenerExt;
-    let file = open_target(
-        Path::new(&path),
-        &effective_output_dir(),
-        crate::output_place::session_start(),
-    )
-    .map_err(|message| AppError {
+    let known = produced.0.lock().map(|set| set.clone()).unwrap_or_default();
+    let file = open_target(Path::new(&path), &known).map_err(|message| AppError {
         code: "NOT_FOUND".into(),
         message,
         detail: String::new(),
@@ -502,21 +523,65 @@ mod tests {
         (root, dir, file)
     }
 
-    #[test]
-    fn open_accepts_only_a_fresh_converted_document_in_the_output_folder() {
-        let (root, dir, udf) = output_tree();
-        let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(5);
-        assert_eq!(open_target(&udf, &dir, earlier), Ok(udf.clone()));
+    fn test_result() -> ConversionResult {
+        ConversionResult {
+            contract_version: 1,
+            status: convert::Status::Success,
+            source: String::new(),
+            source_name: String::new(),
+            output: None,
+            output_name: None,
+            direction: Direction::DocxToUdf,
+            source_format: String::new(),
+            target_format: String::new(),
+            warnings: Vec::new(),
+            error: None,
+            source_sha256_before: String::new(),
+            source_sha256_after: String::new(),
+            source_unchanged: true,
+            elapsed_ms: 0,
+        }
+    }
 
+    #[test]
+    fn open_accepts_only_a_document_this_session_produced() {
+        let (root, dir, udf) = output_tree();
+        let produced = Produced::default();
+        let record = |path: &Path| {
+            produced.record(&ConversionResult {
+                output: Some(path.to_string_lossy().into_owned()),
+                ..test_result()
+            })
+        };
+        record(&udf);
+        let known = || produced.0.lock().unwrap().clone();
+        assert_eq!(
+            open_target(&udf, &known()),
+            Ok(std::fs::canonicalize(&udf).unwrap())
+        );
+
+        // Aynı klasöre başka yoldan düşen belge açılmaz; kayıtlı olan açılır.
         let docx = dir.join("Dilekçe.DOCX");
         std::fs::write(&docx, b"PK").unwrap();
+        assert!(open_target(&docx, &known()).is_err(), "dönüştürülmedi");
+        record(&docx);
         assert!(
-            open_target(&docx, &dir, earlier).is_ok(),
+            open_target(&docx, &known()).is_ok(),
             "büyük harfli uzantı da belge"
         );
 
-        // Klasör, arşiv, başka tür: "aç" bunları hiçbir zaman çalıştırmaz.
-        assert!(open_target(&dir, dir.parent().unwrap(), earlier).is_err());
+        // Çıktı klasörü sonradan değişse de az önceki belge açılır: ölçüt
+        // klasör değil, bu oturumun ürettiği dosya.
+        let elsewhere = root.path().join("Masaüstü");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        let moved_out = elsewhere.join("Yeni klasörde.udf");
+        std::fs::write(&moved_out, b"PK").unwrap();
+        record(&moved_out);
+        assert!(open_target(&moved_out, &known()).is_ok());
+
+        // Klasör, arşiv, başka tür: kayıtlı olsalar bile açılmaz.
+        record(&dir);
+        assert!(open_target(&dir, &known()).is_err());
         for name in [
             "arsiv.zip",
             "betik.command",
@@ -526,29 +591,62 @@ mod tests {
         ] {
             let other = dir.join(name);
             std::fs::write(&other, b"x").unwrap();
-            assert!(
-                open_target(&other, &dir, earlier).is_err(),
-                "{name} açılmamalı"
-            );
+            record(&other);
+            assert!(open_target(&other, &known()).is_err(), "{name} açılmamalı");
         }
 
-        // Çıktı klasörünün dışındaki bir belge açılmaz.
-        let outside = root.path().join("baska.udf");
-        std::fs::write(&outside, b"PK").unwrap();
-        assert!(open_target(&outside, &dir, earlier).is_err());
+        // Silinmiş ya da taşınmış belge: "bulunamadı".
+        std::fs::remove_file(&moved_out).unwrap();
+        assert_eq!(
+            open_target(&moved_out, &known()),
+            Err("Belge bulunamadı. Taşınmış veya silinmiş olabilir.".to_string())
+        );
 
-        // Bu oturumdan önce yazılmış belge açılmaz (saat kayması payı 2 dk).
-        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(600);
-        assert!(open_target(&udf, &dir, later).is_err());
-
-        // Göreli yol ve bağlantı (symlink) açılmaz.
-        assert!(open_target(Path::new("Müvekkil'in dilekçesi.udf"), &dir, earlier).is_err());
+        // Göreli yol ve bağlantı (symlink) açılmaz — bağlantının hedefi
+        // kayıtlı bir belge olsa bile.
+        assert!(open_target(Path::new("Müvekkil'in dilekçesi.udf"), &known()).is_err());
         #[cfg(unix)]
         {
             let link = dir.join("bag.udf");
-            std::os::unix::fs::symlink(&outside, &link).unwrap();
-            assert!(open_target(&link, &dir, earlier).is_err());
+            std::os::unix::fs::symlink(&udf, &link).unwrap();
+            assert!(open_target(&link, &known()).is_err());
         }
+
+        // `..` içeren yol gerçek yoluna çözülür; kayıtlı belgeye gidiyorsa açılır,
+        // kayıt dışına çıkıyorsa açılmaz.
+        let dotted = dir
+            .join("..")
+            .join("Dönüştürülen Belgeler")
+            .join("Müvekkil'in dilekçesi.udf");
+        assert!(open_target(&dotted, &known()).is_ok());
+        let outside = root.path().join("baska.udf");
+        std::fs::write(&outside, b"PK").unwrap();
+        assert!(open_target(
+            &dir.join("..")
+                .join("..")
+                .join("..")
+                .join("..")
+                .join("baska.udf"),
+            &known()
+        )
+        .is_err());
+        let _ = outside;
+    }
+
+    #[test]
+    fn a_failed_or_zipped_result_registers_nothing() {
+        let (_root, dir, _udf) = output_tree();
+        let produced = Produced::default();
+        produced.record(&ConversionResult {
+            output: None,
+            ..test_result()
+        });
+        // Toplu işin arşivinde tekil çıktı silinmiştir.
+        produced.record(&ConversionResult {
+            output: Some(dir.join("silindi.udf").to_string_lossy().into_owned()),
+            ..test_result()
+        });
+        assert!(produced.0.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -606,7 +704,7 @@ mod tests {
         assert!(claim_slot(&flag).is_ok());
         let second = claim_slot(&flag).unwrap_err();
         assert_eq!(second.code, "BUSY");
-        assert_eq!(second.message, "Halihazırda bir dönüştürme sürüyor.");
+        assert_eq!(second.message, "Hâlihazırda bir dönüştürme sürüyor.");
         // Serbest bırakıldıktan sonra yuva yeniden alınabilmeli.
         flag.store(false, Ordering::SeqCst);
         assert!(claim_slot(&flag).is_ok());

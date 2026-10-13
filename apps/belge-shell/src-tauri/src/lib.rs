@@ -170,7 +170,8 @@ pub fn run() {
     #[cfg(feature = "feature_tavzih")]
     let builder = builder
         .plugin(tauri_plugin_opener::init())
-        .manage(modules::tavzih::Busy::default());
+        .manage(modules::tavzih::Busy::default())
+        .manage(modules::tavzih::Produced::default());
 
     // Komut listesi derleme zamanında seçilir: kapalı bir modülün komutu
     // binary'de hiç bulunmaz ve arayüz onu çağıramaz.
