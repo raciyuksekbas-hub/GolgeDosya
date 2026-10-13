@@ -924,11 +924,18 @@ impl<'a> BodyBuilder<'a> {
         let mut in_num_pr = false;
         let mut run_direct = PartialRun::default();
         let mut pending_break_page = false;
-        let mut in_deleted = false;
+        // Silinen (`w:del`) ya da başka yere taşınan (`w:moveFrom`) içeriğin
+        // derinliği; >0 iken metin, sekme, satır sonu ve resim güncel belgede
+        // yoktur. Bayrak değil sayaç: iç içe kayıtlar birbirini kapatmaz.
+        let mut deleted_depth: usize = 0;
+        // Paragraf İŞARETİ silinmiş ya da taşınmış mı (`w:pPr/w:rPr` içinde
+        // boş `w:del`/`w:moveFrom`). İçeriği de silinmiş böyle bir paragraf
+        // kabul edilmiş belgede yoktur.
+        let mut para_mark_removed = false;
         // Word "complex field" komut metni (`<w:instrText>`): HYPERLINK hedefi,
         // REF/PAGEREF yer imi, MERGEFIELD veri adı gibi KULLANICIYA GÖSTERİLMEYEN
         // alan kodu. Görünen değer separate'ten sonra ayrı gelir; kod bastırılmazsa
-        // gövde metnine sızar. `in_deleted` ile aynı mantık.
+        // gövde metnine sızar. `deleted_depth` ile aynı mantık.
         let mut in_instr = false;
         let mut preserve_space = false;
 
@@ -968,10 +975,13 @@ impl<'a> BodyBuilder<'a> {
                     // `w:pPrChange` / `w:rPrChange` / `w:tcPrChange` /
                     // `w:trPrChange` / `w:tblPrChange` / `w:sectPrChange`
                     // içinde, revizyondan ÖNCEKİ (yani reddedilmiş)
-                    // özellikler tam bir `w:pPr` olarak durur. Okuyucu bunları ayırt etmiyordu ve
-                    // `w:pPr` içinde sayıldıkları için GÜNCEL değerlerin
-                    // ÜSTÜNE yazıyorlardı: paragraf eski aralığıyla, eski
-                    // stiliyle ve eski numaralandırmasıyla dönüşüyordu.
+                    // özellikler tam bir `w:pPr` olarak durur;
+                    // `w:tblGridChange` eski sütun ızgarasını taşır. Okuyucu
+                    // bunları ayırt etmiyordu ve güncel değerlerin ÜSTÜNE
+                    // yazıyorlardı: paragraf eski aralığıyla, eski stiliyle ve
+                    // eski numaralandırmasıyla dönüşüyor; eski ızgaranın
+                    // sütunları tabloya EKLENİYORDU (iki sütunlu tablo UDF'te
+                    // beş sütun).
                     // Gerçek sözleşmenin değişik sürümünde 2 `pPrChange`,
                     // 24 `rPrChange` ve 50 `tcPrChange` bloğu var.
                     //
@@ -984,6 +994,7 @@ impl<'a> BodyBuilder<'a> {
                             | b"tcPrChange"
                             | b"trPrChange"
                             | b"tblPrChange"
+                            | b"tblGridChange"
                             | b"sectPrChange"
                     ) {
                         if !is_empty {
@@ -1033,6 +1044,7 @@ impl<'a> BodyBuilder<'a> {
                                 para = Some(Paragraph::default());
                                 para_style = None;
                                 direct_para = PartialPara::default();
+                                para_mark_removed = false;
                             }
                         }
                         b"pPr" => in_ppr = true,
@@ -1158,6 +1170,7 @@ impl<'a> BodyBuilder<'a> {
 
                         // --- runs ---
                         b"t" => preserve_space = a(e, "space").as_deref() == Some("preserve"),
+                        b"tab" if !in_ppr && deleted_depth > 0 => {}
                         b"tab" if !in_ppr => {
                             if let Some(p) = para.as_mut() {
                                 p.runs.push(Run::Tab {
@@ -1166,6 +1179,7 @@ impl<'a> BodyBuilder<'a> {
                             }
                         }
                         b"tab" if in_tabs => apply_ppr_child(e, &mut direct_para),
+                        b"br" if deleted_depth > 0 => {}
                         b"br" => {
                             if a(e, "type").as_deref() == Some("page") {
                                 pending_break_page = true;
@@ -1181,12 +1195,16 @@ impl<'a> BodyBuilder<'a> {
                             let cy = af(e, "cy").unwrap_or(0.0);
                             pending_img = Some((emu_to_pt(cx), emu_to_pt(cy)));
                         }
+                        b"blip" if deleted_depth > 0 => {
+                            pending_img = None;
+                        }
                         b"blip" => {
                             if let Some(rid) = a(e, "embed") {
                                 let (w, h) = pending_img.take().unwrap_or((0.0, 0.0));
                                 self.push_image(&mut para, &rid, w, h)?;
                             }
                         }
+                        b"imagedata" if deleted_depth > 0 => {}
                         b"imagedata" => {
                             if let Some(rid) = a(e, "id") {
                                 self.push_image(&mut para, &rid, 0.0, 0.0)?;
@@ -1194,11 +1212,20 @@ impl<'a> BodyBuilder<'a> {
                         }
 
                         // --- things Word can express and UDF cannot ---
-                        b"del" => {
-                            in_deleted = true;
+                        // Paragraf işareti ya da tablo satırı silindiğinde Word
+                        // BOŞ bir `<w:del/>` yazar (`w:pPr/w:rPr`, `w:trPr`
+                        // içinde). Boş öğenin End olayı gelmez: bayrak eskiden
+                        // takılı kalıyor, bir sonraki `</w:del>`'e kadar bütün
+                        // güncel metni sessizce yutuyordu.
+                        b"del" | b"moveFrom" => {
+                            if !is_empty {
+                                deleted_depth += 1;
+                            } else if in_para_rpr {
+                                para_mark_removed = true;
+                            }
                             self.warn.warn(WarningCode::TrackedChangesFlattened);
                         }
-                        b"ins" => self.warn.warn(WarningCode::TrackedChangesFlattened),
+                        b"ins" | b"moveTo" => self.warn.warn(WarningCode::TrackedChangesFlattened),
                         b"commentReference" => self.warn.warn(WarningCode::CommentsDropped),
                         b"footnoteReference" | b"endnoteReference" => {
                             self.warn.warn(WarningCode::FootnotesDropped)
@@ -1234,7 +1261,7 @@ impl<'a> BodyBuilder<'a> {
                 }
 
                 Ok(Event::Text(t)) => {
-                    if in_deleted {
+                    if deleted_depth > 0 {
                         continue; // deleted text is not part of the current document
                     }
                     if in_instr {
@@ -1279,6 +1306,7 @@ impl<'a> BodyBuilder<'a> {
                             | b"tcPrChange"
                             | b"trPrChange"
                             | b"tblPrChange"
+                            | b"tblGridChange"
                             | b"sectPrChange"
                     ) {
                         revision_depth = revision_depth.saturating_sub(1);
@@ -1305,7 +1333,7 @@ impl<'a> BodyBuilder<'a> {
                         b"tcBorders" => in_tc_borders = false,
                         b"tblPrEx" => in_tblpr_ex = false,
                         b"t" => preserve_space = false,
-                        b"del" => in_deleted = false,
+                        b"del" | b"moveFrom" => deleted_depth = deleted_depth.saturating_sub(1),
                         b"instrText" => in_instr = false,
                         b"extent" => in_drawing_extent = false,
                         b"r" => {
@@ -1320,12 +1348,19 @@ impl<'a> BodyBuilder<'a> {
                         b"p" => {
                             if let Some(mut p) = para.take() {
                                 p.props = self.para_props(&para_style, &direct_para);
-                                let block = Block::Paragraph(p);
                                 if pending_break_page {
                                     pending_break_page = false;
                                     push_to(&mut cells, &mut out, Block::PageBreak);
                                 }
-                                push_to(&mut cells, &mut out, block);
+                                // İşareti ve bütün içeriği silinmiş (ya da
+                                // taşınmış) paragraf kabul edilmiş belgede yoktur;
+                                // tutulursa yerinde boş bir satır kalır. İçeriği
+                                // kalan paragraf ayrı tutulur: Word onu sonrakiyle
+                                // birleştirir, burada paragraf yapısı yaklaşık kalır.
+                                if !(para_mark_removed && p.runs.is_empty()) {
+                                    push_to(&mut cells, &mut out, Block::Paragraph(p));
+                                }
+                                para_mark_removed = false;
                             }
                         }
                         b"tc" => {
