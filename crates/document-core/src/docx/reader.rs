@@ -486,6 +486,7 @@ pub fn read_docx(bytes: &[u8], warn: &mut WarningSink) -> Result<Document> {
         warn,
         lists: Vec::new(),
         used_num: HashMap::new(),
+        num_state: NumState::default(),
         active_part: None,
     };
     let (mut blocks, sect) = b.walk_body(&doc_xml)?;
@@ -946,6 +947,7 @@ struct HostParagraph {
     direct: PartialPara,
     mark_removed: bool,
     run: PartialRun,
+    mark: PartialRun,
 }
 
 /// Açık alanlardan herhangi birinin KOD kısmında mıyız?
@@ -1043,11 +1045,118 @@ fn apply_rpr_child(e: &BytesStart, r: &mut PartialRun) {
     }
 }
 
+/// Etiketten sonra Word'ün koyduğu ayraç (`w:suff`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum LabelSuffix {
+    #[default]
+    Tab,
+    Space,
+    Nothing,
+}
+
+/// Bir numaralandırma düzeyi (`w:lvl`): Word'ün bu düzeyde gösterdiği etiketin
+/// tarifi.
+///
+/// Okuyucu eskiden yalnız `numFmt`'i okuyordu: "%1)" "1." oluyor, "3.2" "2."
+/// oluyor, 5'ten başlayan liste 1'den başlıyordu (gerçek belgelerde yüzlerce
+/// paragraf, uyarısız).
+#[derive(Clone, Debug, Default)]
+struct NumLevel {
+    /// `w:start`; yoksa 0 (ECMA-376 §17.9.25).
+    start: i64,
+    /// `w:numFmt`; yoksa ondalık.
+    fmt: Option<String>,
+    /// `w:lvlText`: `%1`…`%9` yer tutuculu etiket kalıbı.
+    text: Option<String>,
+    /// `w:lvlRestart`: bu düzeyi hangi (1 tabanlı) düzey yeniden başlatır; 0 = hiçbiri.
+    restart: Option<i64>,
+    /// `w:isLgl`: etiketteki bütün sayaçlar ondalık gösterilir.
+    legal: bool,
+    suffix: LabelSuffix,
+    /// `w:pStyle`: bu düzeye bağlı paragraf stili (başlık numaralandırması).
+    style: Option<String>,
+    /// `w:pPr`: düzeyin girintisi ve sekme durakları.
+    para: PartialPara,
+    /// `w:rPr`: etiketin biçimi (madde iminin yazı tipi dâhil).
+    run: PartialRun,
+}
+
+impl NumLevel {
+    fn fmt(&self) -> &str {
+        self.fmt.as_deref().unwrap_or("decimal")
+    }
+}
+
+#[derive(Default)]
+struct AbstractNum {
+    levels: HashMap<u32, NumLevel>,
+    /// `w:numStyleLink`: düzeyler bir liste stilinin listesinde tanımlı.
+    style_link: Option<String>,
+}
+
+#[derive(Default)]
+struct NumInstance {
+    abstract_id: u32,
+    /// `w:lvlOverride/w:startOverride`
+    start_overrides: HashMap<u32, i64>,
+    /// `w:lvlOverride/w:lvl`
+    level_overrides: HashMap<u32, NumLevel>,
+    /// `w:lvlOverride` var mı. Word'ün "Numaralandırmayı yeniden başlat"ı
+    /// böyle bir `w:num` yazar: bu liste kendi sayacıyla başlar.
+    overridden: bool,
+}
+
 #[derive(Default)]
 struct NumberingMap {
-    /// numId -> (abstractId, level -> fmt token)
-    num_to_abstract: HashMap<u32, u32>,
-    abstract_levels: HashMap<(u32, u32), String>,
+    abstracts: HashMap<u32, AbstractNum>,
+    nums: HashMap<u32, NumInstance>,
+}
+
+impl NumberingMap {
+    /// Soyut listenin düzeyleri. `w:numStyleLink` taşıyan soyut listenin kendi
+    /// düzeyi yoktur; liste stilinin (`w:numPr`) gösterdiği listeye bakılır.
+    fn levels_of(&self, abstract_id: u32, styles: &Styles) -> Option<&HashMap<u32, NumLevel>> {
+        let ab = self.abstracts.get(&abstract_id)?;
+        if ab.levels.is_empty() {
+            if let Some(link) = &ab.style_link {
+                let (p, _) = styles.resolve(Some(link));
+                let linked = self.nums.get(&p.num_id?)?;
+                return self
+                    .abstracts
+                    .get(&linked.abstract_id)
+                    .map(|a| &a.levels)
+                    .filter(|l| !l.is_empty());
+            }
+        }
+        Some(&ab.levels)
+    }
+
+    fn level<'s>(
+        &'s self,
+        num: &'s NumInstance,
+        ilvl: u32,
+        styles: &Styles,
+    ) -> Option<&'s NumLevel> {
+        num.level_overrides
+            .get(&ilvl)
+            .or_else(|| self.levels_of(num.abstract_id, styles)?.get(&ilvl))
+    }
+
+    fn start(&self, num: &NumInstance, ilvl: u32, styles: &Styles) -> i64 {
+        num.start_overrides
+            .get(&ilvl)
+            .copied()
+            .or_else(|| self.level(num, ilvl, styles).map(|l| l.start))
+            .unwrap_or(0)
+    }
+
+    /// Paragraf stiline `w:lvl/w:pStyle` ile bağlı düzey.
+    fn level_of_style(&self, num: &NumInstance, style: &str, styles: &Styles) -> Option<u32> {
+        self.levels_of(num.abstract_id, styles)?
+            .iter()
+            .find(|(_, l)| l.style.as_deref() == Some(style))
+            .map(|(k, _)| *k)
+    }
 }
 
 fn parse_numbering(xml: Option<&[u8]>) -> Result<NumberingMap> {
@@ -1055,39 +1164,293 @@ fn parse_numbering(xml: Option<&[u8]>) -> Result<NumberingMap> {
     let Some(xml) = xml else { return Ok(m) };
     let mut rd = Reader::from_reader(xml);
     rd.config_mut().check_end_names = false;
-    let mut cur_abstract: Option<u32> = None;
-    let mut cur_lvl: Option<u32> = None;
-    let mut cur_num: Option<u32> = None;
+    let mut cur_abstract: Option<(u32, AbstractNum)> = None;
+    let mut cur_num: Option<(u32, NumInstance)> = None;
+    let mut cur_override: Option<u32> = None;
+    let mut cur_lvl: Option<(u32, NumLevel)> = None;
+    let (mut in_ppr, mut in_rpr) = (false, false);
     loop {
-        match rd.read_event() {
+        let ev = rd.read_event();
+        let empty = matches!(ev, Ok(Event::Empty(_)));
+        match ev {
             Err(e) => return Err(ConvError::invalid_docx(format!("numbering XML error: {e}"))),
             Ok(Event::Eof) => break,
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => match e.local_name().as_ref() {
-                b"abstractNum" => cur_abstract = af(&e, "abstractNumId").map(|v| v as u32),
-                b"lvl" => cur_lvl = af(&e, "ilvl").map(|v| v as u32),
-                b"numFmt" => {
-                    if let (Some(ab), Some(l), Some(v)) = (cur_abstract, cur_lvl, a(&e, "val")) {
-                        m.abstract_levels.insert((ab, l), v);
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+                let ln = e.local_name();
+                match ln.as_ref() {
+                    b"abstractNum" => {
+                        cur_abstract =
+                            af(e, "abstractNumId").map(|v| (v as u32, AbstractNum::default()))
+                    }
+                    b"num" => cur_num = af(e, "numId").map(|v| (v as u32, NumInstance::default())),
+                    b"abstractNumId" => {
+                        if let (Some((_, n)), Some(v)) = (cur_num.as_mut(), af(e, "val")) {
+                            n.abstract_id = v as u32;
+                        }
+                    }
+                    b"lvlOverride" => {
+                        cur_override = af(e, "ilvl").map(|v| v as u32);
+                        if let Some((_, n)) = cur_num.as_mut() {
+                            n.overridden = true;
+                        }
+                    }
+                    b"startOverride" => {
+                        if let (Some((_, n)), Some(l), Some(v)) =
+                            (cur_num.as_mut(), cur_override, af(e, "val"))
+                        {
+                            n.start_overrides.insert(l, v as i64);
+                        }
+                    }
+                    b"numStyleLink" => {
+                        if let Some((_, ab)) = cur_abstract.as_mut() {
+                            ab.style_link = a(e, "val");
+                        }
+                    }
+                    b"lvl" if !empty => {
+                        let il = af(e, "ilvl").unwrap_or(0.0).max(0.0) as u32;
+                        cur_lvl = Some((il, NumLevel::default()));
+                    }
+                    name => {
+                        let Some((_, l)) = cur_lvl.as_mut() else {
+                            continue;
+                        };
+                        match name {
+                            b"pPr" => in_ppr = !empty,
+                            b"rPr" => in_rpr = !empty,
+                            _ if in_ppr => apply_ppr_child(e, &mut l.para),
+                            _ if in_rpr => apply_rpr_child(e, &mut l.run),
+                            b"start" => l.start = af(e, "val").unwrap_or(0.0) as i64,
+                            b"numFmt" => l.fmt = a(e, "val"),
+                            b"lvlText" => l.text = Some(a(e, "val").unwrap_or_default()),
+                            b"lvlRestart" => l.restart = af(e, "val").map(|v| v as i64),
+                            b"isLgl" => l.legal = toggle(e),
+                            b"suff" => {
+                                l.suffix = match a(e, "val").as_deref() {
+                                    Some("space") => LabelSuffix::Space,
+                                    Some("nothing") => LabelSuffix::Nothing,
+                                    _ => LabelSuffix::Tab,
+                                }
+                            }
+                            b"pStyle" => l.style = a(e, "val"),
+                            _ => {}
+                        }
                     }
                 }
-                b"num" => cur_num = af(&e, "numId").map(|v| v as u32),
-                b"abstractNumId" => {
-                    if let (Some(n), Some(v)) = (cur_num, af(&e, "val")) {
-                        m.num_to_abstract.insert(n, v as u32);
+            }
+            Ok(Event::End(ref e)) => match e.local_name().as_ref() {
+                b"abstractNum" => {
+                    if let Some((id, ab)) = cur_abstract.take() {
+                        m.abstracts.insert(id, ab);
                     }
                 }
-                _ => {}
-            },
-            Ok(Event::End(e)) => match e.local_name().as_ref() {
-                b"abstractNum" => cur_abstract = None,
-                b"lvl" => cur_lvl = None,
-                b"num" => cur_num = None,
+                b"num" => {
+                    if let Some((id, n)) = cur_num.take() {
+                        m.nums.insert(id, n);
+                    }
+                }
+                b"lvlOverride" => cur_override = None,
+                b"pPr" => in_ppr = false,
+                b"rPr" => in_rpr = false,
+                b"lvl" => {
+                    if let Some((il, l)) = cur_lvl.take() {
+                        if let Some((_, n)) = cur_num.as_mut() {
+                            n.level_overrides.insert(il, l);
+                        } else if let Some((_, ab)) = cur_abstract.as_mut() {
+                            ab.levels.insert(il, l);
+                        }
+                    }
+                    in_ppr = false;
+                    in_rpr = false;
+                }
                 _ => {}
             },
             _ => {}
         }
     }
     Ok(m)
+}
+
+/// Word'ün sayaçlarının paylaşıldığı birim.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum CounterGroup {
+    /// Geçersiz kılma taşımayan bütün `w:num`'lar soyut listenin sayacını
+    /// paylaşır: Word numarayı bir `numId`'den ötekine SÜRDÜRÜR.
+    Abstract(u32),
+    /// `w:lvlOverride` taşıyan `w:num` kendi sayacıyla başlar.
+    Num(u32),
+}
+
+/// Numaralandırmanın belge sırasındaki durumu.
+#[derive(Default)]
+struct NumState {
+    /// Word'de her düzeyin o anki değeri (`None`: düzey henüz kullanılmadı ya da
+    /// yeniden başlayacak).
+    word: HashMap<CounterGroup, [Option<i64>; 9]>,
+    /// UDF listelerinin kendi sırası (ListId → 1 tabanlı düzey değerleri):
+    /// her madde düzeyinde bir ilerler, daha derin düzeyler baştan başlar.
+    udf: HashMap<u32, [i64; 10]>,
+}
+
+/// Word'ün numara biçimiyle bir sayı. `None`: biçim desteklenmiyor.
+fn format_number(n: i64, fmt: &str) -> Option<String> {
+    // Kötü niyetli bir belgede `w:start` çok büyük olabilir: "aaaa…" ya da
+    // "mmmm…" bellek tüketmesin.
+    const MAX_REPEAT: i64 = 64;
+    Some(match fmt {
+        "decimal" => n.to_string(),
+        "decimalZero" if (0..10).contains(&n) => format!("0{n}"),
+        "decimalZero" => n.to_string(),
+        "lowerLetter" | "upperLetter" if n > 0 && (n - 1) / 26 < MAX_REPEAT => {
+            let c = (b'a' + ((n - 1) % 26) as u8) as char;
+            let s = c.to_string().repeat(((n - 1) / 26 + 1) as usize);
+            if fmt == "upperLetter" {
+                s.to_uppercase()
+            } else {
+                s
+            }
+        }
+        "lowerRoman" | "upperRoman" if n > 0 && n < 4000 => {
+            let mut v = n;
+            let mut s = String::new();
+            for (k, r) in [
+                (1000, "m"),
+                (900, "cm"),
+                (500, "d"),
+                (400, "cd"),
+                (100, "c"),
+                (90, "xc"),
+                (50, "l"),
+                (40, "xl"),
+                (10, "x"),
+                (9, "ix"),
+                (5, "v"),
+                (4, "iv"),
+                (1, "i"),
+            ] {
+                while v >= k {
+                    s.push_str(r);
+                    v -= k;
+                }
+            }
+            if fmt == "upperRoman" {
+                s.to_uppercase()
+            } else {
+                s
+            }
+        }
+        "none" | "bullet" => String::new(),
+        _ => return None,
+    })
+}
+
+/// Word'ün bu paragrafta gösterdiği etiket (ayraçsız) ve biçimin birebir
+/// hesaplanıp hesaplanamadığı (`false`: desteklenmeyen biçim ondalık yazıldı).
+fn word_label(
+    level: &NumLevel,
+    levels: &[Option<&NumLevel>],
+    values: &[Option<i64>; 9],
+    starts: &[i64; 9],
+) -> (String, bool) {
+    let text = level.text.as_deref().unwrap_or("");
+    if level.fmt() == "bullet" {
+        return (text.to_string(), true);
+    }
+    let (mut out, mut exact) = (String::new(), true);
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        let slot = chars
+            .peek()
+            .and_then(|d| d.to_digit(10))
+            .filter(|d| c == '%' && (1..=9).contains(d));
+        let Some(d) = slot else {
+            out.push(c);
+            continue;
+        };
+        chars.next();
+        let j = d as usize - 1;
+        // Henüz kullanılmamış üst düzey başlangıcının bir eksiğiyle görünür:
+        // Word'ün üst başlıksız alt başlıkta gösterdiği "0.1".
+        let v = values[j].unwrap_or(starts[j].saturating_sub(1));
+        let fmt = if level.legal {
+            "decimal"
+        } else {
+            levels[j].map_or("decimal", |l| l.fmt())
+        };
+        match format_number(v, fmt) {
+            Some(s) => out.push_str(&s),
+            None => {
+                exact = false;
+                out.push_str(&v.to_string());
+            }
+        }
+    }
+    (out, exact)
+}
+
+/// Sembol yazı tipindeki (Symbol, Wingdings) madde imini Unicode karşılığıyla
+/// yazar: UYAP bu yazı tiplerinin özel kod noktalarını göstermez. İkinci değer
+/// `true` ise karşılığı bilinmeyen bir sembol kaldı; yazı tipi korunmalı.
+fn bullet_glyph(text: &str, font: Option<&str>) -> (String, bool) {
+    let mut unmapped = false;
+    let s = text
+        .chars()
+        .map(|c| match (c as u32, font) {
+            (0xF0B7, _) => '•',
+            (0xF06C, Some("Wingdings")) => '●',
+            (0xF06E, Some("Wingdings")) => '■',
+            (0xF0A7, Some("Wingdings")) => '▪',
+            (0xF076, Some("Wingdings")) => '❖',
+            (0xF0D8, Some("Wingdings")) => '➢',
+            (0xF0FC, Some("Wingdings")) => '✓',
+            (0xF000..=0xF0FF, _) => {
+                unmapped = true;
+                c
+            }
+            _ => c,
+        })
+        .collect();
+    (s, unmapped)
+}
+
+fn is_symbol_font(f: &str) -> bool {
+    f == "Symbol" || f.starts_with("Wingdings") || f == "Webdings"
+}
+
+/// Word düzeyi, UDF'te birebir aynı görünen ve gerçek UYAP dosyalarında
+/// görülmüş bir liste türüne mi karşılık geliyor? Etiket yalnız bu düzeyin
+/// kendi sayacını göstermeli ("%2)" gibi), işaret türün işaretiyle aynı olmalı.
+fn native_kind(level: &NumLevel, ilvl: u32) -> Option<ListKind> {
+    let text = level.text.as_deref().unwrap_or("");
+    if level.fmt() == "bullet" {
+        let font = level.run.family.as_deref();
+        return Some(ListKind::Bullet(match text {
+            // Yuvarlak dolu madde imi: UDF `BULLET_TYPE_ELLIPSE`.
+            "\u{F0B7}" if font == Some("Symbol") => BulletKind::Ellipse,
+            "\u{F06C}" if font == Some("Wingdings") => BulletKind::Ellipse,
+            "\u{2022}" | "\u{25CF}" => BulletKind::Ellipse,
+            // UDF'in ok ve üçgen imleri Word'e bu imlerle yazılır
+            // (docx/writer.rs); geri dönüşte aynı türe döner.
+            "\u{F0D8}" if font == Some("Wingdings") => BulletKind::Arrow,
+            "\u{25BA}" => BulletKind::Triangle,
+            _ => return None,
+        }));
+    }
+    let punct = text.strip_prefix(format!("%{}", ilvl + 1).as_str())?;
+    let fmt = if level.legal { "decimal" } else { level.fmt() };
+    Some(ListKind::Number(match (fmt, punct) {
+        ("decimal", ".") => NumberKind::DecimalDot,
+        ("decimal", ")") => NumberKind::DecimalParen,
+        ("lowerLetter", ".") => NumberKind::LowerAlphaDot,
+        ("lowerLetter", ")") => NumberKind::LowerAlphaParen,
+        ("upperRoman", ".") => NumberKind::UpperRomanDot,
+        _ => return None,
+    }))
+}
+
+/// Bir uyarı ayrıntısı için etiket örneği: her sayaç 1 olarak ("%1.%2." → "1.1.").
+fn label_sample(level: &NumLevel, levels: &[Option<&NumLevel>]) -> String {
+    let ones = [Some(1); 9];
+    word_label(level, levels, &ones, &[1; 9]).0
 }
 
 #[derive(Default)]
@@ -1103,7 +1466,10 @@ struct BodyBuilder<'a> {
     numbering: &'a NumberingMap,
     warn: &'a mut WarningSink,
     lists: Vec<ListDef>,
-    used_num: HashMap<u32, u32>,
+    /// Sayaç grubu → UDF ListId. Aynı soyut listeyi paylaşan `w:num`'lar Word'de
+    /// numarayı sürdürür; UDF'te de aynı liste olmalılar.
+    used_num: HashMap<CounterGroup, u32>,
+    num_state: NumState,
     /// Part whose relationship scope is currently active (`header1.xml`), or None for the
     /// document part.
     active_part: Option<String>,
@@ -1112,7 +1478,10 @@ struct BodyBuilder<'a> {
 impl<'a> BodyBuilder<'a> {
     fn walk_header_footer(&mut self, part: &str, xml: &[u8]) -> Result<HeaderFooter> {
         self.active_part = Some(part.to_string());
+        // Üst/alt bilginin listeleri gövdenin numarasını sürdürmez.
+        let body_numbers = std::mem::take(&mut self.num_state);
         let r = self.walk_body(xml);
+        self.num_state = body_numbers;
         self.active_part = None;
         let (mut blocks, _) = r?;
         apply_contextual_spacing(&mut blocks);
@@ -1149,6 +1518,9 @@ impl<'a> BodyBuilder<'a> {
         let mut in_sect_pr = false;
         let mut in_num_pr = false;
         let mut run_direct = PartialRun::default();
+        // Paragraf işaretinin biçimi (`w:pPr/w:rPr`): Word liste numarasını bu
+        // biçimle gösterir.
+        let mut mark_run = PartialRun::default();
         let mut pending_break_page = false;
         // Silinen (`w:del`) ya da başka yere taşınan (`w:moveFrom`) içeriğin
         // derinliği; >0 iken metin, sekme, satır sonu ve resim güncel belgede
@@ -1310,11 +1682,13 @@ impl<'a> BodyBuilder<'a> {
                                         direct: std::mem::take(&mut direct_para),
                                         mark_removed: para_mark_removed,
                                         run: std::mem::take(&mut run_direct),
+                                        mark: std::mem::take(&mut mark_run),
                                     });
                                 }
                                 para = Some(Paragraph::default());
                                 para_style = None;
                                 direct_para = PartialPara::default();
+                                mark_run = PartialRun::default();
                                 para_mark_removed = false;
                             }
                         }
@@ -1618,6 +1992,9 @@ impl<'a> BodyBuilder<'a> {
                     if in_rpr {
                         apply_rpr_child(e, &mut run_direct);
                     }
+                    if in_para_rpr {
+                        apply_rpr_child(e, &mut mark_run);
+                    }
                 }
 
                 Ok(Event::Text(t)) => {
@@ -1778,6 +2155,16 @@ impl<'a> BodyBuilder<'a> {
                                 // birleştirir, burada paragraf yapısı yaklaşık kalır.
                                 let keep = !(para_mark_removed && p.runs.is_empty());
                                 para_mark_removed = false;
+                                // Liste sayacı yalnız kabul edilmiş belgede var
+                                // olan paragrafta ilerler.
+                                if keep {
+                                    self.number_paragraph(
+                                        &para_style,
+                                        &direct_para,
+                                        &mark_run,
+                                        &mut p,
+                                    );
+                                }
                                 if let Some(host) = host_stack.pop() {
                                     // Metin kutusunun paragrafı: dıştaki paragraf bitince yazılır.
                                     if keep {
@@ -1788,6 +2175,7 @@ impl<'a> BodyBuilder<'a> {
                                     direct_para = host.direct;
                                     para_mark_removed = host.mark_removed;
                                     run_direct = host.run;
+                                    mark_run = host.mark;
                                 } else {
                                     if keep {
                                         push_to(&mut cells, &mut out, Block::Paragraph(p));
@@ -1938,43 +2326,8 @@ impl<'a> BodyBuilder<'a> {
         let (mut p, _) = self.styles.resolve(style.as_deref());
         p.overlay(direct);
 
-        let list = p.num_id.and_then(|num_id| {
-            if num_id == 0 {
-                return None;
-            }
-            let level = p.num_level.unwrap_or(0) + 1;
-            let id = *self
-                .used_num
-                .entry(num_id)
-                .or_insert_with(|| self.lists.len() as u32 + 1);
-            if !self.lists.iter().any(|l| l.list_id == id) {
-                let fmt = self
-                    .numbering
-                    .num_to_abstract
-                    .get(&num_id)
-                    .and_then(|ab| {
-                        self.numbering
-                            .abstract_levels
-                            .get(&(*ab, p.num_level.unwrap_or(0)))
-                    })
-                    .cloned()
-                    .unwrap_or_else(|| "decimal".to_string());
-                let kind = match fmt.as_str() {
-                    "bullet" => ListKind::Bullet(BulletKind::Ellipse),
-                    "decimal" | "decimalZero" => ListKind::Number(NumberKind::DecimalDot),
-                    "lowerLetter" => ListKind::Number(NumberKind::LowerAlphaParen),
-                    _ => {
-                        self.warn.push(
-                            Warning::new(WarningCode::ListNumberingApproximated)
-                                .detail(fmt.clone()),
-                        );
-                        ListKind::Number(NumberKind::DecimalDot)
-                    }
-                };
-                self.lists.push(ListDef::new(id, kind));
-            }
-            Some(ListRef { list_id: id, level })
-        });
+        // Liste üyeliği `number_paragraph`'ta, belge sırasıyla verilir.
+        let list = None;
 
         ParaProps {
             alignment: p.alignment.unwrap_or_default(),
@@ -1990,6 +2343,221 @@ impl<'a> BodyBuilder<'a> {
             style_name: style.clone(),
             contextual_spacing: p.contextual.unwrap_or(false),
         }
+    }
+
+    /// Numaralı paragrafa Word'ün gösterdiği etiketi verir.
+    ///
+    /// Word'ün sayaçları belge sırasıyla yürütülür (ECMA-376 §17.9): aynı soyut
+    /// listeyi paylaşan `w:num`'lar numarayı sürdürür, `startOverride` yeniden
+    /// başlatır, bir düzey ilerleyince alt düzeyler baştan başlar (`w:lvlRestart`
+    /// başka bir şey söylemiyorsa), `w:isLgl` bütün sayaçları ondalık gösterir.
+    ///
+    /// Düzey UDF'te birebir aynı görünen bir türe karşılık geliyor ve Word'ün
+    /// numarası UDF listesinin kendi sırasıyla aynıysa paragraf UDF listesi olur.
+    /// Değilse Word'ün gösterdiği etiket paragrafın başına METİN olarak yazılır,
+    /// paragraf düzeyin girintisini alır ve bu bildirilir: "1." gösteren bir UDF
+    /// listesi, Word'de "3.2" ya da "5." olan bir maddeyi sessizce başka bir
+    /// numarayla yayımlamamalı.
+    fn number_paragraph(
+        &mut self,
+        style: &Option<String>,
+        direct: &PartialPara,
+        mark: &PartialRun,
+        p: &mut Paragraph,
+    ) {
+        let (numbering, styles) = (self.numbering, self.styles);
+        let (mut resolved, _) = styles.resolve(style.as_deref());
+        resolved.overlay(direct);
+        let Some(num_id) = resolved.num_id.filter(|n| *n != 0) else {
+            return;
+        };
+        // Tanımsız bir `numId`'ye Word numara koymaz; eskiden "1." uyduruluyordu.
+        let Some(num) = numbering.nums.get(&num_id) else {
+            return;
+        };
+        let linked_style = style.as_deref().or(styles.default_para_style.as_deref());
+        let ilvl = resolved
+            .num_level
+            .or_else(|| linked_style.and_then(|s| numbering.level_of_style(num, s, styles)))
+            .unwrap_or(0)
+            .min(8);
+        let Some(level) = numbering.level(num, ilvl, styles) else {
+            return;
+        };
+        let levels: Vec<Option<&NumLevel>> =
+            (0..9).map(|k| numbering.level(num, k, styles)).collect();
+        let starts: [i64; 9] = std::array::from_fn(|k| numbering.start(num, k as u32, styles));
+
+        // Word'ün sayacı.
+        let group = if num.overridden {
+            CounterGroup::Num(num_id)
+        } else {
+            CounterGroup::Abstract(num.abstract_id)
+        };
+        let k = ilvl as usize;
+        let counters = self.num_state.word.entry(group).or_insert([None; 9]);
+        counters[k] = Some(counters[k].map_or(starts[k], |v| v.saturating_add(1)));
+        for (m, slot) in counters.iter_mut().enumerate().skip(k + 1) {
+            // `w:lvlRestart`: düzey m, (1 tabanlı) bu düzey ya da daha üstü
+            // kullanılınca baştan başlar; 0 = hiç. Kendisinden derin bir düzeyi
+            // gösteriyorsa yok sayılır.
+            let restart_after = match levels[m].and_then(|l| l.restart) {
+                Some(0) => continue,
+                Some(v) if v > 0 && (v as usize) <= m => v as usize,
+                _ => m,
+            };
+            if k < restart_after {
+                *slot = None;
+            }
+        }
+        let values = *counters;
+        let (label, exact) = word_label(level, &levels, &values, &starts);
+        let bullet = level.fmt() == "bullet";
+
+        // UDF'te birebir aynı görünüyor mu?
+        let lv = ilvl + 1;
+        if let Some(kind) = native_kind(level, ilvl) {
+            let udf_next = self
+                .used_num
+                .get(&group)
+                .and_then(|id| self.num_state.udf.get(id))
+                .map_or(1, |c| c[lv as usize] + 1);
+            if bullet || values[k] == Some(udf_next) {
+                let id = match self.used_num.get(&group) {
+                    Some(id) => *id,
+                    None => {
+                        let id = self.lists.len() as u32 + 1;
+                        self.used_num.insert(group, id);
+                        id
+                    }
+                };
+                match self.lists.iter_mut().find(|d| d.list_id == id) {
+                    Some(def) => {
+                        if !def.levels.iter().any(|(l, _)| *l == lv) {
+                            def.levels.push((lv, kind));
+                        }
+                    }
+                    None => {
+                        let mut def = ListDef::new(id, kind);
+                        def.levels.push((lv, kind));
+                        self.lists.push(def);
+                    }
+                }
+                let c = self.num_state.udf.entry(id).or_insert([0; 10]);
+                c[lv as usize] += 1;
+                for deeper in c.iter_mut().skip(lv as usize + 1) {
+                    *deeper = 0;
+                }
+                p.props.list = Some(ListRef {
+                    list_id: id,
+                    level: lv,
+                });
+                return;
+            }
+        }
+
+        // Word'ün gösterdiği etiket metin olarak. Paragraf, Word'deki gibi
+        // düzeyin girintisini alır: stil → düzey → doğrudan biçim.
+        let (base, _) = styles.resolve(style.as_deref());
+        let (mut left, mut right, mut first) = (None, None, None::<f32>);
+        let mut tabs = base.tabs.clone();
+        for layer in [&base, &level.para, direct] {
+            left = layer.left.or(left);
+            right = layer.right.or(right);
+            // `firstLine` ile `hanging` aynı özelliğin iki yönüdür; üst katman
+            // hangisini söylerse alttakinin ikisini de geçersiz kılar.
+            if let Some(h) = layer.hanging {
+                first = Some(-h);
+            } else if let Some(f) = layer.first_line {
+                first = Some(f);
+            }
+            if layer.tabs.is_some() {
+                tabs = layer.tabs.clone();
+            }
+        }
+        let left = left.unwrap_or(0.0);
+        let first = first.unwrap_or(0.0);
+        let mut tabs = tabs.unwrap_or_default();
+        if level.suffix == LabelSuffix::Tab
+            && first < 0.0
+            && !tabs
+                .iter()
+                .any(|t| t.pos_pt > left + first + 0.01 && t.pos_pt <= left + 0.01)
+        {
+            // Asılı girintide Word, etiketten sonraki sekmeyi gövdenin başladığı
+            // yere götürür (örtük sekme durağı).
+            tabs.push(TabStop {
+                pos_pt: left,
+                align: TabAlign::Left,
+            });
+            tabs.sort_by(|a, b| a.pos_pt.total_cmp(&b.pos_pt));
+        }
+        p.props.left_indent_pt = left;
+        p.props.right_indent_pt = right.unwrap_or(0.0);
+        p.props.first_line_indent_pt = first.max(0.0);
+        p.props.hanging_pt = (-first).max(0.0);
+        p.props.tab_stops = tabs;
+
+        // Boş etiket (`numFmt` "none", boş `lvlText`): Word numara göstermez;
+        // uydurulmaz.
+        if label.is_empty() {
+            return;
+        }
+
+        let mut run = self.partial_run(style, mark);
+        run.overlay(&level.run);
+        let caps = run.caps == Some(true);
+        let mut props = run.into_props();
+        let mut text = if caps { turkish_upper(&label) } else { label };
+        if bullet {
+            let (glyph, keep_font) = bullet_glyph(&text, level.run.family.as_deref());
+            if !keep_font && props.font_family.as_deref().is_some_and(is_symbol_font) {
+                props.font_family = None;
+            }
+            text = glyph;
+        }
+        let detail = if text.trim().is_empty() {
+            // Boşluktan ibaret işaret: görünmez, ama sekmesiyle metni kaydırır.
+            "görünmeyen liste işareti metin olarak yazıldı".to_string()
+        } else if bullet {
+            format!("“{}” madde imi metin olarak yazıldı", text.trim())
+        } else if native_kind(level, ilvl).is_some() && starts[k] != 1 {
+            format!("başlangıç {}: numara metin olarak yazıldı", starts[k])
+        } else if native_kind(level, ilvl).is_some() {
+            format!(
+                "“{}” numarası Word'deki sırasıyla metin olarak yazıldı",
+                label_sample(level, &levels)
+            )
+        } else {
+            format!(
+                "“{}” numarası metin olarak yazıldı",
+                label_sample(level, &levels)
+            )
+        };
+        self.warn
+            .push(Warning::new(WarningCode::ListNumberingApproximated).detail(detail));
+        if !exact {
+            self.warn.push(
+                Warning::new(WarningCode::ListNumberingApproximated)
+                    .detail(format!("{} biçimi ondalık sayıyla yazıldı", level.fmt())),
+            );
+        }
+        let mut label_runs = Vec::with_capacity(2);
+        match level.suffix {
+            LabelSuffix::Tab => {
+                label_runs.push(Run::Text {
+                    text,
+                    props: props.clone(),
+                });
+                label_runs.push(Run::Tab { props });
+            }
+            LabelSuffix::Space => label_runs.push(Run::Text {
+                text: format!("{text} "),
+                props,
+            }),
+            LabelSuffix::Nothing => label_runs.push(Run::Text { text, props }),
+        }
+        p.runs.splice(0..0, label_runs);
     }
 }
 
