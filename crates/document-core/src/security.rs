@@ -24,6 +24,10 @@ pub const MAX_TOTAL_UNCOMPRESSED: u64 = 512 * 1024 * 1024;
 pub const MAX_ENTRY_UNCOMPRESSED: u64 = 128 * 1024 * 1024;
 /// Entries an archive may contain.
 pub const MAX_ENTRIES: usize = 4_096;
+/// Beyanından büyük açılan bir girdinin bozuk mu bomba mı olduğunu anlamak için
+/// beyanın iki katına ek olarak okunabilecek en büyük pay
+/// (bkz. [`ArchiveBudget::read_entry_capped`]).
+pub const OVERRUN_PROBE: u64 = 1024 * 1024;
 /// Maximum ratio of decompressed to compressed bytes before we call it a bomb.
 pub const MAX_COMPRESSION_RATIO: u64 = 200;
 /// Below this, a high ratio is unremarkable (tiny highly-compressible XML).
@@ -164,8 +168,16 @@ impl ArchiveBudget {
     /// `cap` ile kesmek yetmiyordu. 100 bayt beyan edip 120 MiB'a açılan 16
     /// üst bilgi parçası, her biri girdi sınırının altında kaldığı için
     /// 1,9 MB'lık bir dosyadan 2,3 GB bellek tüketti; toplam sınıra yalnız
-    /// BEYANLAR sayılıyordu. Geçerli bir ZIP girdisi beyanından büyük açılmaz,
-    /// açılan girdi yalan söylüyordur ve bir bayt ötesinde reddedilir.
+    /// BEYANLAR sayılıyordu. Geçerli bir ZIP girdisi beyanından büyük açılmaz;
+    /// büyük açılan girdi kabul edilmez.
+    ///
+    /// Beyanından büyük açılan girdi ya bozuktur ya bombadır. Deflate akışında
+    /// tek bir bayt değişince çıktı da uzayabilir (denetimin `crc.udf`'i
+    /// 52 212 bayt beyan edip daha uzun açılıyordu); bunu "güvenlik sınırı"
+    /// diye anlatmak yanlış olurdu. Ayırmak için beyanın ötesine sınırlı bir
+    /// pay kadar okunur ([`OVERRUN_PROBE`]; en çok beyanın iki katı + 1 MiB):
+    /// akış o payın içinde biterse girdi bozuktur (biçimin hata kodu), bitmezse
+    /// bombadır (UNSAFE_ARCHIVE). Bellek iki durumda da sınırlıdır.
     pub fn read_entry_capped<R: std::io::Read>(
         &mut self,
         mut reader: R,
@@ -174,18 +186,23 @@ impl ArchiveBudget {
     ) -> Result<Vec<u8>> {
         use std::io::Read as _;
         let remaining = self.total_limit.saturating_sub(self.actual_uncompressed);
-        let limit = declared.min(cap).min(remaining);
-        let mut buf = Vec::with_capacity(limit.min(16 * 1024 * 1024) as usize);
+        // Hiçbir durumda bunun ötesi okunmaz.
+        let hard = cap.min(remaining);
+        let probe = declared
+            .saturating_mul(2)
+            .saturating_add(OVERRUN_PROBE)
+            .min(hard);
+        let mut buf = Vec::with_capacity(declared.min(hard).min(16 * 1024 * 1024) as usize);
         let read = reader
             .by_ref()
-            .take(limit.saturating_add(1))
+            .take(probe.saturating_add(1))
             .read_to_end(&mut buf)
             .map_err(|e| ConvError::new(self.corrupt, format!("archive entry unreadable: {e}")))?
             as u64;
-        if read > limit {
-            return Err(ConvError::unsafe_archive(if read > declared {
-                format!("archive entry inflates past its declared {declared} bytes")
-            } else if read > cap {
+        if read > probe {
+            return Err(ConvError::unsafe_archive(if probe < hard {
+                format!("archive entry inflates far past its declared {declared} bytes")
+            } else if hard == cap {
                 format!("archive entry exceeds {cap} bytes when decompressed")
             } else {
                 format!(
@@ -193,6 +210,12 @@ impl ArchiveBudget {
                     self.total_limit
                 )
             }));
+        }
+        if read > declared {
+            return Err(ConvError::new(
+                self.corrupt,
+                format!("archive entry is damaged: {read} bytes inflated, {declared} declared"),
+            ));
         }
         self.actual_uncompressed = self.actual_uncompressed.saturating_add(read);
         Ok(buf)
@@ -412,18 +435,34 @@ mod tests {
     }
 
     #[test]
-    fn a_lying_entry_is_cut_one_byte_past_its_declaration() {
+    fn a_lying_entry_is_cut_shortly_past_its_declaration() {
         // OR-02: 100 bayt beyan eden girdi gerçekte sınırsız açılıyor.
         // Eskiden okuma girdi sınırına (128 MiB) kadar sürüyordu; şimdi
-        // beyanın bir bayt ötesinde durur.
+        // beyanın kısa bir payı (iki katı + 1 MiB) ötesinde durur.
         let mut b = ArchiveBudget::new();
         let mut endless = Endless { pulled: 0 };
         let e = b
             .read_entry_capped(&mut endless, 100, MAX_ENTRY_UNCOMPRESSED)
             .unwrap_err();
         assert_eq!(e.code, ErrorCode::UnsafeArchive);
-        assert!(endless.pulled <= 101, "{} bayt açıldı", endless.pulled);
+        assert!(
+            endless.pulled <= 2 * 100 + OVERRUN_PROBE + 1,
+            "{} bayt açıldı",
+            endless.pulled
+        );
         assert_eq!(b.actual_uncompressed(), 0);
+    }
+
+    #[test]
+    fn an_entry_that_ends_just_past_its_declaration_is_damaged_not_hostile() {
+        // Deflate akışında değişen tek bir bayt çıktıyı biraz uzatabilir: bu
+        // bozuk bir dosyadır, bomba değil. Kullanıcıya "güvenlik sınırı"
+        // değil, "bozulmuş" denmeli.
+        let data = vec![b'x'; 600];
+        let e = ArchiveBudget::for_format(ErrorCode::InvalidUdf)
+            .read_entry_capped(data.as_slice(), 500, MAX_ENTRY_UNCOMPRESSED)
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::InvalidUdf);
     }
 
     #[test]

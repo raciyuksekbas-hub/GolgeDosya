@@ -214,6 +214,37 @@ fn a_udf_content_that_inflates_past_its_declared_size_is_refused() {
     assert_eq!(code(to_docx(&bomb)), "UNSAFE_ARCHIVE");
 }
 
+#[test]
+fn an_entry_that_only_slightly_overruns_its_declaration_is_damaged_not_hostile() {
+    // Denetimin crc.udf'i: deflate akışındaki tek bir bayt çıktıyı beyandan
+    // biraz uzun yapıyor. Bu bir bomba değil, bozuk dosyadır: kullanıcıya
+    // "güvenlik sınırını aşıyor" değil, biçimin "bozulmuş" cümlesi söylenir.
+    let xml = udf_xml(
+        "Dilekçe\n",
+        r#"<paragraph><content startOffset="0" length="8"/></paragraph>"#,
+    );
+    let n = xml.len() as u32;
+    let zip = zip_of(
+        &[("content.xml", xml.into_bytes())],
+        zip::CompressionMethod::Deflated,
+    );
+    assert_eq!(
+        code(to_docx(&lie_about_size(zip, "content.xml", n - 10))),
+        "INVALID_UDF"
+    );
+
+    let doc = document_with_header();
+    let n = doc.len() as u32;
+    let zip = zip_of(
+        &[("word/document.xml", doc)],
+        zip::CompressionMethod::Deflated,
+    );
+    assert_eq!(
+        code(to_udf(&lie_about_size(zip, "word/document.xml", n - 10))),
+        "INVALID_DOCX"
+    );
+}
+
 // ------------------------------------------------------------ UDF: başvuru çoğaltma
 
 #[test]
