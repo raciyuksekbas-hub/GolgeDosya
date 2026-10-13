@@ -430,15 +430,29 @@ impl<'a> UdfWriter<'a> {
             ));
         }
         if !p.tab_stops.is_empty() {
-            let mut stops: Vec<f32> = p.tab_stops.iter().map(|t| udf_round(t.pos_pt)).collect();
-            if p.tab_stops.iter().any(|t| t.align != TabAlign::Left) {
-                self.warn.warn(WarningCode::TabAlignmentApproximated);
+            // `konum:hiza:dolgu` (Swing `TabStop`). Orta (2) ve sağ (1) gerçek UYAP
+            // belgelerinde var; eskiden her durak `:0:0` yazılıyor ve gerçek Word
+            // belgelerinin yarısında gereksiz bir yaklaşım uyarısı çıkıyordu.
+            let mut stops: Vec<(f32, u8)> = Vec::with_capacity(p.tab_stops.len());
+            for t in &p.tab_stops {
+                let code = match t.align {
+                    TabAlign::Left => tab_align::LEFT,
+                    TabAlign::Center => tab_align::CENTER,
+                    TabAlign::Right => tab_align::RIGHT,
+                    // Ondalık kod (4) hiçbir gerçek UDF'te görülmedi; UYAP'ın onu
+                    // nasıl çizdiği doğrulanmadan yazılmaz: sol durak, söylenerek.
+                    TabAlign::Decimal => {
+                        self.warn.warn(WarningCode::TabAlignmentApproximated);
+                        tab_align::LEFT
+                    }
+                };
+                stops.push((udf_round(t.pos_pt), code));
             }
-            stops.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
-            stops.dedup();
+            stops.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
+            stops.dedup_by(|x, y| x.0 == y.0);
             let s: Vec<String> = stops
                 .iter()
-                .map(|v| format!("{}:0:0", udf_float(*v)))
+                .map(|(v, code)| format!("{}:{code}:0", udf_float(*v)))
                 .collect();
             a.push_str(&format!(" TabSet=\"{}\"", s.join(",")));
         }

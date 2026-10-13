@@ -28,6 +28,16 @@ pub mod align {
     pub const JUSTIFIED: u8 = 3;
 }
 
+/// `TabSet` girdisi `konum:hiza:dolgu` biçimindedir; hiza `javax.swing.text.TabStop`
+/// sabitidir. Gerçek derlemde 0 (sol), 2 (orta; 97 belge) ve 1 (sağ) görüldü; dolgu
+/// her zaman 0. Ondalık (4) Swing'de var ama hiçbir gerçek UDF'te görülmedi.
+pub mod tab_align {
+    pub const LEFT: u8 = 0;
+    pub const RIGHT: u8 = 1;
+    pub const CENTER: u8 = 2;
+    pub const DECIMAL: u8 = 4;
+}
+
 /// `paperOrientation` — `java.awt.print.PageFormat` (EXP-009).
 pub mod orientation {
     pub const LANDSCAPE: u8 = 0;

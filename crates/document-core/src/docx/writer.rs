@@ -22,6 +22,9 @@ use crate::xml::{esc_attr, esc_text, sanitize_text};
 const MAX_TAB_STOPS: usize = 64;
 /// Upper bound Word accepts for `w:tab/@w:pos` and indent measures, in twips (22 inches).
 const MAX_POSITION_TWIPS: i64 = 31_680;
+/// Bir sekme durağının metin sütununa "erişilebilir" sayılması için sağ kenarda
+/// tanınan yuvarlama payı, twip (bkz. `ppr`).
+const TAB_EDGE_TOLERANCE_TWIPS: i64 = 2;
 
 struct Media {
     name: String,
@@ -653,7 +656,11 @@ fn ppr(p: &ParaProps, extra: Option<&str>, text_width_tw: i64, warn: &mut Warnin
     if !p.tab_stops.is_empty() {
         // A stop beyond the text column can never be reached, so discarding it changes
         // nothing the reader would see. Only losing a *reachable* stop is a fidelity cost.
-        let limit = text_width_tw.clamp(1, MAX_POSITION_TWIPS);
+        //
+        // Sınırda yuvarlama payı: UYAP kenar payları (70,875 pt) twip'e yuvarlanınca
+        // metin genişliği 9071 twip çıkar; tam sağ kenardaki durak (453,6 pt = 9072
+        // twip) 1 twip farkla "erişilemez" sayılıp düşüyordu.
+        let limit = (text_width_tw + TAB_EDGE_TOLERANCE_TWIPS).clamp(1, MAX_POSITION_TWIPS);
         let mut stops: Vec<(i64, TabAlign)> = p
             .tab_stops
             .iter()
@@ -672,9 +679,9 @@ fn ppr(p: &ParaProps, extra: Option<&str>, text_width_tw: i64, warn: &mut Warnin
         }
 
         if !stops.is_empty() {
-            if p.tab_stops.iter().any(|t| t.align != TabAlign::Left) {
-                warn.warn(WarningCode::TabAlignmentApproximated);
-            }
+            // Word sol/orta/sağ/ondalık hizanın dördünü de taşır: burada yaklaşım
+            // yok. (Eskiden UDF okuyucusu her durağı sol yaptığı için bu uyarı hiç
+            // tetiklenmiyordu; hiza okununca her orta durak yanlışlıkla uyarırdı.)
             s.push_str("<w:tabs>");
             for (pos, align) in &stops {
                 let v = match align {

@@ -182,7 +182,10 @@ struct PartialPara {
     before: Option<f32>,
     after: Option<f32>,
     line_extra: Option<f32>,
+    /// Bu katmanın EKLEDİĞİ duraklar (bkz. `overlay`).
     tabs: Option<Vec<TabStop>>,
+    /// Bu katmanın `w:val="clear"` ile sildiği, alttan gelen durak konumları (pt).
+    tab_clears: Vec<f32>,
     num_id: Option<u32>,
     num_level: Option<u32>,
     contextual: Option<bool>,
@@ -281,8 +284,26 @@ impl PartialPara {
         if o.line_extra.is_some() {
             self.line_extra = o.line_extra;
         }
-        if o.tabs.is_some() {
-            self.tabs = o.tabs.clone();
+        // Word'de durak mirası BİRLEŞİMDİR: alttan gelen duraklar ∪ bu katmanınkiler,
+        // eksi bu katmanda `clear` ile silinen konumlar; aynı konumda üstteki kazanır.
+        // Eskiden paragrafın listesi stilinkinin YERİNE geçiyordu.
+        if o.tabs.is_some() || !o.tab_clears.is_empty() {
+            let mine = o.tabs.as_deref().unwrap_or(&[]);
+            let mut merged = self.tabs.take().unwrap_or_default();
+            merged.retain(|t| {
+                !o.tab_clears
+                    .iter()
+                    .copied()
+                    .chain(mine.iter().map(|m| m.pos_pt))
+                    .any(|pos| same_tab_pos(pos, t.pos_pt))
+            });
+            merged.extend_from_slice(mine);
+            merged.sort_by(|a, b| {
+                a.pos_pt
+                    .partial_cmp(&b.pos_pt)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            self.tabs = Some(merged);
         }
         if o.num_id.is_some() {
             self.num_id = o.num_id;
@@ -294,6 +315,11 @@ impl PartialPara {
             self.contextual = o.contextual;
         }
     }
+}
+
+/// İki durak konumu aynı twip mi? (Konumlar twip/20 olarak saklanır.)
+fn same_tab_pos(a: f32, b: f32) -> bool {
+    (a - b).abs() < 0.025
 }
 
 struct Styles {
@@ -851,6 +877,12 @@ fn apply_ppr_child(e: &BytesStart, p: &mut PartialPara) {
         b"tab" => {
             if let Some(pos) = af(e, "pos") {
                 let align = match a(e, "val").as_deref() {
+                    // `clear` bir durak DEĞİLDİR: alttan gelen durağı siler. Eskiden
+                    // sol durak oluyordu (gerçek 7 belgede 67 silinmiş durak UDF'te).
+                    Some("clear") => {
+                        p.tab_clears.push(twips_to_pt(pos));
+                        return;
+                    }
                     Some("center") => TabAlign::Center,
                     Some("right") | Some("end") => TabAlign::Right,
                     Some("decimal") => TabAlign::Decimal,

@@ -853,19 +853,39 @@ fn parse_para_props(e: &BytesStart, ctx: &mut Ctx) -> ParaProps {
     };
 
     if let Some(ts) = get("TabSet") {
-        let mut stops: Vec<f32> = ts
+        // `konum:hiza:dolgu` (Swing `TabStop`). Eskiden yalnız konum okunuyor, her
+        // durak SOL yapılıyordu: gerçek 69 belgede, sekme içeren 435 paragrafta 813
+        // orta/sağ durak (etiket/değer bloklarının ortalanmış ":" sütunu) kayıptı.
+        let mut unknown_align = false;
+        let mut stops: Vec<TabStop> = ts
             .split(',')
-            .filter_map(|s| s.split(':').next()?.trim().parse::<f32>().ok())
-            .collect();
-        stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        stops.dedup_by(|a, b| (*a - *b).abs() < 0.01);
-        p.tab_stops = stops
-            .into_iter()
-            .map(|pos| TabStop {
-                pos_pt: pos,
-                align: TabAlign::Left,
+            .filter_map(|s| {
+                let mut f = s.split(':');
+                let pos_pt = f.next()?.trim().parse::<f32>().ok()?;
+                let align = match f.next().map(|c| c.trim().parse::<u8>()) {
+                    None | Some(Ok(tab_align::LEFT)) => TabAlign::Left,
+                    Some(Ok(tab_align::RIGHT)) => TabAlign::Right,
+                    Some(Ok(tab_align::CENTER)) => TabAlign::Center,
+                    Some(Ok(tab_align::DECIMAL)) => TabAlign::Decimal,
+                    // Çubuk (5) ya da tanınmayan kod: konum korunur, hiza yaklaşık.
+                    Some(_) => {
+                        unknown_align = true;
+                        TabAlign::Left
+                    }
+                };
+                Some(TabStop { pos_pt, align })
             })
             .collect();
+        stops.sort_by(|a, b| {
+            a.pos_pt
+                .partial_cmp(&b.pos_pt)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        stops.dedup_by(|a, b| (a.pos_pt - b.pos_pt).abs() < 0.01);
+        p.tab_stops = stops;
+        if unknown_align {
+            ctx.warn.warn(WarningCode::TabAlignmentApproximated);
+        }
     }
 
     if let Some(id) = attr(e, "ListId").and_then(|v| v.parse::<u32>().ok()) {
