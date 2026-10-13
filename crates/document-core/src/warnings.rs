@@ -79,6 +79,7 @@ pub enum WarningCode {
     // --- bozuk UDF konumları ---
     TextRangeOverlap,
     TextRangeInvalid,
+    UdfPageNumberApproximated,
 }
 
 impl WarningCode {
@@ -121,6 +122,7 @@ impl WarningCode {
             PageNumberStartDropped => "PAGE_NUMBER_START_DROPPED",
             TextRangeOverlap => "TEXT_RANGE_OVERLAP",
             TextRangeInvalid => "TEXT_RANGE_INVALID",
+            UdfPageNumberApproximated => "UDF_PAGE_NUMBER_APPROXIMATED",
         }
     }
 
@@ -197,6 +199,14 @@ impl WarningCode {
             // Konumu okunamayan ya da tamponun dışına düşen öğe: metni
             // bilinemez. Eskiden konum 0 sayılıp ilk satır yineleniyordu.
             TextRangeInvalid => "Konumu bozuk olduğu için bazı metin parçaları aktarılamadı",
+            // Word → UDF yönü. `PageNumberFieldApproximated`'ın başlığı Word
+            // çıktısını anlatır ("ortalı, ayrı satırda"); bu yönde doğru olmaz.
+            // Numara canlı kalır, ama UYAP'ın yerleşimi (`pageNumber-spec`)
+            // korpusta en sık görülen değerden seçilir: Word'deki yeri ve hizası
+            // korunmuş sayılmaz.
+            UdfPageNumberApproximated => {
+                "Sayfa numarası UYAP'ın otomatik sayfa numarasına çevrildi; yeri ve görünümü yaklaşık"
+            }
         }
     }
 
@@ -210,7 +220,8 @@ impl WarningCode {
             | FormFieldsStaticized
             | LineBreakConverted
             | UnknownFormatVersion
-            | PageNumberFieldApproximated => Info,
+            | PageNumberFieldApproximated
+            | UdfPageNumberApproximated => Info,
 
             // Usable, but a formatting detail is only approximate.
             TabAlignmentApproximated

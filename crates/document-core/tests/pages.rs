@@ -8,7 +8,12 @@
 //!   çıkıyordu; hiçbir uyarı yoktu;
 //! - Word'ün GÖSTERMEDİĞİ üst bilgi çeşitleri (`w:titlePg` kapalıyken "first",
 //!   `w:evenAndOddHeaders` yokken "even") "aktarılamadı" diye KAYIP uyarısı
-//!   veriyordu (9 gerçek belge).
+//!   veriyordu (9 gerçek belge);
+//! - UYAP'ın canlı sayfa numarası (`pageNumber-spec`, gerçek UDF'lerin 140'ında)
+//!   Word'den gelirken üretilmiyordu: Word'ün PAGE/NUMPAGES alanı son görünen
+//!   değerine donuyor, UDF'nin her sayfasında aynı numara yazıyordu (118 gerçek
+//!   Word belgesi); UDF → Word → UDF turu da 137 gerçek canlı numarayı sabit
+//!   "1/1" metnine çeviriyordu.
 //!
 //! Bütün belgeler bu dosyada sentetik olarak kurulur; gerçek dava dosyası yok.
 
@@ -18,7 +23,7 @@ use tavzih_core::convert::{convert_bytes, Direction};
 use tavzih_core::docx;
 use tavzih_core::model::*;
 use tavzih_core::udf;
-use tavzih_core::warnings::{WarningCode, WarningSink};
+use tavzih_core::warnings::{Severity, WarningCode, WarningSink};
 
 const NS: &str = r#"xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#;
 const REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -108,6 +113,18 @@ fn p(inner: &str) -> String {
 
 fn r(text: &str) -> String {
     format!(r#"<w:r><w:t xml:space="preserve">{text}</w:t></w:r>"#)
+}
+
+/// Word'ün "complex field"ı: başlangıç, komut, ayırıcı, son görünen değer, son.
+fn field(instr: &str, cached: &str) -> String {
+    format!(
+        r#"<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> {instr} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>{cached}</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>"#
+    )
+}
+
+/// `w:fldSimple`: komut özniteliktedir, son görünen değer içindeki run'dadır.
+fn simple(instr: &str, cached: &str) -> String {
+    format!(r#"<w:fldSimple w:instr=" {instr} "><w:r><w:t>{cached}</w:t></w:r></w:fldSimple>"#)
 }
 
 fn read_docx(bytes: &[u8]) -> (Document, Vec<WarningCode>) {
@@ -554,4 +571,263 @@ fn an_even_page_header_word_shows_is_reported() {
         "{warns:?}"
     );
     assert_eq!(hf_texts(&doc.sections[0].header), vec!["TEK"]);
+}
+
+// ------------------------------------------------ (c) sayfa numarası → UDF
+
+/// "Sayfa X / Y" alt bilgisi: PAGE ve NUMPAGES alanları UYAP'ın canlı sayfa
+/// numarasına çevrilir. Eskiden son görünen "1 / 3" metne donuyor, UDF'nin her
+/// sayfasında aynı numara yazıyordu (gerçek belgelerin 118'inde).
+#[test]
+fn a_footer_page_x_of_y_becomes_a_live_udf_page_number() {
+    let footer = p(&format!(
+        "{}{}{}{}",
+        r("Sayfa "),
+        field("PAGE", "1"),
+        r(" / "),
+        field("NUMPAGES", "3")
+    ));
+    let d = Docx {
+        body: p(&r("Gövde")),
+        parts: vec![("footer", "default", footer)],
+        ..Default::default()
+    };
+    let (content, warns) = to_udf(&build(&d));
+    let tag = hf_tag(&content, "footer").expect("alt bilgi yok");
+    assert_eq!(
+        attr(&tag, "pageNumber-spec").as_deref(),
+        Some("BSP32_2120"),
+        "{tag}"
+    );
+    assert_eq!(
+        attr(&tag, "pageNumber-seperator").as_deref(),
+        Some(" / "),
+        "{tag}"
+    );
+    assert_eq!(
+        attr(&tag, "pageNumber-foreStr").as_deref(),
+        Some("Sayfa "),
+        "{tag}"
+    );
+    let buf = buffer(&content);
+    assert!(!buf.contains("Sayfa"), "donmuş numara metni kaldı: {buf:?}");
+    assert!(!buf.contains("1 / 3"), "donmuş numara metni kaldı: {buf:?}");
+    assert!(
+        warns.contains(&WarningCode::UdfPageNumberApproximated),
+        "{warns:?}"
+    );
+    assert!(!warns.contains(&WarningCode::FieldFlattened), "{warns:?}");
+    // Numara canlı kaldı; yeri ve biçimi yaklaşık. Bu bir kayıp değildir.
+    assert_eq!(
+        WarningCode::UdfPageNumberApproximated.severity(),
+        Severity::Info
+    );
+}
+
+/// `w:fldSimple` (gerçek belgelerin 21'i yalnız bunu kullanır; eskiden hiçbir uyarı
+/// vermeden donuyordu). Toplam sayfa yoksa UYAP'ın tek numara biçimi.
+#[test]
+fn a_simple_page_field_without_a_total_becomes_a_live_udf_page_number() {
+    let d = Docx {
+        body: p(&r("Gövde")),
+        parts: vec![(
+            "footer",
+            "default",
+            format!(
+                r#"<w:p><w:pPr><w:jc w:val="right"/></w:pPr>{}{}</w:p>"#,
+                r("Sayfa "),
+                simple("PAGE", "1")
+            ),
+        )],
+        ..Default::default()
+    };
+    let (content, warns) = to_udf(&build(&d));
+    let tag = hf_tag(&content, "footer").expect("alt bilgi yok");
+    assert_eq!(
+        attr(&tag, "pageNumber-spec").as_deref(),
+        Some("BSP32_40"),
+        "{tag}"
+    );
+    assert_eq!(attr(&tag, "pageNumber-seperator"), None, "{tag}");
+    assert_eq!(
+        attr(&tag, "pageNumber-foreStr").as_deref(),
+        Some("Sayfa "),
+        "{tag}"
+    );
+    assert!(!buffer(&content).contains("Sayfa"));
+    assert!(
+        warns.contains(&WarningCode::UdfPageNumberApproximated),
+        "{warns:?}"
+    );
+}
+
+/// Üst bilgideki "X / Y": UYAP'ın üst bilgi için yazdığı biçim. Alt bilgideki
+/// diğer metin olduğu gibi kalır; numara paragrafı ayrıca çıkarılır.
+#[test]
+fn a_header_page_x_of_y_keeps_the_other_header_text() {
+    let header = format!(
+        "{}{}",
+        p(&r("Av. Ayşe FATMA")),
+        p(&format!(
+            "{}{}{}",
+            simple("PAGE", "2"),
+            r("/"),
+            simple("NUMPAGES", "5")
+        ))
+    );
+    let d = Docx {
+        body: p(&r("Gövde")),
+        parts: vec![("header", "default", header)],
+        ..Default::default()
+    };
+    let (content, warns) = to_udf(&build(&d));
+    let tag = hf_tag(&content, "header").expect("üst bilgi yok");
+    assert_eq!(
+        attr(&tag, "pageNumber-spec").as_deref(),
+        Some("BSP32_2116"),
+        "{tag}"
+    );
+    assert_eq!(
+        attr(&tag, "pageNumber-seperator").as_deref(),
+        Some("/"),
+        "{tag}"
+    );
+    let buf = buffer(&content);
+    assert!(buf.contains("Av. Ayşe FATMA"), "diğer metin kayboldu");
+    assert!(!buf.contains("2/5"), "donmuş numara kaldı: {buf:?}");
+    assert!(
+        warns.contains(&WarningCode::UdfPageNumberApproximated),
+        "{warns:?}"
+    );
+}
+
+/// Korpusta karşılığı GÖRÜLMEMİŞ biçimler tahmin edilmez: üst bilgide toplam
+/// sayfasız numara, sekmeyle hizalanmış numara, başka alanlar. Bunlar bugünkü
+/// gibi son görünen değerine sabitlenir ve bildirilir.
+#[test]
+fn page_number_shapes_the_corpus_never_shows_stay_frozen_and_reported() {
+    for (kind, inner) in [
+        (
+            "header",
+            p(&format!("{}{}", r("Sayfa "), simple("PAGE", "1"))),
+        ),
+        (
+            "footer",
+            p(&format!(
+                "{}<w:r><w:tab/></w:r>{}",
+                r("Av. Ayşe FATMA"),
+                field("PAGE", "1")
+            )),
+        ),
+        (
+            "footer",
+            p(&format!("{}{}", r("Tarih: "), field("DATE", "12.10.2026"))),
+        ),
+        (
+            "footer",
+            p(&format!("{}{}", field("PAGE", "1"), r(" sayfa"))),
+        ),
+        (
+            "footer",
+            p(&format!("{}{}", field("PAGE \\* ROMAN", "I"), r(""))),
+        ),
+    ] {
+        let d = Docx {
+            body: p(&r("Gövde")),
+            parts: vec![(kind, "default", inner.clone())],
+            ..Default::default()
+        };
+        let (content, warns) = to_udf(&build(&d));
+        let tag = hf_tag(&content, kind).expect("parça yok");
+        assert_eq!(attr(&tag, "pageNumber-spec"), None, "{inner}: {tag}");
+        assert!(
+            warns.contains(&WarningCode::FieldFlattened),
+            "{inner}: {warns:?}"
+        );
+        assert!(
+            !warns.contains(&WarningCode::UdfPageNumberApproximated),
+            "{inner}: {warns:?}"
+        );
+    }
+}
+
+/// GölgeDosya'nın kendi UDF → Word sayfa numarası paragrafı geri döndüğünde AYNI
+/// UYAP özniteliklerine çevrilir (eskiden "1/1" metni olarak dönüyordu; gerçek
+/// UDF'lerin 137'sinde).
+#[test]
+fn the_engines_own_page_number_paragraph_round_trips_to_the_same_attributes() {
+    let with_total = r#" pageNumber-spec="BSP32_2120" pageNumber-seperator="/" pageNumber-fontBold="false" pageNumber-fontItalic="false" pageNumber-fontFace="Arial" pageNumber-fontSize="11" pageNumber-color="-16777216" pageNumber-foreStr="" pageNumber-pageStartNumStr="""#;
+    let without_total = r#" pageNumber-spec="BSP32_40" pageNumber-color="-16777216" pageNumber-fontFace="Arial" pageNumber-fontSize="11" pageNumber-foreStr="" pageNumber-pageStartNumStr="""#;
+    let header_total = r#" pageNumber-spec="BSP32_2116" pageNumber-seperator="/" pageNumber-fontBold="false" pageNumber-fontItalic="false" pageNumber-fontFace="Arial Black" pageNumber-fontSize="9" pageNumber-color="-16777216" pageNumber-foreStr="Dosya" pageNumber-pageStartNumStr="1""#;
+    for (in_header, attrs) in [
+        (false, with_total),
+        (false, without_total),
+        (true, header_total),
+    ] {
+        let src = if in_header {
+            udf(Some((attrs, "")), "Gövde", None)
+        } else {
+            udf(None, "Gövde", Some((attrs, "")))
+        };
+        let tag_name = if in_header { "header" } else { "footer" };
+        let (docx, _) = to_docx(&src);
+        let mut w = WarningSink::new();
+        let back = convert_bytes(&docx, Direction::DocxToUdf, &mut w).unwrap();
+        let codes: Vec<WarningCode> = w.into_vec().iter().map(|x| x.code).collect();
+        let content = content_xml(&back);
+        let tag = hf_tag(&content, tag_name).expect("parça kayboldu");
+        let orig = format!("<x{attrs}>");
+        for key in [
+            "pageNumber-spec",
+            "pageNumber-seperator",
+            "pageNumber-fontBold",
+            "pageNumber-fontItalic",
+            "pageNumber-fontFace",
+            "pageNumber-fontSize",
+            "pageNumber-color",
+            "pageNumber-foreStr",
+            "pageNumber-pageStartNumStr",
+        ] {
+            assert_eq!(attr(&tag, key), attr(&orig, key), "{key}: {tag}");
+        }
+        // UYAP'ın kendi biçimi: numara metin değildir, parça tek boş paragraftır.
+        let d = read_udf(&back);
+        let part = if in_header {
+            &d.sections[0].header
+        } else {
+            &d.sections[0].footer
+        };
+        assert_eq!(hf_texts(part), vec![String::new()], "{attrs}");
+        assert!(!codes.contains(&WarningCode::FieldFlattened), "{codes:?}");
+    }
+}
+
+/// "İlk sayfa farklı" + iki AYNI sayfa numarası alt bilgisi: Word iki parçaya ayrı
+/// son görünen değer yazar ("1" ve "2"). Numara canlı kalınca iki parça aynıdır;
+/// eskiden donmuş rakamlar farklı olduğu için "aktarılamadı" (KAYIP) çıkıyordu
+/// (gerçek 3 belge).
+#[test]
+fn first_and_default_footers_differing_only_in_cached_page_digits_are_one_footer() {
+    let d = Docx {
+        body: p(&r("Gövde")),
+        sect: "<w:titlePg/>".into(),
+        parts: vec![
+            ("footer", "default", p(&field("PAGE", "2"))),
+            ("footer", "first", p(&field("PAGE", "1"))),
+        ],
+        ..Default::default()
+    };
+    let (content, warns) = to_udf(&build(&d));
+    let tag = hf_tag(&content, "footer").expect("alt bilgi yok");
+    assert_eq!(
+        attr(&tag, "pageNumber-spec").as_deref(),
+        Some("BSP32_40"),
+        "{tag}"
+    );
+    assert_eq!(attr(&tag, "stopPage"), None, "{tag}");
+    assert_eq!(attr(&tag, "startPage"), None, "{tag}");
+    assert!(
+        !warns.contains(&WarningCode::HeaderFooterVariantDropped),
+        "{warns:?}"
+    );
 }

@@ -490,6 +490,7 @@ pub fn read_docx(bytes: &[u8], warn: &mut WarningSink) -> Result<Document> {
         used_num: HashMap::new(),
         num_state: NumState::default(),
         active_part: None,
+        page_number: None,
     };
     let (mut blocks, sect) = b.walk_body(&doc_xml)?;
     apply_contextual_spacing(&mut blocks);
@@ -945,6 +946,167 @@ struct HostParagraph {
 /// Açık alanlardan herhangi birinin KOD kısmında mıyız?
 fn in_field_code(stack: &[bool]) -> bool {
     stack.iter().any(|in_code| *in_code)
+}
+
+/// UDF `<header>`/`<footer>` üzerindeki `pageNumber-*` öznitelikleri, yazılış sırasıyla.
+type PageNumberAttrs = Vec<(String, String)>;
+
+/// Paragraftaki en dıştaki bir alan: komutu ve son görünen değerinin `runs`
+/// içindeki aralığı (`start..end`).
+#[derive(Default)]
+struct FieldSpan {
+    instr: String,
+    start: Option<usize>,
+    end: Option<usize>,
+}
+
+/// Alan komutu bir sayfa numarası mı: yalnız `PAGE` ya da `NUMPAGES`, ve yalnız
+/// biçimi değiştirmeyen anahtarlarla (`\* MERGEFORMAT`, `\* Arabic`). `\* ROMAN`
+/// gibi bir biçimin UYAP karşılığı bilinmediği için tanınmaz.
+fn page_field_kind(instr: &str) -> Option<&'static str> {
+    let mut tokens = instr.split_whitespace();
+    let kind = match tokens.next()?.to_ascii_uppercase().as_str() {
+        "PAGE" => "PAGE",
+        "NUMPAGES" => "NUMPAGES",
+        _ => return None,
+    };
+    while let Some(t) = tokens.next() {
+        let format = match t.strip_prefix("\\*") {
+            Some("") => tokens.next()?,
+            Some(rest) => rest,
+            None => return None,
+        };
+        if !matches!(
+            format.to_ascii_uppercase().as_str(),
+            "MERGEFORMAT" | "ARABIC" | "CHARFORMAT"
+        ) {
+            return None;
+        }
+    }
+    Some(kind)
+}
+
+/// Üst/alt bilgideki paragraf yalnız [ön metin] + PAGE [+ ayırıcı + NUMPAGES]
+/// [+ boşluk] taşıyorsa: UYAP'ın canlı sayfa numarası ve `pageNumber-*`
+/// öznitelikleri.
+///
+/// `pageNumber-spec`'in kodlaması bilinmiyor; yalnız gerçek UDF'lerde görülen
+/// değerler, görüldükleri öznitelik kümesiyle yazılır: alt bilgide "X / Y" →
+/// BSP32_2120 (100 belge), alt bilgide "X" → BSP32_40 (18), üst bilgide "X / Y" →
+/// BSP32_2116 (3). Karşılığı görülmemiş biçim (üst bilgide yalnız "X", sekmeyle
+/// hizalanmış numara, başka alanlar) çevrilmez; son görünen değerinde kalır.
+fn page_number_field(
+    p: &Paragraph,
+    fields: &[FieldSpan],
+    fallback: &RunProps,
+    is_header: bool,
+) -> Option<(PageNumberField, PageNumberAttrs)> {
+    // Yalnız düz metin run'larından oluşan aralığın metni.
+    let literal = |from: usize, to: usize| -> Option<String> {
+        p.runs
+            .get(from..to)?
+            .iter()
+            .map(|r| match r {
+                Run::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect()
+    };
+    let span = |f: &FieldSpan| match (f.start, f.end) {
+        (Some(s), Some(e)) if s <= e => Some((s, e)),
+        _ => None,
+    };
+    let (page, total) = match fields {
+        [page] => (page, None),
+        [page, total] => (page, Some(total)),
+        _ => return None,
+    };
+    if page_field_kind(&page.instr)? != "PAGE" {
+        return None;
+    }
+    let (page_start, page_end) = span(page)?;
+    let prefix = literal(0, page_start)?;
+    let (separator, tail_from) = match total {
+        None => (None, page_end),
+        Some(t) => {
+            if page_field_kind(&t.instr)? != "NUMPAGES" {
+                return None;
+            }
+            let (total_start, total_end) = span(t)?;
+            let sep = literal(page_end, total_start)?;
+            if sep.trim().is_empty() {
+                return None;
+            }
+            (Some(sep), total_end)
+        }
+    };
+    if !literal(tail_from, p.runs.len())?.trim().is_empty() {
+        return None;
+    }
+    let spec = match (is_header, separator.is_some()) {
+        (false, true) => "BSP32_2120",
+        (false, false) => "BSP32_40",
+        (true, true) => "BSP32_2116",
+        (true, false) => return None,
+    };
+
+    // Numaranın görünümü: alanın son görünen değerinin run'ı, yoksa ön metninki.
+    let props = p.runs[page_start..page_end]
+        .iter()
+        .chain(&p.runs[..page_start])
+        .find_map(|r| match r {
+            Run::Text { props, .. } => Some(props),
+            _ => None,
+        })
+        .unwrap_or(fallback);
+    let face = props
+        .font_family
+        .clone()
+        .or_else(|| fallback.font_family.clone())
+        .unwrap_or_else(|| FontSpec::default().family);
+    let size = props
+        .font_size_pt
+        .or(fallback.font_size_pt)
+        .unwrap_or(FontSpec::default().size_pt)
+        .round();
+    let color = props.color.unwrap_or(Color::BLACK);
+    // Gerçek UDF'lerde alt bilgide boş, üst bilgide "1".
+    let start = if is_header { "1" } else { "" };
+    let kv = |k: &str, v: String| (format!("pageNumber-{k}"), v);
+    let attrs = match &separator {
+        Some(sep) => vec![
+            kv("spec", spec.into()),
+            kv("seperator", sep.clone()),
+            kv("fontBold", props.bold.to_string()),
+            kv("fontItalic", props.italic.to_string()),
+            kv("fontFace", face.clone()),
+            kv("fontSize", format!("{}", size as i32)),
+            kv("color", color.to_java_argb().to_string()),
+            kv("foreStr", prefix.clone()),
+            kv("pageStartNumStr", start.into()),
+        ],
+        // BSP32_40 örneklerinde kalın/italik ve ayırıcı öznitelikleri yoktur.
+        None => vec![
+            kv("spec", spec.into()),
+            kv("color", color.to_java_argb().to_string()),
+            kv("fontFace", face.clone()),
+            kv("fontSize", format!("{}", size as i32)),
+            kv("foreStr", prefix.clone()),
+            kv("pageStartNumStr", start.into()),
+        ],
+    };
+    let field = PageNumberField {
+        prefix: (!prefix.is_empty()).then_some(prefix),
+        start_at: is_header.then_some(1),
+        bold: separator.is_some() && props.bold,
+        italic: separator.is_some() && props.italic,
+        separator,
+        font_family: Some(face),
+        font_size_pt: Some(size),
+        color: Some(color),
+        raw_spec: Some(spec.into()),
+    };
+    Some((field, attrs))
 }
 
 /// Türkçe büyük harf: `i` → `İ`, `ı` → `I` (Word, Türkçe metinde böyle gösterir).
@@ -1515,6 +1677,16 @@ struct BodyBuilder<'a> {
     /// Part whose relationship scope is currently active (`header1.xml`), or None for the
     /// document part.
     active_part: Option<String>,
+    /// Üst/alt bilgi okunurken: UYAP'ın canlı sayfa numarasına çevrilen paragraf.
+    page_number: Option<PageNumberProbe>,
+}
+
+/// Bir üst/alt bilgi parçasında sayfa numarası paragrafı arayışı.
+struct PageNumberProbe {
+    is_header: bool,
+    /// Bulunan numara, UDF öznitelikleri ve paragrafın biçimi (parça boş kalırsa
+    /// yerine konan boş paragraf için).
+    found: Option<(PageNumberField, PageNumberAttrs, ParaProps)>,
 }
 
 impl<'a> BodyBuilder<'a> {
@@ -1549,7 +1721,7 @@ impl<'a> BodyBuilder<'a> {
         }
 
         let mut out = match default {
-            Some((part, x)) => Some(self.walk_header_footer(&part, &x)?),
+            Some((part, x)) => Some(self.walk_header_footer(&part, &x, is_header)?),
             None => None,
         };
         let Some(first) = first else {
@@ -1560,7 +1732,7 @@ impl<'a> BodyBuilder<'a> {
         let (first_hf, first_warn) = match first {
             Some((part, x)) => {
                 let saved = std::mem::take(&mut *self.warn);
-                let r = self.walk_header_footer(&part, &x);
+                let r = self.walk_header_footer(&part, &x, is_header);
                 let first_warn = std::mem::replace(&mut *self.warn, saved);
                 (Some(r?), first_warn)
             }
@@ -1586,22 +1758,47 @@ impl<'a> BodyBuilder<'a> {
         Ok(out)
     }
 
-    fn walk_header_footer(&mut self, part: &str, xml: &[u8]) -> Result<HeaderFooter> {
+    fn walk_header_footer(
+        &mut self,
+        part: &str,
+        xml: &[u8],
+        is_header: bool,
+    ) -> Result<HeaderFooter> {
         self.active_part = Some(part.to_string());
         // Üst/alt bilginin listeleri gövdenin numarasını sürdürmez.
         let body_numbers = std::mem::take(&mut self.num_state);
+        self.page_number = Some(PageNumberProbe {
+            is_header,
+            found: None,
+        });
         let r = self.walk_body(xml);
         self.num_state = body_numbers;
         self.active_part = None;
+        let probe = self.page_number.take();
         let (mut blocks, _) = r?;
         apply_contextual_spacing(&mut blocks);
-        Ok(HeaderFooter {
+        let mut hf = HeaderFooter {
             blocks,
             stop_page: None,
             start_page: None,
             page_number_attrs: vec![],
             page_number: None,
-        })
+        };
+        if let Some((pn, attrs, props)) = probe.and_then(|p| p.found) {
+            // UYAP'ın kendi biçimi: numara buffer'da metin değildir ve parça en az
+            // bir (boş) paragraf taşır (gerçek UDF'lerde numaralı alt bilgilerin
+            // çoğu tek boş paragraftır).
+            if hf.blocks.is_empty() {
+                hf.blocks.push(Block::Paragraph(Paragraph {
+                    props,
+                    runs: vec![],
+                }));
+            }
+            hf.page_number = Some(pn);
+            hf.page_number_attrs = attrs;
+            self.warn.warn(WarningCode::UdfPageNumberApproximated);
+        }
+        Ok(hf)
     }
 
     fn walk_body(&mut self, xml: &[u8]) -> Result<(Vec<Block>, SectInfo)> {
@@ -1655,6 +1852,17 @@ impl<'a> BodyBuilder<'a> {
         // kısmındayız. İç içe alanda içteki alanın sonucu dıştakinin kodunun
         // parçasıdır ve gösterilmez.
         let mut field_stack: Vec<bool> = Vec::new();
+        // Paragrafın en dıştaki alanları (komut + son görünen değerin run aralığı):
+        // üst/alt bilgideki PAGE/NUMPAGES paragrafı bunlarla tanınır.
+        // `para_fields_plain` iç içe alanda, metin kutusunda ya da bölünen
+        // paragrafta düşer; o paragraf sayfa numarasına çevrilmez.
+        let mut para_fields: Vec<FieldSpan> = Vec::new();
+        let mut para_fields_plain = true;
+        // Açık `w:fldSimple` derinliği (sonucu içindeki run'lardır).
+        let mut simple_depth: usize = 0;
+        // Paragrafta bir alan görüldü: sayfa numarasına çevrilmezse paragraf
+        // sonunda FieldFlattened bildirilir.
+        let mut field_seen = false;
         // `mc:AlternateContent` içindeki `mc:Fallback` derinliği: aynı içeriğin
         // eski biçimli kopyasıdır (metin kutusu, resim). İşlenirse metin iki
         // kez çıkıyordu.
@@ -1794,6 +2002,10 @@ impl<'a> BodyBuilder<'a> {
                                         run: std::mem::take(&mut run_direct),
                                         mark: std::mem::take(&mut mark_run),
                                     });
+                                    para_fields_plain = false;
+                                } else {
+                                    para_fields.clear();
+                                    para_fields_plain = true;
                                 }
                                 para = Some(Paragraph::default());
                                 para_style = None;
@@ -1991,7 +2203,23 @@ impl<'a> BodyBuilder<'a> {
                         // Tarih ve sayfa blokları Word'de açılışta hesaplanır.
                         b"dayLong" | b"dayShort" | b"monthLong" | b"monthShort" | b"yearLong"
                         | b"yearShort" | b"pgNum" => self.warn.warn(WarningCode::FieldFlattened),
-                        b"fldSimple" => self.warn.warn(WarningCode::FieldFlattened),
+                        // Komut özniteliktedir, son görünen değer içindeki run'lardır.
+                        b"fldSimple" => {
+                            field_seen = true;
+                            let at = para.as_ref().map(|p| p.runs.len()).unwrap_or(0);
+                            if field_stack.is_empty() && simple_depth == 0 && para.is_some() {
+                                para_fields.push(FieldSpan {
+                                    instr: a(e, "instr").unwrap_or_default(),
+                                    start: Some(at),
+                                    end: is_empty.then_some(at),
+                                });
+                            } else {
+                                para_fields_plain = false;
+                            }
+                            if !is_empty {
+                                simple_depth += 1;
+                            }
+                        }
                         // Çizim şekli: metin kutusu değilse UDF'te karşılığı yok.
                         b"wsp" if !is_empty => shape_stack.push(false),
                         b"txbx" => {
@@ -2060,20 +2288,37 @@ impl<'a> BodyBuilder<'a> {
                         }
                         b"fldChar" => {
                             if deleted_depth == 0 {
+                                let at = para.as_ref().map(|p| p.runs.len());
+                                // Yalnız en dıştaki alanın sonucu paragrafta görünür.
+                                let outer = field_stack.len() == 1 && simple_depth == 0;
                                 match a(e, "fldCharType").as_deref() {
-                                    Some("begin") => field_stack.push(true),
+                                    Some("begin") => {
+                                        if field_stack.is_empty() && simple_depth == 0 {
+                                            para_fields.push(FieldSpan::default());
+                                        } else {
+                                            para_fields_plain = false;
+                                        }
+                                        field_stack.push(true)
+                                    }
                                     Some("separate") => {
+                                        if let (true, Some(f)) = (outer, para_fields.last_mut()) {
+                                            f.start = at;
+                                        }
                                         if let Some(top) = field_stack.last_mut() {
                                             *top = false;
                                         }
                                     }
                                     Some("end") => {
+                                        if let (true, Some(f)) = (outer, para_fields.last_mut()) {
+                                            f.start = f.start.or(at);
+                                            f.end = at;
+                                        }
                                         field_stack.pop();
                                     }
                                     _ => {}
                                 }
                             }
-                            self.warn.warn(WarningCode::FieldFlattened)
+                            field_seen = true;
                         }
                         b"instrText" => {
                             // Boş `<w:instrText/>` metin taşımaz ve End üretmez; bayrağı
@@ -2082,7 +2327,7 @@ impl<'a> BodyBuilder<'a> {
                             if !is_empty {
                                 in_instr = true;
                             }
-                            self.warn.warn(WarningCode::FieldFlattened);
+                            field_seen = true;
                         }
                         _ => {}
                     }
@@ -2101,6 +2346,19 @@ impl<'a> BodyBuilder<'a> {
                 }
 
                 Ok(Event::Text(t)) => {
+                    // En dıştaki alanın komutu (PAGE, NUMPAGES…): gösterilmez ama
+                    // sayfa numarasını tanımak için okunur.
+                    if in_instr
+                        && field_stack.len() == 1
+                        && simple_depth == 0
+                        && deleted_depth == 0
+                        && revision_depth == 0
+                        && fallback_depth == 0
+                    {
+                        if let Some(f) = para_fields.last_mut() {
+                            f.instr.push_str(&t.unescape().unwrap_or_default());
+                        }
+                    }
                     if !in_w_t || revision_depth > 0 || fallback_depth > 0 {
                         continue; // yalnız w:t metni belge metnidir
                     }
@@ -2234,6 +2492,15 @@ impl<'a> BodyBuilder<'a> {
                         }
                         b"del" | b"moveFrom" => deleted_depth = deleted_depth.saturating_sub(1),
                         b"instrText" => in_instr = false,
+                        b"fldSimple" => {
+                            if simple_depth == 1 && field_stack.is_empty() {
+                                if let (Some(f), Some(p)) = (para_fields.last_mut(), para.as_ref())
+                                {
+                                    f.end = Some(p.runs.len());
+                                }
+                            }
+                            simple_depth = simple_depth.saturating_sub(1);
+                        }
                         b"extent" => in_drawing_extent = false,
                         b"r" => {
                             run_direct = PartialRun::default();
@@ -2279,9 +2546,43 @@ impl<'a> BodyBuilder<'a> {
                                     para_mark_removed = host.mark_removed;
                                     run_direct = host.run;
                                     mark_run = host.mark;
+                                    if std::mem::take(&mut field_seen) {
+                                        self.warn.warn(WarningCode::FieldFlattened);
+                                    }
                                 } else {
-                                    if keep {
+                                    // Üst/alt bilgide yalnız [ön metin] + PAGE [+ ayırıcı +
+                                    // NUMPAGES] taşıyan paragraf UYAP'ın canlı sayfa
+                                    // numarasıdır: donmuş rakamlar buffer'a yazılmaz.
+                                    // Eskiden her UDF sayfasında aynı numara basılıyordu
+                                    // (gerçek 118 Word belgesi).
+                                    let page_number = match self.page_number.as_ref() {
+                                        Some(probe)
+                                            if probe.found.is_none()
+                                                && keep
+                                                && para_fields_plain
+                                                && floats.is_empty() =>
+                                        {
+                                            let fallback =
+                                                self.run_props(&para_style, &PartialRun::default());
+                                            page_number_field(
+                                                &p,
+                                                &para_fields,
+                                                &fallback,
+                                                probe.is_header,
+                                            )
+                                        }
+                                        _ => None,
+                                    };
+                                    if let Some((pn, attrs)) = page_number {
+                                        if let Some(probe) = self.page_number.as_mut() {
+                                            probe.found = Some((pn, attrs, p.props.clone()));
+                                        }
+                                        field_seen = false;
+                                    } else if keep {
                                         push_to(&mut cells, &mut out, Block::Paragraph(p));
+                                    }
+                                    if std::mem::take(&mut field_seen) {
+                                        self.warn.warn(WarningCode::FieldFlattened);
                                     }
                                     for f in floats.drain(..) {
                                         push_to(&mut cells, &mut out, f);
@@ -2349,6 +2650,10 @@ impl<'a> BodyBuilder<'a> {
             }
         }
 
+        // Kapanmayan paragraftaki alan da bildirilir.
+        if field_seen {
+            self.warn.warn(WarningCode::FieldFlattened);
+        }
         if sect_count > 1 {
             self.warn.push(
                 Warning::new(WarningCode::MultiSectionFlattened)
