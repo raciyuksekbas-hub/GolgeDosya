@@ -10,6 +10,10 @@
 //!   tcBorders, tblHeader, trHeight) tek değişkende tutuyordu: hücredeki iç
 //!   tablo dış hücrenin değerlerini eziyor, vMerge'li bir iç hücre dış
 //!   hücrenin bütün içeriğini siliyordu.
+//! - `w:gridBefore`/`w:gridAfter` okunmuyordu: o satırların hücreleri sola
+//!   kayıp başka sütunlara oturuyordu. Değişiklik izlemede silinmiş satır
+//!   (`w:trPr/w:del`) bütün değişiklikler kabul edilince yoktur; boş bir satır
+//!   olarak kalıyor ve tablonun kenarlık kararına da katılıyordu.
 //!
 //! Bütün belgeler bu dosyada sentetik olarak kurulur; gerçek dava dosyası yok.
 
@@ -472,4 +476,168 @@ fn an_invisible_layout_table_stays_borderless_when_a_cell_holds_a_table() {
         !warns.contains(&WarningCode::TableBordersApproximated),
         "{warns:?}"
     );
+}
+
+// ------------------------------------------------------------ ızgara boşlukları
+
+/// Her satırda metin taşıyan hücrelerin (başlangıç sütunu, metin) listesi.
+fn placed(t: &Table) -> Vec<Vec<(usize, String)>> {
+    t.rows
+        .iter()
+        .map(|r| {
+            let mut col = 0;
+            let mut out = Vec::new();
+            for c in &r.cells {
+                let s = cell_text(c).trim().to_string();
+                if !s.is_empty() {
+                    out.push((col, s));
+                }
+                col += c.grid_span.max(1);
+            }
+            out
+        })
+        .collect()
+}
+
+fn gap_table(tbl_pr: &str) -> String {
+    // Üç sütunlu ızgara: ikinci satır ilk sütunu atlar (gridBefore), üçüncü
+    // satır son sütunu boş bırakır (gridAfter).
+    tbl(
+        tbl_pr,
+        &[2000, 2000, 2000],
+        &[
+            tr("", &[tc("", &p("a1")), tc("", &p("a2")), tc("", &p("a3"))]),
+            tr(
+                r#"<w:gridBefore w:val="1"/>"#,
+                &[tc("", &p("b2")), tc("", &p("b3"))],
+            ),
+            tr(
+                r#"<w:gridAfter w:val="1"/>"#,
+                &[tc("", &p("c1")), tc("", &p("c2"))],
+            ),
+        ],
+    )
+}
+
+fn s(col: usize, t: &str) -> (usize, String) {
+    (col, t.to_string())
+}
+
+#[test]
+fn grid_before_and_after_keep_real_cells_in_their_columns() {
+    let want = vec![
+        vec![s(0, "a1"), s(1, "a2"), s(2, "a3")],
+        vec![s(1, "b2"), s(2, "b3")],
+        vec![s(0, "c1"), s(1, "c2")],
+    ];
+    let src = docx_package(&gap_table(""));
+    let (d, warns) = read_docx(&src);
+    let t = first_table(&d);
+    assert_eq!(placed(t), want, "Word modeli");
+    assert!(
+        t.rows.iter().all(|r| r.grid_span_total() == 3),
+        "satırlar ızgarayı doldurmuyor"
+    );
+    // Kenarlıksız tabloda boşluk hücresi de kenarlıksızdır: yaklaşık uyarı yok.
+    assert_eq!(t.border, TableBorder::None);
+    assert!(
+        !warns.contains(&WarningCode::TableBordersApproximated),
+        "{warns:?}"
+    );
+    // UDF'e ve geri: gerçek hücreler yine kendi sütunlarında.
+    let (udf_bytes, _) = convert(&src, Direction::DocxToUdf);
+    let (back, _) = read_udf(&udf_bytes);
+    assert_eq!(placed(first_table(&back)), want, "UDF");
+}
+
+#[test]
+fn a_grid_gap_in_a_bordered_table_is_reported_not_drawn_silently() {
+    // Word boşluk bölgesine kenarlık çizmez; UDF hücre başına kenarlık
+    // tutamadığı için boşluk hücresi de çizilir. Bu dürüstçe bildirilmeli.
+    let (d, warns) = read_docx(&docx_package(&gap_table(SINGLE_ALL)));
+    assert_eq!(first_table(&d).border, TableBorder::Cell);
+    assert!(
+        warns.contains(&WarningCode::TableBordersApproximated),
+        "{warns:?}"
+    );
+}
+
+// ------------------------------------------------------------ silinmiş satırlar
+
+const REV: &str = r#"w:id="7" w:author="Örnek" w:date="2026-01-01T00:00:00Z""#;
+
+fn deleted_row(cells: &[&str], tc_pr: &str) -> String {
+    let cells: Vec<String> = cells
+        .iter()
+        .map(|t| {
+            tc(
+                tc_pr,
+                &format!(
+                    r#"<w:p><w:del {REV}><w:r><w:delText>{t}</w:delText></w:r></w:del></w:p>"#
+                ),
+            )
+        })
+        .collect();
+    tr(&format!("<w:del {REV}/>"), &cells)
+}
+
+#[test]
+fn a_tracked_deleted_row_is_gone_once_changes_are_accepted() {
+    let body = tbl(
+        "",
+        &[3000, 3000],
+        &[
+            tr("", &[tc("", &p("Esas No")), tc("", &p("2026/129"))]),
+            deleted_row(&["Karar No", "2026/77"], ""),
+            tr("", &[tc("", &p("Faiz")), tc("", &p("%12"))]),
+        ],
+    );
+    let (d, _) = read_docx(&docx_package(&format!("{body}{}", p("Son."))));
+    assert_eq!(
+        placed(first_table(&d)),
+        vec![
+            vec![s(0, "Esas No"), s(1, "2026/129")],
+            vec![s(0, "Faiz"), s(1, "%12")],
+        ]
+    );
+}
+
+#[test]
+fn a_deleted_row_does_not_decide_the_borders_of_the_rows_that_remain() {
+    // Görünmez yerleşim tablosu; yalnız silinmiş satırın hücreleri çizgili.
+    let single_cell = r#"<w:tcBorders><w:top w:val="single" w:sz="4"/><w:left w:val="single" w:sz="4"/><w:bottom w:val="single" w:sz="4"/><w:right w:val="single" w:sz="4"/></w:tcBorders>"#;
+    let body = tbl(
+        "",
+        &[3000, 3000],
+        &[
+            tr(
+                "",
+                &[tc(NONE_CELL, &p("DAVACI")), tc(NONE_CELL, &p("Örnek A.Ş."))],
+            ),
+            deleted_row(&["eski", "satır"], single_cell),
+            tr(
+                "",
+                &[tc(NONE_CELL, &p("VEKİLİ")), tc(NONE_CELL, &p("Av. Örnek"))],
+            ),
+        ],
+    );
+    let (d, warns) = read_docx(&docx_package(&body));
+    assert_eq!(first_table(&d).border, TableBorder::None, "{warns:?}");
+    assert!(
+        !warns.contains(&WarningCode::TableBordersApproximated),
+        "{warns:?}"
+    );
+}
+
+#[test]
+fn a_table_whose_every_row_was_deleted_is_not_left_behind() {
+    let body = format!(
+        "{}{}{}",
+        p("Önce."),
+        tbl("", &[3000], &[deleted_row(&["Silinen"], "")]),
+        p("Sonra.")
+    );
+    let (d, _) = read_docx(&docx_package(&body));
+    assert!(table_depths(&d).is_empty(), "boş tablo kaldı");
+    assert_eq!(ink(&text(&d)), "Önce.Sonra.");
 }

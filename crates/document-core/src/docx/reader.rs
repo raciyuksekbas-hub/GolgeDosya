@@ -134,6 +134,34 @@ impl Default for CellState {
 struct RowState {
     header: bool,
     height: Option<f32>,
+    /// `w:gridBefore`/`w:gridAfter`: satırın başında/sonunda hücresiz kalan
+    /// ızgara sütunları. Okunmazsa satırın hücreleri sola kayıp başka
+    /// sütunlara oturur.
+    grid_before: usize,
+    grid_after: usize,
+    /// `w:trPr/w:del`: satır değişiklik izlemede silinmiş; bütün değişiklikler
+    /// kabul edilmiş belgede yoktur.
+    deleted: bool,
+}
+
+/// Word'ün hücre koymadığı ızgara boşluğu (`w:gridBefore`/`w:gridAfter`) için
+/// boş yer tutucu hücre. Word oraya kenarlık çizmez; kenarlık kararına bu
+/// yüzden "kenarsız" girer.
+fn grid_gap(span: usize) -> (TableCell, (usize, BorderSet)) {
+    let none = BorderSet {
+        top: Some(false),
+        left: Some(false),
+        bottom: Some(false),
+        right: Some(false),
+        ..Default::default()
+    };
+    (
+        TableCell {
+            grid_span: span,
+            ..Default::default()
+        },
+        (span, none),
+    )
 }
 
 /// UDF bir tabloda yalnız iki şey tutabilir: bütün hücre kenarlıkları ya da
@@ -2154,7 +2182,9 @@ impl<'a> BodyBuilder<'a> {
                             rows.push(TableRow::default());
                             row_state.push(RowState::default());
                         }
-                        b"trPr" => in_trpr = true,
+                        // Boş `<w:trPr/>` kapanmaz; bayrak takılı kalırsa sonraki
+                        // paragraf işaretinin silinmesi satır silinmesi sanılır.
+                        b"trPr" if !is_empty => in_trpr = true,
                         b"tblHeader" if in_trpr => {
                             if let Some(r) = row_state.last_mut() {
                                 r.header = true;
@@ -2163,6 +2193,16 @@ impl<'a> BodyBuilder<'a> {
                         b"trHeight" if in_trpr => {
                             if let Some(r) = row_state.last_mut() {
                                 r.height = af(e, "val").map(twips_to_pt);
+                            }
+                        }
+                        b"gridBefore" if in_trpr => {
+                            if let Some(r) = row_state.last_mut() {
+                                r.grid_before = af(e, "val").unwrap_or(0.0).max(0.0) as usize;
+                            }
+                        }
+                        b"gridAfter" if in_trpr => {
+                            if let Some(r) = row_state.last_mut() {
+                                r.grid_after = af(e, "val").unwrap_or(0.0).max(0.0) as usize;
                             }
                         }
                         b"tc" => {
@@ -2374,6 +2414,13 @@ impl<'a> BodyBuilder<'a> {
                                 deleted_depth += 1;
                             } else if in_para_rpr {
                                 para_mark_removed = true;
+                            }
+                            if in_trpr {
+                                // Satırın kendisi silinmiş: kabul edilmiş belgede
+                                // satır da içeriği de yok (`</w:tr>`'de atılır).
+                                if let Some(r) = row_state.last_mut() {
+                                    r.deleted = true;
+                                }
                             }
                             self.warn.warn(WarningCode::TrackedChangesFlattened);
                         }
@@ -2738,31 +2785,68 @@ impl<'a> BodyBuilder<'a> {
                         b"tr" => {
                             let state = row_state.pop().unwrap_or_default();
                             if let Some(mut r) = rows.pop() {
-                                r.is_header = state.header;
-                                r.height_pt = state.height;
-                                if let Some(t) = tables.last_mut() {
-                                    t.rows.push(r);
+                                let borders = table_borders.last_mut();
+                                if state.deleted {
+                                    // Kenarlık kararına da katılmaz; yoksa silinmiş
+                                    // satırın çizgileri kalan satırları çizdirir.
+                                    if let Some(t) = borders {
+                                        t.rows.pop();
+                                    }
+                                } else {
+                                    r.is_header = state.header;
+                                    r.height_pt = state.height;
+                                    // Hücresiz ızgara sütunları boş hücreyle tutulur:
+                                    // gerçek hücreler kendi sütunlarında kalır.
+                                    let border_row = borders.and_then(|t| t.rows.last_mut());
+                                    let mut edges = (None, None);
+                                    if state.grid_before > 0 {
+                                        let (cell, edge) = grid_gap(state.grid_before);
+                                        r.cells.insert(0, cell);
+                                        edges.0 = Some(edge);
+                                    }
+                                    if state.grid_after > 0 {
+                                        let (cell, edge) = grid_gap(state.grid_after);
+                                        r.cells.push(cell);
+                                        edges.1 = Some(edge);
+                                    }
+                                    if let Some(b) = border_row {
+                                        if let Some(e) = edges.0 {
+                                            b.insert(0, e);
+                                        }
+                                        if let Some(e) = edges.1 {
+                                            b.push(e);
+                                        }
+                                    }
+                                    if let Some(t) = tables.last_mut() {
+                                        t.rows.push(r);
+                                    }
                                 }
                             }
                         }
                         b"tbl" => {
                             if let Some(mut t) = tables.pop() {
                                 table_count += 1;
-                                if let Some(state) = table_borders.pop() {
-                                    let mut base =
-                                        self.styles.table_borders(state.style.as_deref());
-                                    base.overlay(&state.direct);
-                                    let (border, partial) =
-                                        effective_table_border(&base, &state.rows);
-                                    t.border = border;
-                                    if partial {
-                                        self.warn.push(
-                                            Warning::new(WarningCode::TableBordersApproximated)
-                                                .at(format!("Tablo {table_count}")),
-                                        );
+                                let state = table_borders.pop();
+                                // Bütün satırları silinmiş tablo kabul edilmiş belgede
+                                // yoktur; satırsız tablo görünür bir şey taşımaz,
+                                // Word'de de bozuk sayılır.
+                                if !t.rows.is_empty() {
+                                    if let Some(state) = state {
+                                        let mut base =
+                                            self.styles.table_borders(state.style.as_deref());
+                                        base.overlay(&state.direct);
+                                        let (border, partial) =
+                                            effective_table_border(&base, &state.rows);
+                                        t.border = border;
+                                        if partial {
+                                            self.warn.push(
+                                                Warning::new(WarningCode::TableBordersApproximated)
+                                                    .at(format!("Tablo {table_count}")),
+                                            );
+                                        }
                                     }
+                                    push_to(&mut cells, &mut out, Block::Table(t));
                                 }
-                                push_to(&mut cells, &mut out, Block::Table(t));
                             }
                         }
                         b"body" => break,
