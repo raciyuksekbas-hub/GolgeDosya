@@ -46,6 +46,8 @@ pub enum WarningCode {
     ListNestingUnverified,
     // --- table level ---
     TableVerticalMergeFlattened,
+    // Artık üretilmiyor: iç içe tablo UDF'e olduğu gibi yazılır (udf/writer.rs).
+    // Sonuç sözleşmesindeki kod adı değişmesin diye tutulur.
     TableNestedFlattened,
     TableBordersApproximated,
     // --- images ---

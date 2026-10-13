@@ -372,30 +372,24 @@ impl<'a> UdfWriter<'a> {
                     CellVAlign::Top => "",
                 };
                 out.push_str(&format!("<cell{va}>"));
-                if cell.blocks.is_empty() {
-                    // A cell must contain at least one paragraph or the offsets of the
-                    // surrounding tiling would have a hole in them.
+                // İç içe tablo hücrenin içine olduğu gibi yazılır: UYAP'ın kendi
+                // dosyaları table>row>cell>table yapısını dört düzeye kadar taşır
+                // (gerçek 22 UDF'te 224 iç tablo; hücrenin tek çocuğu tablo
+                // olabilir) ve okuyucu bunu zaten okur. Eskiden yalnız ilk iç
+                // düzeyin paragrafları yazılıyor, daha derindeki tabloların metni
+                // "düzleştirildi" uyarısının arkasında kayboluyordu.
+                for b in &cell.blocks {
+                    self.write_block(b, doc, out)?;
+                }
+                if !cell
+                    .blocks
+                    .iter()
+                    .any(|b| matches!(b, Block::Paragraph(_) | Block::Table(_)))
+                {
+                    // A cell must contain at least one paragraph (or a nested table,
+                    // as UYAP itself writes) or the offsets of the surrounding tiling
+                    // would have a hole in them.
                     self.write_paragraph(&Paragraph::default(), doc, out)?;
-                } else {
-                    for b in &cell.blocks {
-                        match b {
-                            Block::Table(_) => {
-                                self.warn.warn(WarningCode::TableNestedFlattened);
-                                if let Block::Table(inner) = b {
-                                    for r in &inner.rows {
-                                        for c in &r.cells {
-                                            for ib in &c.blocks {
-                                                if let Block::Paragraph(p) = ib {
-                                                    self.write_paragraph(p, doc, out)?;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            other => self.write_block(other, doc, out)?,
-                        }
-                    }
                 }
                 out.push_str("</cell>");
             }
