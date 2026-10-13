@@ -158,17 +158,45 @@ fn engine_failure(detail: String) -> AppError {
     }
 }
 
-/// DOCX ve UDF birer ZIP konteyneridir; ilk baytlar `PK` olmalıdır. Yalnız
-/// başlığı okur, belgeyi açmaz (inceleme ucuz kalmalı).
-fn has_zip_header(path: &Path) -> bool {
+/// Dosyanın ilk baytları (en çok `SNIFF_LEN`). Yalnız başlığı okur, belgeyi
+/// açmaz (inceleme ucuz kalmalı). Açılamayan dosya `None`.
+fn read_head(path: &Path) -> Option<Vec<u8>> {
     use std::io::Read;
-    let Ok(mut f) = std::fs::File::open(path) else {
-        return false;
+    let f = std::fs::File::open(path).ok()?;
+    let mut head = Vec::new();
+    f.take(tavzih_core::security::SNIFF_LEN as u64)
+        .read_to_end(&mut head)
+        .ok()?;
+    Some(head)
+}
+
+/// Kabın ilk baytlarına göre dürüst karar; motorun okuyucularıyla aynı ölçüt
+/// (`tavzih_core::security::sniff_container`).
+///
+/// DOCX ve UDF birer ZIP kabıdır. Eskiden ZIP olmayan her şey "Bu dosya türü
+/// desteklenmiyor. Yalnızca .docx ve .udf…" diye reddediliyordu (OR-07): adı
+/// .docx olan parola korumalı bir Word belgesi için çelişkili ve yanlış yönlendiren
+/// bir cümle. Boş dosya boş, parola korumalı/eski Word öyle denir; sıkıştırılmamış
+/// düz bir content.xml de UDF'tir (gerçek derlemde bir belge, UF-13).
+fn check_container(head: &[u8], direction: Direction) -> Result<(), AppError> {
+    use tavzih_core::security::Container;
+    use tavzih_core::ErrorCode;
+    let refuse = |code: ErrorCode, detail: &str| {
+        Err(AppError::from(tavzih_core::ConvError::new(code, detail)))
     };
-    let mut magic = [0u8; 2];
-    match f.read_exact(&mut magic) {
-        Ok(()) => &magic == b"PK",
-        Err(_) => false,
+    match (tavzih_core::security::sniff_container(head), direction) {
+        (Container::Zip, _) | (Container::Xml, Direction::UdfToDocx) => Ok(()),
+        // Şifreli bir UDF arşivini motor "geçerli bir UDF değil" diye bildirir.
+        (Container::EncryptedZip, Direction::UdfToDocx) => Ok(()),
+        (Container::Empty, _) => refuse(ErrorCode::InputEmpty, "file is empty (0 bytes)"),
+        (Container::OleCompound | Container::EncryptedZip, Direction::DocxToUdf) => refuse(
+            ErrorCode::ProtectedOrLegacyDocx,
+            "password-protected Word document or legacy .doc",
+        ),
+        _ => refuse(
+            ErrorCode::InvalidExtension,
+            "dosya bir DOCX/UDF konteyneri değil",
+        ),
     }
 }
 
@@ -198,12 +226,13 @@ pub fn tavzih_inspect_file(path: String) -> Result<FileInfo, AppError> {
     // vaat ediliyordu — dönüştürme ancak çok sonra düşüyordu. DOCX ve UDF'nin
     // ikisi de ZIP konteyneridir; dört baytlık bu denetim vaadi dürüst kılar
     // ve bu komutun sözleşmesi de zaten "konteyner başlığını okur" diyor.
-    if !has_zip_header(&p) {
-        return Err(AppError::from(tavzih_core::ConvError::new(
-            tavzih_core::ErrorCode::InvalidExtension,
-            "dosya bir DOCX/UDF konteyneri değil",
-        )));
-    }
+    let head = read_head(&p).ok_or_else(|| {
+        AppError::from(tavzih_core::ConvError::new(
+            tavzih_core::ErrorCode::InputUnreadable,
+            "dosya açılamadı",
+        ))
+    })?;
+    check_container(&head, direction)?;
     let planned =
         convert::unique_output_path(&p, direction.target_ext()).map_err(AppError::from)?;
     let default_name = format!(
@@ -738,6 +767,56 @@ mod tests {
     fn a_directory_is_not_an_inspectable_document() {
         let e = tavzih_inspect_file(std::env::temp_dir().display().to_string()).unwrap_err();
         assert_eq!(e.code, "INVALID_EXTENSION");
+    }
+
+    #[test]
+    fn an_empty_or_password_protected_docx_says_why_it_cannot_be_converted() {
+        // OR-07: adı .docx olan parola korumalı belgeye "Bu dosya türü
+        // desteklenmiyor. Yalnızca .docx ve .udf…" deniyordu.
+        let dir = tempfile::tempdir().unwrap();
+        let empty = dir.path().join("Boş dilekçe.docx");
+        std::fs::write(&empty, b"").unwrap();
+        let e = tavzih_inspect_file(empty.display().to_string()).unwrap_err();
+        assert_eq!(e.code, "INPUT_EMPTY");
+        assert!(e.message.contains("boş"), "{}", e.message);
+
+        let ole = dir.path().join("Şifreli dilekçe.docx");
+        let mut bytes = vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+        bytes.resize(1024, 0);
+        std::fs::write(&ole, &bytes).unwrap();
+        let e = tavzih_inspect_file(ole.display().to_string()).unwrap_err();
+        assert_eq!(e.code, "PROTECTED_OR_LEGACY_DOCX");
+        assert!(e.message.contains("parola"), "{}", e.message);
+
+        // Düz metin hâlâ "desteklenmeyen tür"dür.
+        let text = dir.path().join("not.docx");
+        std::fs::write(&text, b"merhaba").unwrap();
+        let e = tavzih_inspect_file(text.display().to_string()).unwrap_err();
+        assert_eq!(e.code, "INVALID_EXTENSION");
+    }
+
+    #[test]
+    fn the_container_check_matches_the_engine() {
+        let zip = b"PK\x03\x04\x14\x00\x00\x00";
+        let zip_crypto = b"PK\x03\x04\x14\x00\x01\x00";
+        let bare_udf =
+            b"<?xml version=\"1.0\" encoding=\"UTF-8\" ?> \n\n<template format_id=\"1.8\">";
+        assert!(check_container(zip, Direction::DocxToUdf).is_ok());
+        assert!(check_container(zip, Direction::UdfToDocx).is_ok());
+        // Sıkıştırılmamış content.xml bir UDF'tir (UF-13), Word belgesi değildir.
+        assert!(check_container(bare_udf, Direction::UdfToDocx).is_ok());
+        assert_eq!(
+            check_container(bare_udf, Direction::DocxToUdf)
+                .unwrap_err()
+                .code,
+            "INVALID_EXTENSION"
+        );
+        assert_eq!(
+            check_container(zip_crypto, Direction::DocxToUdf)
+                .unwrap_err()
+                .code,
+            "PROTECTED_OR_LEGACY_DOCX"
+        );
     }
 
     #[test]

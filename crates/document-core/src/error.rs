@@ -13,8 +13,10 @@ pub enum ErrorCode {
     MultipleFiles,
     InputNotFound,
     InputUnreadable,
+    InputEmpty,
     InvalidDocx,
     InvalidUdf,
+    ProtectedOrLegacyDocx,
     UnsupportedFeature,
     UnsafeArchive,
     SourceChanged,
@@ -32,8 +34,10 @@ impl ErrorCode {
             MultipleFiles => "MULTIPLE_FILES",
             InputNotFound => "INPUT_NOT_FOUND",
             InputUnreadable => "INPUT_UNREADABLE",
+            InputEmpty => "INPUT_EMPTY",
             InvalidDocx => "INVALID_DOCX",
             InvalidUdf => "INVALID_UDF",
+            ProtectedOrLegacyDocx => "PROTECTED_OR_LEGACY_DOCX",
             UnsupportedFeature => "UNSUPPORTED_FEATURE",
             UnsafeArchive => "UNSAFE_ARCHIVE",
             SourceChanged => "SOURCE_CHANGED",
@@ -57,8 +61,19 @@ impl ErrorCode {
             }
             InputNotFound => "Dosya bulunamadı. Taşınmış veya silinmiş olabilir.",
             InputUnreadable => "Dosya okunamadı. Dosya izinlerini kontrol edin.",
+            // 0 baytlık dosya "geçerli bir belge değil ya da bozulmuş" diye
+            // düşüyordu; yarım kalmış bir indirme ya da kayıt böyle görünür.
+            InputEmpty => {
+                "Dosya boş (0 bayt). Belgenin tamamen indirildiğinden ya da kaydedildiğinden emin olun."
+            }
             InvalidDocx => "Bu dosya geçerli bir Word (.docx) belgesi değil ya da bozulmuş.",
             InvalidUdf => "Bu dosya geçerli bir UDF belgesi değil ya da bozulmuş.",
+            // Word parola korumalı belgeyi bir OLE kabına koyar; eski .doc da
+            // aynı kaptır. Eskiden "Word belgesi değil ya da bozulmuş" deniyordu;
+            // kullanıcı parolayı kaldırması gerektiğini öğrenemiyordu (OR-07).
+            ProtectedOrLegacyDocx => {
+                "Belge parola korumalı ya da eski Word (.doc) biçiminde. Word'de açıp parolayı kaldırın ve Word Belgesi (.docx) olarak yeniden kaydedin."
+            }
             UnsupportedFeature => "Belge, güvenle dönüştürülemeyecek bir özellik içeriyor.",
             UnsafeArchive => {
                 "Belge güvenlik sınırlarını aşıyor ve güvenlik gerekçesiyle işlenmedi."

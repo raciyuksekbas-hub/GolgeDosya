@@ -254,6 +254,62 @@ pub fn reject_doctype(xml: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Bir dosyanın ilk baytlarından anlaşılan kap türü. Belgeyi açmaz.
+///
+/// Arayüzün ucuz incelemesi ([`SNIFF_LEN`] bayt okur) ve motorun okuyucuları
+/// aynı kararı verir: kullanıcı inceleme ile dönüştürme arasında iki ayrı
+/// sebep duymaz.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Container {
+    /// 0 bayt.
+    Empty,
+    /// ZIP: DOCX'in ve UDF'nin kabı.
+    Zip,
+    /// İlk girdisi şifreli (ZipCrypto/AES) bir ZIP: parolayla kilitlenmiş arşiv.
+    EncryptedZip,
+    /// OLE bileşik dosyası: Word'ün parola korumalı .docx'i ya da eski .doc.
+    OleCompound,
+    /// Düz XML; ör. sıkıştırılmamış bir UDF `content.xml`'i.
+    Xml,
+    /// Bunların hiçbiri.
+    Other,
+}
+
+/// [`sniff_container`]'ın karar için okuması yeten bayt sayısı (BOM ve baştaki
+/// boşluk dâhil).
+pub const SNIFF_LEN: usize = 512;
+
+/// OLE bileşik dosyasının (CFB) imzası.
+const OLE_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+
+/// İlk baytlara bakarak kabın türünü söyle.
+pub fn sniff_container(head: &[u8]) -> Container {
+    if head.is_empty() {
+        return Container::Empty;
+    }
+    if head.starts_with(&OLE_MAGIC) {
+        return Container::OleCompound;
+    }
+    if head.starts_with(b"PK") {
+        // Yerel dosya başlığında genel amaçlı bayrakların 0. biti "şifreli"dir.
+        if head.len() >= 8 && head[2..4] == [3, 4] && head[6] & 1 == 1 {
+            return Container::EncryptedZip;
+        }
+        return Container::Zip;
+    }
+    let mut rest = head.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(head);
+    while let [first, tail @ ..] = rest {
+        if !first.is_ascii_whitespace() {
+            break;
+        }
+        rest = tail;
+    }
+    if rest.starts_with(b"<?xml") || rest.starts_with(b"<template") {
+        return Container::Xml;
+    }
+    Container::Other
+}
+
 /// Depth guard used by both XML readers.
 #[derive(Debug, Default)]
 pub struct DepthGuard {
@@ -456,6 +512,29 @@ mod tests {
         );
         assert!(reject_doctype(b"<?xml version=\"1.0\"?><!doctype html><a/>").is_err());
         assert!(reject_doctype(b"<?xml version=\"1.0\"?><template/>").is_ok());
+    }
+
+    #[test]
+    fn the_container_is_told_from_its_first_bytes() {
+        assert_eq!(sniff_container(b""), Container::Empty);
+        assert_eq!(
+            sniff_container(b"PK\x03\x04\x14\x00\x00\x00"),
+            Container::Zip
+        );
+        assert_eq!(
+            sniff_container(b"PK\x03\x04\x14\x00\x01\x00"),
+            Container::EncryptedZip
+        );
+        assert_eq!(sniff_container(&OLE_MAGIC), Container::OleCompound);
+        for xml in [
+            &b"<?xml version=\"1.0\"?><template/>"[..],
+            b"\xEF\xBB\xBF<?xml version=\"1.0\"?>",
+            b" \r\n\t<template format_id=\"1.8\">",
+        ] {
+            assert_eq!(sniff_container(xml), Container::Xml);
+        }
+        assert_eq!(sniff_container(b"%PDF-1.7"), Container::Other);
+        assert_eq!(sniff_container(b"   "), Container::Other);
     }
 
     #[test]

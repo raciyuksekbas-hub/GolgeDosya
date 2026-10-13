@@ -481,6 +481,23 @@ pub fn read_docx(bytes: &[u8], warn: &mut WarningSink) -> Result<Document> {
 }
 
 fn load_package(bytes: &[u8]) -> Result<Pkg> {
+    // Kabı önce tanı: boş dosya ve parola korumalı/eski Word, "geçerli bir Word
+    // belgesi değil ya da bozulmuş" yerine kendi sebebiyle bildirilir (OR-07).
+    match security::sniff_container(bytes) {
+        security::Container::Empty => {
+            return Err(ConvError::new(
+                ErrorCode::InputEmpty,
+                "file is empty (0 bytes)",
+            ))
+        }
+        security::Container::OleCompound => {
+            return Err(ConvError::new(
+                ErrorCode::ProtectedOrLegacyDocx,
+                "OLE compound file: password-protected Word document or legacy .doc",
+            ))
+        }
+        _ => {}
+    }
     let mut budget = ArchiveBudget::new();
     let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| ConvError::invalid_docx(format!("not a ZIP container: {e}")))?;
@@ -497,9 +514,7 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
 
     for i in 0..z.len() {
         budget.count_entry()?;
-        let mut f = z
-            .by_index(i)
-            .map_err(|e| ConvError::invalid_docx(format!("unreadable archive entry: {e}")))?;
+        let mut f = z.by_index(i).map_err(entry_error)?;
         let name = f.name().to_string();
         if name.ends_with('/') {
             continue;
@@ -588,9 +603,7 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
         if !referenced.contains(&part) {
             continue;
         }
-        let mut f = z
-            .by_index(i)
-            .map_err(|e| ConvError::invalid_docx(format!("unreadable archive entry: {e}")))?;
+        let mut f = z.by_index(i).map_err(entry_error)?;
         let declared = f.size();
         let v = budget.read_entry_capped(&mut f, declared, security::MAX_ENTRY_UNCOMPRESSED)?;
         hf_raw.insert(part, Arc::new(v));
@@ -623,6 +636,22 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
         headers,
         footers,
     })
+}
+
+/// Arşiv girdisi açılamadı. Şifreli girdi (ZipCrypto/AES) bozuk sayılmaz:
+/// kullanıcıya parolayı kaldırması söylenir (OR-07).
+fn entry_error(e: zip::result::ZipError) -> ConvError {
+    match e {
+        zip::result::ZipError::UnsupportedArchive(msg)
+            if msg == zip::result::ZipError::PASSWORD_REQUIRED || msg.contains("encrypted") =>
+        {
+            ConvError::new(
+                ErrorCode::ProtectedOrLegacyDocx,
+                format!("encrypted archive entry: {msg}"),
+            )
+        }
+        e => ConvError::invalid_docx(format!("unreadable archive entry: {e}")),
+    }
 }
 
 fn parse_rels(xml: Option<&[u8]>) -> Result<HashMap<String, (String, String)>> {

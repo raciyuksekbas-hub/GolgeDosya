@@ -29,6 +29,29 @@ pub fn read_udf(bytes: &[u8], warn: &mut WarningSink) -> Result<Document> {
     // Bozuk bir girdi "geçerli bir UDF belgesi değil" olarak bildirilir; Word
     // dosyası diye değil (OR-06).
     let mut budget = ArchiveBudget::for_format(ErrorCode::InvalidUdf);
+    match security::sniff_container(bytes) {
+        security::Container::Empty => {
+            return Err(ConvError::new(
+                ErrorCode::InputEmpty,
+                "file is empty (0 bytes)",
+            ))
+        }
+        // Sıkıştırılmamış, düz bir content.xml. Gerçek derlemde bir UDF (D573)
+        // böyleydi ve "geçerli bir UDF değil" deniyordu; aynı baytlar zip'e
+        // konunca sorunsuz dönüşüyor (UF-13, F-12). Zip içindeki content.xml'in
+        // korumaları aynen uygulanır: boyut sınırı ve DOCTYPE reddi.
+        security::Container::Xml => {
+            if bytes.len() as u64 > security::MAX_ENTRY_UNCOMPRESSED {
+                return Err(ConvError::unsafe_archive(format!(
+                    "content.xml exceeds {} bytes",
+                    security::MAX_ENTRY_UNCOMPRESSED
+                )));
+            }
+            security::reject_doctype(bytes)?;
+            return parse_content_xml(bytes, &mut budget, warn);
+        }
+        _ => {}
+    }
     let mut zipf = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| ConvError::invalid_udf(format!("not a ZIP container: {e}")))?;
 
@@ -840,6 +863,10 @@ fn parse_leaf(name: &str, e: &BytesStart, ctx: &mut Ctx) -> Result<Vec<Run>> {
 /// Cheap structural probe used by the UI to tell a real UDF from a renamed file before a
 /// full parse.
 pub fn probe(bytes: &[u8]) -> Result<()> {
+    // Düz content.xml de bir UDF'tir (bkz. `read_udf`).
+    if security::sniff_container(bytes) == security::Container::Xml {
+        return Ok(());
+    }
     let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| ConvError::invalid_udf(format!("not a ZIP container: {e}")))?;
     if z.by_name("content.xml").is_err() {
