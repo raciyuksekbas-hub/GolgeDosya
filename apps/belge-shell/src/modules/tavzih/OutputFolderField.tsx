@@ -72,6 +72,32 @@ export function OutputFolderRow({
 }
 
 /**
+ * Word → UDF dilekçe aralığı tercihi — saf sunum.
+ *
+ * UYAP'a gidecek dilekçenin olağan biçimi satır aralığı 1,5 ve paragraf
+ * öncesi/sonrası boşluksuzdur; dönüştürme bunu varsayılan olarak uygular.
+ * Kapalıyken Word belgesindeki aralıklar korunur (sayfa akışı korunması gereken
+ * sözleşme gibi belgeler için).
+ */
+export function PetitionSpacingRow({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label className="field prefs-check">
+      <span className="field-label">
+        Word'den UDF'e satır aralığı 1,5
+        <span>Paragraf öncesi ve sonrası boşluk bırakılmaz. Kapalıyken Word belgesindeki aralıklar korunur.</span>
+      </span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </label>
+  );
+}
+
+/**
  * Çıktı klasörü tercihi.
  *
  * Tercihler penceresinin `Genel` bölümünde durur ama komut bu modülün
@@ -81,7 +107,14 @@ export function OutputFolderRow({
  * Motor bu derlemeye linklenmemişse çağrı reddedilir ve satır hiç çizilmez:
  * uydurma bir tercih göstermektense hiç göstermemek doğrudur.
  */
-export function OutputFolderField() {
+export function OutputFolderField({
+  petitionSpacing,
+  onPetitionSpacing,
+}: {
+  /** Dönüştür'ün ikinci tercihi; motor yoksa onunla birlikte gizlenir. */
+  petitionSpacing?: boolean;
+  onPetitionSpacing?: (next: boolean) => void;
+} = {}) {
   const [folder, setFolder] = useState<OutputFolder | null>(null);
 
   useEffect(() => {
@@ -129,6 +162,11 @@ export function OutputFolderField() {
 
   if (!folder) return null;
   return (
-    <OutputFolderRow folder={folder} error={error} onChoose={choose} onReset={reset} />
+    <>
+      <OutputFolderRow folder={folder} error={error} onChoose={choose} onReset={reset} />
+      {onPetitionSpacing ? (
+        <PetitionSpacingRow checked={petitionSpacing !== false} onChange={onPetitionSpacing} />
+      ) : null}
+    </>
   );
 }

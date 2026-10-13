@@ -180,7 +180,10 @@ export function PreferencesSheet({
                   motor yoksa satır hiç çizilmez. Öteki araçlar bu tercihi
                   okumaz (satırın ipucu bunu söyler). */}
               <div className="prefs-group">
-                <OutputFolderField />
+                <OutputFolderField
+                  petitionSpacing={settings.udfPetitionSpacing}
+                  onPetitionSpacing={(next) => set("udfPetitionSpacing", next)}
+                />
               </div>
               <div className="prefs-group">
                 <div className="field">

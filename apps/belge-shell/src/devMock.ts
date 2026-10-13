@@ -35,6 +35,7 @@ const SETTINGS = {
   linearResults: false,
   recentDocuments: RECENTS,
   showRecents: true,
+  udfPetitionSpacing: true,
   migratedFrom: [],
 };
 

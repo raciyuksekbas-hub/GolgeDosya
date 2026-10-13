@@ -230,6 +230,19 @@ pub fn tavzih_inspect_files(paths: Vec<String>) -> Vec<InspectOutcome> {
         .collect()
 }
 
+/// Ayarlardaki dönüşüm tercihleri. Okuma her dönüştürmede yapılır: Tercihler
+/// penceresinde değiştirilen ayar bir sonraki dönüştürmede geçerlidir.
+fn convert_options() -> convert::ConvertOptions {
+    let current = settings::load_from(&paths::app_config_dir());
+    convert::ConvertOptions {
+        udf_spacing: if current.udf_petition_spacing {
+            convert::UdfSpacing::Petition
+        } else {
+            convert::UdfSpacing::Source
+        },
+    }
+}
+
 /// Tek dönüştürme. Bloklayan iş arayüz iş parçacığının dışında yapılır; nöbetçi
 /// bayrak ikinci eşzamanlı isteği araya girmek yerine hızla başarısız kılar.
 #[tauri::command]
@@ -239,8 +252,9 @@ pub async fn tavzih_convert_file(
 ) -> Result<ConversionResult, AppError> {
     claim_slot(&busy.0)?;
     let flag = busy.0.clone();
+    let options = convert_options();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        convert::convert_file_to(Path::new(&path), &effective_output_dir())
+        convert::convert_file_to_with(Path::new(&path), &effective_output_dir(), &options)
     })
     .await;
     // Her yolda serbest bırakılır — panikleyen bir join dâhil — ki tek bir bozuk
@@ -263,8 +277,9 @@ pub async fn tavzih_convert_batch(
     let flag = busy.0.clone();
     let sources: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     let out_dir = effective_output_dir();
+    let options = convert_options();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        convert::convert_batch_to(&sources, &out_dir, stamp.as_deref())
+        convert::convert_batch_to_with(&sources, &out_dir, stamp.as_deref(), &options)
     })
     .await;
     flag.store(false, Ordering::SeqCst);

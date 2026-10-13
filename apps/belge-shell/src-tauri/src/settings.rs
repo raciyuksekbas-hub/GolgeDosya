@@ -107,6 +107,12 @@ pub struct Settings {
     #[serde(default = "yes")]
     pub show_recents: bool,
 
+    /// Word → UDF dönüşümünde satır aralığı 1,5 ve paragraf öncesi/sonrası
+    /// boşluk yok (UYAP'a gidecek dilekçenin olağan biçimi). Kapalıyken Word
+    /// belgesindeki aralıklar korunur. Varsayılan: açık.
+    #[serde(default = "yes")]
+    pub udf_petition_spacing: bool,
+
     /// Ayarların hangi eski uygulamalardan okunduğu. Yalnız kayıt amaçlı;
     /// migration'ın bir kez çalıştığını buradan anlarız.
     #[serde(default)]
@@ -130,6 +136,7 @@ impl Default for Settings {
             linear_results: false,
             recent_documents: Vec::new(),
             show_recents: true,
+            udf_petition_spacing: true,
             migrated_from: Vec::new(),
         }
     }
@@ -208,6 +215,7 @@ fn lenient(text: &str) -> Settings {
     field!("linearResults", linear_results);
     field!("recentDocuments", recent_documents);
     field!("showRecents", show_recents);
+    field!("udfPetitionSpacing", udf_petition_spacing);
     field!("migratedFrom", migrated_from);
     s
 }
@@ -235,6 +243,16 @@ mod tests {
         s.show_recents = true;
         s.remember("C:\\Users\\Çağrı Şahin\\b.pdf", 3);
         assert_eq!(s.recent_documents.len(), 2);
+    }
+
+    #[test]
+    fn petition_spacing_is_on_by_default_and_for_older_settings_files() {
+        assert!(Settings::default().udf_petition_spacing);
+        // Bu alan yokken yazılmış bir ayar dosyası da varsayılanı alır.
+        assert!(lenient(r#"{"showRecents": true}"#).udf_petition_spacing);
+        assert!(!lenient(r#"{"udfPetitionSpacing": false}"#).udf_petition_spacing);
+        let json = serde_json::to_string(&Settings::default()).unwrap();
+        assert!(json.contains("\"udfPetitionSpacing\":true"), "{json}");
     }
 
     #[test]

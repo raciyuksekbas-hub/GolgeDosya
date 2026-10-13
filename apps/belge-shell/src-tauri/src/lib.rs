@@ -86,6 +86,7 @@ fn save_settings(next: Settings) -> Result<Settings, String> {
     merged.source_read_only = next.source_read_only;
     merged.linear_results = next.linear_results;
     merged.show_recents = next.show_recents;
+    merged.udf_petition_spacing = next.udf_petition_spacing;
 
     // --- Kendi komutu olan alanlar: diskten korunur ---
     // accepted_terms   → tavzih_accept_terms

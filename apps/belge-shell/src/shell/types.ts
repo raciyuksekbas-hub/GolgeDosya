@@ -40,6 +40,8 @@ export interface Settings {
   recentDocuments: RecentDocument[];
   /** Kapalıyken liste gizlenir ve yeni kayıt eklenmez; mevcut liste silinmez. */
   showRecents: boolean;
+  /** Word → UDF: satır aralığı 1,5, paragraf öncesi/sonrası boşluk yok. Kapalıyken Word'deki aralıklar korunur. */
+  udfPetitionSpacing: boolean;
   migratedFrom: string[];
 }
 

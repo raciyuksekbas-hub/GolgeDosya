@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 
 use crate::docx;
 use crate::error::{ConvError, ErrorCode, Result};
-use crate::model::Document;
+use crate::model::{Block, Document};
 use crate::udf;
 use crate::warnings::{Warning, WarningSink};
 
@@ -282,15 +282,73 @@ pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Word → UDF dönüşümünde paragraf aralıkları.
+///
+/// UYAP'a gidecek dilekçenin olağan biçimi satır aralığı 1,5 ve paragraf
+/// öncesi/sonrası boşluksuzdur; varsayılan budur (`Petition`). `Source` Word
+/// belgesindeki aralıkları olduğu gibi taşır.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum UdfSpacing {
+    #[default]
+    Petition,
+    Source,
+}
+
+/// Dönüşüm tercihleri. Varsayılanı uygulamanın varsayılan davranışıdır.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ConvertOptions {
+    pub udf_spacing: UdfSpacing,
+}
+
+/// UDF'teki `LineSpacing` satır yüksekliğine EKLENEN paydır: 0,5 = 1,5 satır.
+const PETITION_LINE_SPACING_EXTRA: f32 = 0.5;
+
+/// Gövdedeki ve tablo hücrelerindeki her paragrafı dilekçe aralığına getirir.
+/// Üst ve alt bilgi (antet, sayfa numarası) dokunulmadan kalır.
+fn apply_petition_spacing(blocks: &mut [Block]) {
+    for block in blocks {
+        match block {
+            Block::Paragraph(p) => {
+                p.props.line_spacing_extra = PETITION_LINE_SPACING_EXTRA;
+                p.props.space_before_pt = 0.0;
+                p.props.space_after_pt = 0.0;
+            }
+            Block::Table(t) => {
+                for row in &mut t.rows {
+                    for cell in &mut row.cells {
+                        apply_petition_spacing(&mut cell.blocks);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// In-memory conversion. Used by the file path below and directly by tests.
 pub fn convert_bytes(
     input: &[u8],
     direction: Direction,
     warn: &mut WarningSink,
 ) -> Result<Vec<u8>> {
+    convert_bytes_with(input, direction, &ConvertOptions::default(), warn)
+}
+
+/// [`convert_bytes`] with explicit options.
+pub fn convert_bytes_with(
+    input: &[u8],
+    direction: Direction,
+    options: &ConvertOptions,
+    warn: &mut WarningSink,
+) -> Result<Vec<u8>> {
     match direction {
         Direction::DocxToUdf => {
-            let doc: Document = docx::reader::read_docx(input, warn)?;
+            let mut doc: Document = docx::reader::read_docx(input, warn)?;
+            if options.udf_spacing == UdfSpacing::Petition {
+                for section in &mut doc.sections {
+                    apply_petition_spacing(&mut section.blocks);
+                }
+            }
             let xml = udf::writer::write_content_xml(&doc, warn)?;
             udf::writer::validate(&xml)?;
             udf::writer::package(&xml)
@@ -342,6 +400,15 @@ pub fn convert_file(source: &Path) -> ConversionResult {
 /// The directory is a parameter rather than a global so the behaviour is testable without
 /// mutating process-wide state, and so a future "save as" can reuse the same path.
 pub fn convert_file_to(source: &Path, out_dir: &Path) -> ConversionResult {
+    convert_file_to_with(source, out_dir, &ConvertOptions::default())
+}
+
+/// [`convert_file_to`] with explicit options.
+pub fn convert_file_to_with(
+    source: &Path,
+    out_dir: &Path,
+    options: &ConvertOptions,
+) -> ConversionResult {
     let started = Instant::now();
     let source_name = source
         .file_name()
@@ -381,7 +448,7 @@ pub fn convert_file_to(source: &Path, out_dir: &Path) -> ConversionResult {
     let before = sha256_bytes(&bytes);
 
     let mut warn = WarningSink::new();
-    let out_bytes = match convert_bytes(&bytes, direction, &mut warn) {
+    let out_bytes = match convert_bytes_with(&bytes, direction, options, &mut warn) {
         Ok(b) => b,
         Err(e) => {
             let after = sha256_file(source).unwrap_or_else(|_| before.clone());
@@ -549,10 +616,20 @@ pub fn convert_batch(sources: &[PathBuf], stamp: Option<&str>) -> BatchResult {
 
 /// Batch conversion into an explicit output directory.
 pub fn convert_batch_to(sources: &[PathBuf], out_dir: &Path, stamp: Option<&str>) -> BatchResult {
+    convert_batch_to_with(sources, out_dir, stamp, &ConvertOptions::default())
+}
+
+/// [`convert_batch_to`] with explicit options.
+pub fn convert_batch_to_with(
+    sources: &[PathBuf],
+    out_dir: &Path,
+    stamp: Option<&str>,
+    options: &ConvertOptions,
+) -> BatchResult {
     let started = Instant::now();
 
     if sources.len() == 1 {
-        let one = convert_file_to(&sources[0], out_dir);
+        let one = convert_file_to_with(&sources[0], out_dir, options);
         return BatchResult {
             contract_version: CONTRACT_VERSION,
             status: one.status,
@@ -573,7 +650,7 @@ pub fn convert_batch_to(sources: &[PathBuf], out_dir: &Path, stamp: Option<&str>
     let mut items: Vec<ConversionResult> = Vec::with_capacity(sources.len());
     let mut produced: Vec<(PathBuf, Direction)> = Vec::new();
     for src in sources {
-        let r = convert_file_to(src, out_dir);
+        let r = convert_file_to_with(src, out_dir, options);
         if let Some(out) = &r.output {
             produced.push((PathBuf::from(out), r.direction));
         }

@@ -7,7 +7,7 @@
 // söyler; tercihin anlamı ve komutları değişmedi.
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { OutputFolderRow } from "./OutputFolderField";
+import { OutputFolderRow, PetitionSpacingRow } from "./OutputFolderField";
 
 const noop = () => undefined;
 const render = (path: string, isDefault: boolean) =>
@@ -38,5 +38,36 @@ describe("Dönüştür'ün çıktı klasörü satırı", () => {
     expect(html).toContain(">Çıktılar<");
     expect(html).toContain("Yalnız Dönüştür buraya kaydeder.");
     expect(html).toContain("Varsayılana Dön");
+  });
+});
+
+// Saha: "Varsayılan olarak dönüştürülen UDF dosyalarında satır aralığı 1,5;
+// öncesinde ve sonrasında boşluk olmamalı." Varsayılan açıktır; kapatılınca
+// Word'deki aralıklar korunur. Motor tarafı `udf_spacing.rs`'te kilitli.
+describe("Word'den UDF'e dilekçe aralığı", () => {
+  const html = (checked: boolean) =>
+    renderToStaticMarkup(<PetitionSpacingRow checked={checked} onChange={noop} />).replace(/&#x27;/gu, "'");
+
+  it("satır ne yaptığını ve kapalıyken ne olduğunu söyler", () => {
+    const on = html(true);
+    expect(on).toContain("Word'den UDF'e satır aralığı 1,5");
+    expect(on).toContain("Paragraf öncesi ve sonrası boşluk bırakılmaz.");
+    expect(on).toContain("Kapalıyken Word belgesindeki aralıklar korunur.");
+    expect(on).toMatch(/<input type="checkbox" checked=""/);
+    expect(html(false)).not.toContain('checked=""');
+  });
+
+  it("tercih ayarlara bağlı; varsayılanı açık", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const { dirname, resolve } = await import("node:path");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const settings = readFileSync(resolve(here, "../../shell/Settings.tsx"), "utf8");
+    expect(settings).toContain("petitionSpacing={settings.udfPetitionSpacing}");
+    expect(settings).toContain('set("udfPetitionSpacing", next)');
+    const mock = readFileSync(resolve(here, "../../devMock.ts"), "utf8");
+    expect(mock).toContain("udfPetitionSpacing: true");
+    const rust = readFileSync(resolve(here, "../../../src-tauri/src/settings.rs"), "utf8");
+    expect(rust).toMatch(/#\[serde\(default = "yes"\)\]\s*pub udf_petition_spacing: bool/);
   });
 });
