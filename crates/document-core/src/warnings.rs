@@ -47,6 +47,7 @@ pub enum WarningCode {
     // --- table level ---
     TableVerticalMergeFlattened,
     TableNestedFlattened,
+    TableBordersApproximated,
     // --- images ---
     ImageTranscodedToPng,
     ImageFormatUnsupported,
@@ -89,6 +90,7 @@ impl WarningCode {
             ListNestingUnverified => "LIST_NESTING_UNVERIFIED",
             TableVerticalMergeFlattened => "TABLE_VERTICAL_MERGE_FLATTENED",
             TableNestedFlattened => "TABLE_NESTED_FLATTENED",
+            TableBordersApproximated => "TABLE_BORDERS_APPROXIMATED",
             ImageTranscodedToPng => "IMAGE_TRANSCODED_TO_PNG",
             ImageFormatUnsupported => "IMAGE_FORMAT_UNSUPPORTED",
             MultiSectionFlattened => "MULTI_SECTION_FLATTENED",
@@ -131,6 +133,12 @@ impl WarningCode {
             }
             TableVerticalMergeFlattened => "Dikey birleştirilmiş tablo hücreleri düzleştirildi",
             TableNestedFlattened => "İç içe tablo düzleştirildi",
+            // UDF bir tabloda yalnız "bütün hücre kenarlıkları" ya da "hiç kenarlık
+            // yok" tutabiliyor. Kısmen kenarlıklı Word tablosu bütün kenarlıklarıyla
+            // çizilir; başlık sonucu söyler.
+            TableBordersApproximated => {
+                "Tablonun yalnız bazı kenarlıkları vardı; UDF'te bütün hücre kenarlıkları çizildi"
+            }
             ImageTranscodedToPng => "Görsel PNG biçimine dönüştürüldü",
             ImageFormatUnsupported => "Görsel biçimi desteklenmiyor ve aktarılamadı",
             MultiSectionFlattened => "Çoklu bölüm düzeni tek bölüme indirildi",
@@ -195,6 +203,7 @@ impl WarningCode {
             | ListNumberingApproximated
             | ListNestingUnverified
             | TableNestedFlattened
+            | TableBordersApproximated
             | ImageTranscodedToPng
             | PageOrientationUnverified
             | MultiSectionFlattened

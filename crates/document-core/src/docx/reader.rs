@@ -38,6 +38,138 @@ struct StyleEntry {
     based_on: Option<String>,
     para: PartialPara,
     run: PartialRun,
+    /// Tablo stilinin `w:tblPr/w:tblBorders` bildirimi.
+    table_borders: BorderSet,
+}
+
+/// Bir tablonun ya da hücrenin kenarlık bildirimi. `None`: bu katman o kenarı
+/// söylemiyor (alttaki katmandan gelir); `Some(true)`: çizgi var; `Some(false)`:
+/// açıkça yok (`none`/`nil`).
+///
+/// Word'de görünen kenarlık üç katmandan çıkar: tablo stili → tablonun kendi
+/// `w:tblBorders`'ı → hücrenin `w:tcBorders`'ı. Dilekçe şablonlarındaki başlık
+/// bloğu (Davacı / Vekili / Konu) çoğu zaman `w:tblBorders` "single" taşıyan,
+/// ama HER hücresinde `w:tcBorders` "none" olan görünmez bir yerleşim
+/// tablosudur. Yalnız tablo katmanı okunursa Word'de görünmeyen çizgiler UDF'te
+/// çizilir.
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+struct BorderSet {
+    top: Option<bool>,
+    left: Option<bool>,
+    bottom: Option<bool>,
+    right: Option<bool>,
+    inside_h: Option<bool>,
+    inside_v: Option<bool>,
+}
+
+impl BorderSet {
+    fn overlay(&mut self, o: &BorderSet) {
+        for (mine, theirs) in [
+            (&mut self.top, o.top),
+            (&mut self.left, o.left),
+            (&mut self.bottom, o.bottom),
+            (&mut self.right, o.right),
+            (&mut self.inside_h, o.inside_h),
+            (&mut self.inside_v, o.inside_v),
+        ] {
+            if theirs.is_some() {
+                *mine = theirs;
+            }
+        }
+    }
+
+    /// `w:top`, `w:left`/`w:start`, `w:bottom`, `w:right`/`w:end`, `w:insideH`,
+    /// `w:insideV` öğelerinden birini kaydeder; başka bir öğeyse `false`.
+    /// Çapraz çizgiler (`w:tl2br`, `w:tr2bl`) kenar değildir.
+    fn record(&mut self, e: &BytesStart) -> bool {
+        let visible = !matches!(a(e, "val").as_deref(), None | Some("none") | Some("nil"));
+        let slot = match e.local_name().as_ref() {
+            b"top" => &mut self.top,
+            b"left" | b"start" => &mut self.left,
+            b"bottom" => &mut self.bottom,
+            b"right" | b"end" => &mut self.right,
+            b"insideH" => &mut self.inside_h,
+            b"insideV" => &mut self.inside_v,
+            _ => return false,
+        };
+        *slot = Some(visible);
+        true
+    }
+}
+
+/// Okunmakta olan tablonun kenarlık bilgisi (iç içe tablolar için yığın).
+#[derive(Default)]
+struct TableBorderState {
+    style: Option<String>,
+    direct: BorderSet,
+    /// Satır satır hücreler: (kapladığı ızgara sütunu sayısı, `w:tcBorders`).
+    rows: Vec<Vec<(usize, BorderSet)>>,
+}
+
+/// UDF bir tabloda yalnız iki şey tutabilir: bütün hücre kenarlıkları ya da
+/// hiç kenarlık. Word'de görünen kenarlıklar hesaplanır; hiçbir kenar
+/// görünmüyorsa tablo kenarlıksız yazılır. Yalnız bazı kenarlar görünüyorsa
+/// çizgiler kaybolmasın diye bütün kenarlıklar çizilir ve bu `true` döner
+/// (yaklaşık aktarım uyarısı).
+///
+/// Ortak kenar Word'deki gibi çözülür: iki komşudan biri açıkça çiziyorsa
+/// kenar görünür ("none" görünür bir çizgiyi silmez).
+fn effective_table_border(
+    base: &BorderSet,
+    rows: &[Vec<(usize, BorderSet)>],
+) -> (TableBorder, bool) {
+    // Her satırdaki hücrelerin ızgara aralıkları [başlangıç, bitiş).
+    let spans: Vec<Vec<(usize, usize, BorderSet)>> = rows
+        .iter()
+        .map(|row| {
+            let mut col = 0;
+            row.iter()
+                .map(|(span, b)| {
+                    let start = col;
+                    col += (*span).max(1);
+                    (start, col, *b)
+                })
+                .collect()
+        })
+        .collect();
+    let width = |r: usize| spans[r].last().map(|c| c.1).unwrap_or(0);
+    let overlaps = |r: usize, s: usize, e: usize| {
+        spans[r]
+            .iter()
+            .filter(move |c| c.0 < e && s < c.1)
+            .map(|c| c.2)
+    };
+    let (mut any, mut all, mut edges) = (false, true, 0usize);
+    for (r, row) in spans.iter().enumerate() {
+        for (i, &(s, e, own)) in row.iter().enumerate() {
+            let last_row = r + 1 == spans.len();
+            let top = own.top.or(if r == 0 { base.top } else { base.inside_h }) == Some(true)
+                || (r > 0 && overlaps(r - 1, s, e).any(|n| n.bottom == Some(true)));
+            let bottom = own
+                .bottom
+                .or(if last_row { base.bottom } else { base.inside_h })
+                == Some(true)
+                || (!last_row && overlaps(r + 1, s, e).any(|n| n.top == Some(true)));
+            let left = own.left.or(if s == 0 { base.left } else { base.inside_v }) == Some(true)
+                || (i > 0 && row[i - 1].2.right == Some(true));
+            let right = own.right.or(if e >= width(r) {
+                base.right
+            } else {
+                base.inside_v
+            }) == Some(true)
+                || (i + 1 < row.len() && row[i + 1].2.left == Some(true));
+            for v in [top, bottom, left, right] {
+                edges += 1;
+                any |= v;
+                all &= v;
+            }
+        }
+    }
+    if edges == 0 || !any {
+        (TableBorder::None, false)
+    } else {
+        (TableBorder::Cell, !all)
+    }
 }
 
 #[derive(Clone, Default, Debug)]
@@ -156,9 +288,37 @@ struct Styles {
     default_para: PartialPara,
     default_run: PartialRun,
     default_para_style: Option<String>,
+    /// `w:type="table" w:default="1"`: stili olmayan tablonun stili.
+    default_table_style: Option<String>,
 }
 
 impl Styles {
+    /// Tablo stilinin (ve `w:basedOn` zincirinin) kenarlıkları. Stil verilmemiş
+    /// ya da bulunamamışsa Word belgenin varsayılan tablo stilini kullanır;
+    /// o da yoksa ("Normal Tablo") hiç kenarlık yoktur.
+    fn table_borders(&self, style_id: Option<&str>) -> BorderSet {
+        let mut chain: Vec<&StyleEntry> = Vec::new();
+        let mut cursor = style_id
+            .filter(|id| self.map.contains_key(*id))
+            .map(|s| s.to_string())
+            .or_else(|| self.default_table_style.clone());
+        let mut hops = 0;
+        while let Some(id) = cursor {
+            let Some(e) = self.map.get(&id) else { break };
+            chain.push(e);
+            cursor = e.based_on.clone();
+            hops += 1;
+            if hops > 32 {
+                break;
+            }
+        }
+        let mut out = BorderSet::default();
+        for e in chain.iter().rev() {
+            out.overlay(&e.table_borders);
+        }
+        out
+    }
+
     fn resolve(&self, style_id: Option<&str>) -> (PartialPara, PartialRun) {
         let mut para = self.default_para.clone();
         let mut run = self.default_run.clone();
@@ -456,6 +616,7 @@ fn parse_styles(xml: Option<&[u8]>) -> Result<Styles> {
         default_para: PartialPara::default(),
         default_run: PartialRun::default(),
         default_para_style: None,
+        default_table_style: None,
     };
     let Some(xml) = xml else { return Ok(s) };
     let mut rd = Reader::from_reader(xml);
@@ -463,6 +624,7 @@ fn parse_styles(xml: Option<&[u8]>) -> Result<Styles> {
 
     let mut cur: Option<(String, StyleEntry, bool)> = None; // (id, entry, is_default)
     let mut in_doc_defaults = false;
+    let mut in_tbl_borders = false;
     let mut guard = DepthGuard::new();
 
     loop {
@@ -480,9 +642,19 @@ fn parse_styles(xml: Option<&[u8]>) -> Result<Styles> {
                     b"docDefaults" => in_doc_defaults = true,
                     b"style" => {
                         let id = a(&e, "styleId").unwrap_or_default();
-                        let is_def = a(&e, "default").as_deref() == Some("1")
-                            && a(&e, "type").as_deref() == Some("paragraph");
+                        let is_default = a(&e, "default").as_deref() == Some("1");
+                        let kind = a(&e, "type");
+                        if is_default && kind.as_deref() == Some("table") {
+                            s.default_table_style = Some(id.clone());
+                        }
+                        let is_def = is_default && kind.as_deref() == Some("paragraph");
                         cur = Some((id, StyleEntry::default(), is_def));
+                    }
+                    b"tblBorders" if cur.is_some() && !empty => in_tbl_borders = true,
+                    _ if in_tbl_borders => {
+                        if let Some((_, c, _)) = cur.as_mut() {
+                            c.table_borders.record(&e);
+                        }
                     }
                     b"basedOn" => {
                         if let Some((_, c, _)) = cur.as_mut() {
@@ -504,6 +676,7 @@ fn parse_styles(xml: Option<&[u8]>) -> Result<Styles> {
                 guard.leave();
                 match e.local_name().as_ref() {
                     b"docDefaults" => in_doc_defaults = false,
+                    b"tblBorders" => in_tbl_borders = false,
                     b"style" => {
                         if let Some((id, entry, is_def)) = cur.take() {
                             if is_def {
@@ -760,6 +933,12 @@ impl<'a> BodyBuilder<'a> {
         let mut preserve_space = false;
 
         let mut tables: Vec<Table> = Vec::new();
+        let mut table_borders: Vec<TableBorderState> = Vec::new();
+        let mut cell_borders = BorderSet::default();
+        let mut in_tbl_borders = false;
+        let mut in_tc_borders = false;
+        let mut in_tblpr_ex = false;
+        let mut table_count = 0usize;
         let mut rows: Vec<TableRow> = Vec::new();
         let mut cells: Vec<TableCell> = Vec::new();
         let mut pending_cell_span: usize = 1;
@@ -787,9 +966,9 @@ impl<'a> BodyBuilder<'a> {
                     // Değişiklik-izleme KAYDI, belgenin GÜNCEL hâli değildir.
                     //
                     // `w:pPrChange` / `w:rPrChange` / `w:tcPrChange` /
-                    // `w:trPrChange` / `w:sectPrChange` içinde, revizyondan
-                    // ÖNCEKİ (yani reddedilmiş) özellikler tam bir `w:pPr`
-                    // olarak durur. Okuyucu bunları ayırt etmiyordu ve
+                    // `w:trPrChange` / `w:tblPrChange` / `w:sectPrChange`
+                    // içinde, revizyondan ÖNCEKİ (yani reddedilmiş)
+                    // özellikler tam bir `w:pPr` olarak durur. Okuyucu bunları ayırt etmiyordu ve
                     // `w:pPr` içinde sayıldıkları için GÜNCEL değerlerin
                     // ÜSTÜNE yazıyorlardı: paragraf eski aralığıyla, eski
                     // stiliyle ve eski numaralandırmasıyla dönüşüyordu.
@@ -804,6 +983,7 @@ impl<'a> BodyBuilder<'a> {
                             | b"rPrChange"
                             | b"tcPrChange"
                             | b"trPrChange"
+                            | b"tblPrChange"
                             | b"sectPrChange"
                     ) {
                         if !is_empty {
@@ -813,6 +993,31 @@ impl<'a> BodyBuilder<'a> {
                     }
                     if revision_depth > 0 {
                         continue;
+                    }
+                    // Kenarlık bildirimlerinin çocukları (`w:top`, `w:insideH`…)
+                    // paragraf ya da sayfa kenarlığıyla aynı adları taşır; yalnız
+                    // tablo ve hücre kenarlığı içindeyken kaydedilir.
+                    if in_tbl_borders {
+                        if let Some(t) = table_borders.last_mut() {
+                            t.direct.record(e);
+                        }
+                        continue;
+                    }
+                    if in_tc_borders {
+                        cell_borders.record(e);
+                        continue;
+                    }
+                    match name {
+                        b"tblStyle" => {
+                            if let Some(t) = table_borders.last_mut() {
+                                t.style = a(e, "val");
+                            }
+                        }
+                        // Satır istisnaları (`w:tblPrEx`) tabloyu değil o satırı anlatır.
+                        b"tblPrEx" if !is_empty => in_tblpr_ex = true,
+                        b"tblBorders" if !is_empty && !in_tblpr_ex => in_tbl_borders = true,
+                        b"tcBorders" if !is_empty => in_tc_borders = true,
+                        _ => {}
                     }
                     match name {
                         b"p" if !in_sect_pr => {
@@ -899,17 +1104,22 @@ impl<'a> BodyBuilder<'a> {
                         }
 
                         // --- tables ---
-                        b"tbl" => tables.push(Table {
-                            border: TableBorder::Cell,
-                            ..Default::default()
-                        }),
+                        b"tbl" => {
+                            table_borders.push(TableBorderState::default());
+                            tables.push(Table {
+                                border: TableBorder::Cell,
+                                ..Default::default()
+                            })
+                        }
                         b"gridCol" => {
                             if let (Some(t), Some(w)) = (tables.last_mut(), af(e, "w")) {
                                 t.column_widths.push(twips_to_pt(w));
                             }
                         }
-                        b"tblBorders" => {}
                         b"tr" => {
+                            if let Some(t) = table_borders.last_mut() {
+                                t.rows.push(Vec::new());
+                            }
                             rows.push(TableRow::default());
                             pending_row_header = false;
                             pending_row_height = None;
@@ -921,6 +1131,7 @@ impl<'a> BodyBuilder<'a> {
                         }
                         b"tc" => {
                             cells.push(TableCell::default());
+                            cell_borders = BorderSet::default();
                             pending_cell_span = 1;
                             pending_cell_valign = CellVAlign::Top;
                             pending_vmerge_continue = false;
@@ -1067,6 +1278,7 @@ impl<'a> BodyBuilder<'a> {
                             | b"rPrChange"
                             | b"tcPrChange"
                             | b"trPrChange"
+                            | b"tblPrChange"
                             | b"sectPrChange"
                     ) {
                         revision_depth = revision_depth.saturating_sub(1);
@@ -1089,6 +1301,9 @@ impl<'a> BodyBuilder<'a> {
                         b"sectPr" => in_sect_pr = false,
                         b"tcPr" => in_tcpr = false,
                         b"trPr" => in_trpr = false,
+                        b"tblBorders" => in_tbl_borders = false,
+                        b"tcBorders" => in_tc_borders = false,
+                        b"tblPrEx" => in_tblpr_ex = false,
                         b"t" => preserve_space = false,
                         b"del" => in_deleted = false,
                         b"instrText" => in_instr = false,
@@ -1114,6 +1329,11 @@ impl<'a> BodyBuilder<'a> {
                             }
                         }
                         b"tc" => {
+                            if let Some(row) =
+                                table_borders.last_mut().and_then(|t| t.rows.last_mut())
+                            {
+                                row.push((pending_cell_span, cell_borders));
+                            }
                             if let Some(mut c) = cells.pop() {
                                 c.grid_span = pending_cell_span;
                                 c.vertical_align = pending_cell_valign;
@@ -1136,7 +1356,22 @@ impl<'a> BodyBuilder<'a> {
                             }
                         }
                         b"tbl" => {
-                            if let Some(t) = tables.pop() {
+                            if let Some(mut t) = tables.pop() {
+                                table_count += 1;
+                                if let Some(state) = table_borders.pop() {
+                                    let mut base =
+                                        self.styles.table_borders(state.style.as_deref());
+                                    base.overlay(&state.direct);
+                                    let (border, partial) =
+                                        effective_table_border(&base, &state.rows);
+                                    t.border = border;
+                                    if partial {
+                                        self.warn.push(
+                                            Warning::new(WarningCode::TableBordersApproximated)
+                                                .at(format!("Tablo {table_count}")),
+                                        );
+                                    }
+                                }
                                 push_to(&mut cells, &mut out, Block::Table(t));
                             }
                         }
