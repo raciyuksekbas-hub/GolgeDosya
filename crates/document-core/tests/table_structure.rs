@@ -18,6 +18,9 @@
 //!   `<paragraph height=..>` içindeki hücreyi (20 görünür karakter) sessizce
 //!   atıyordu; satırsız hücre, bitiş etiketli yaprak ve paragraf içindeki
 //!   paragraf da metin kaybettiriyordu.
+//! - Birleşik UDF satırının kendi `columnSpans`'ı okunmuyordu: hücreler ızgaraya
+//!   eşit dağıtılıyor, birleşik hücre çoğu zaman yanlış sütunlara oturuyordu
+//!   (21 gerçek UDF'te 201 satırın 199'u).
 //!
 //! Bütün belgeler bu dosyada sentetik olarak kurulur; gerçek dava dosyası yok.
 
@@ -785,4 +788,83 @@ fn text_the_reader_cannot_place_is_reported_as_lost() {
         .unwrap_or_else(|| panic!("kayıp sessiz kaldı: {warns:?}"));
     assert!(w.data_loss);
     assert_eq!(w.detail.as_deref(), Some("16 karakter"));
+}
+
+// ------------------------------------------------------------ birleşik UDF satırları
+
+/// `grid` tablo ızgarası; ikinci satır `row_spans` genişliklerinde
+/// `row_spans`'taki kadar hücre taşır (boşsa satır `columnSpans`'sız).
+/// Okuyucunun bu satıra verdiği gridSpan listesi döner.
+fn merged_row_spans(grid: &str, cells: usize, row_spans: &str) -> Vec<usize> {
+    let mut u = Udf::default();
+    let cols = grid.split(',').count();
+    let full: Vec<String> = (0..cols).map(|i| u.p(&format!("s{i}"))).collect();
+    let merged: Vec<String> = (0..cells).map(|i| u.p(&format!("m{i}"))).collect();
+    let attrs = if row_spans.is_empty() {
+        String::new()
+    } else {
+        format!(r#" columnSpans="{row_spans}""#)
+    };
+    let rows = format!("{}{}", urow("", &full), urow(&attrs, &merged));
+    let (d, _) = read_udf(&u.build(&utable(grid, &rows)));
+    first_table(&d).rows[1]
+        .cells
+        .iter()
+        .map(|c| c.grid_span)
+        .collect()
+}
+
+#[test]
+fn a_merged_udf_row_takes_its_columns_from_its_own_widths() {
+    let cases = [
+        // (ızgara, satır genişlikleri, beklenen gridSpan) — gerçek şekiller:
+        // D135 tablosu; sondaki birleşik hücre (chains F3); D296/D555-D572
+        // icra formu (en yakın sütun sınırı); D136 (22/78 oranlı satır).
+        ("38,302,43,64,85", "38,409,85", vec![1, 3, 1]),
+        ("100,100,100", "100,200", vec![1, 2]),
+        ("100,5,100", "91,109", vec![1, 2]),
+        ("120,419,120,419", "120,419", vec![1, 3]),
+    ];
+    let mut wrong = Vec::new();
+    for (grid, row, want) in cases {
+        let n = row.split(',').count();
+        let got = merged_row_spans(grid, n, row);
+        if got != want {
+            wrong.push(format!(
+                "ızgara {grid}, satır {row}: {got:?} (beklenen {want:?})"
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+#[test]
+fn a_merged_udf_row_without_widths_is_still_spread_evenly() {
+    // Satırın kendi genişlikleri yoksa eski kural sürer.
+    assert_eq!(merged_row_spans("100,100,100", 2, ""), vec![2, 1]);
+}
+
+#[test]
+fn a_word_merge_at_the_end_of_a_row_survives_word_to_udf_to_word() {
+    // Word'de [a][b+c]: UDF'e satır genişlikleriyle yazılır, geri okununca
+    // birleşik hücre yine sonda olmalı ([b+c][a] değil).
+    let body = tbl(
+        "",
+        &[2000, 2000, 2000],
+        &[
+            tr("", &[tc("", &p("1")), tc("", &p("2")), tc("", &p("3"))]),
+            tr(
+                "",
+                &[tc("", &p("a")), tc(r#"<w:gridSpan w:val="2"/>"#, &p("b+c"))],
+            ),
+        ],
+    );
+    let (udf_bytes, _) = convert(&docx_package(&body), Direction::DocxToUdf);
+    let (word, _) = convert(&udf_bytes, Direction::UdfToDocx);
+    let (d, _) = read_docx(&word);
+    assert_eq!(
+        placed(first_table(&d))[1],
+        vec![s(0, "a"), s(1, "b+c")],
+        "birleşik hücre yer değiştirdi"
+    );
 }
