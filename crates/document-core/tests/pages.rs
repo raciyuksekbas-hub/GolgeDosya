@@ -732,6 +732,18 @@ fn page_number_shapes_the_corpus_never_shows_stay_frozen_and_reported() {
             "footer",
             p(&format!("{}{}", field("PAGE", "1"), r(" sayfa"))),
         ),
+        // Uzun ön metin (ad, adres): UYAP'ın `foreStr`'ı tam gösterdiği doğrulanmadı;
+        // metin görünmez kalmasın diye paragraf olduğu gibi kalır.
+        (
+            "footer",
+            p(&format!(
+                "{}{}{}{}",
+                r("Örnek Hukuk Bürosu — Dilekçe sayfası "),
+                field("PAGE", "1"),
+                r(" / "),
+                field("NUMPAGES", "3")
+            )),
+        ),
         (
             "footer",
             p(&format!("{}{}", field("PAGE \\* ROMAN", "I"), r(""))),

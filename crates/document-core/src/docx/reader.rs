@@ -1066,6 +1066,9 @@ fn page_field_kind(instr: &str) -> Option<&'static str> {
 /// BSP32_2120 (100 belge), alt bilgide "X" → BSP32_40 (18), üst bilgide "X / Y" →
 /// BSP32_2116 (3). Karşılığı görülmemiş biçim (üst bilgide yalnız "X", sekmeyle
 /// hizalanmış numara, başka alanlar) çevrilmez; son görünen değerinde kalır.
+/// UYAP sayfa numarasının önüne yazılacak en uzun ön metin ("Sayfa ", "Dosya No: ").
+const MAX_PAGE_NUMBER_PREFIX: usize = 12;
+
 fn page_number_field(
     p: &Paragraph,
     fields: &[FieldSpan],
@@ -1097,6 +1100,13 @@ fn page_number_field(
     }
     let (page_start, page_end) = span(page)?;
     let prefix = literal(0, page_start)?;
+    // Ön metin UYAP'ta `pageNumber-foreStr` olarak, numarayla birlikte çizilir.
+    // Gerçek UDF'lerde bu değer yalnız "" ve "Dosya"; uzun bir metnin orada tam
+    // gösterildiği doğrulanmadı. Gösterilmezse alt bilgideki metin (avukat adı,
+    // adres) görünmez olurdu: o zaman paragraf çevrilmez, metin olduğu gibi kalır.
+    if prefix.trim().chars().count() > MAX_PAGE_NUMBER_PREFIX {
+        return None;
+    }
     let (separator, tail_from) = match total {
         None => (None, page_end),
         Some(t) => {
