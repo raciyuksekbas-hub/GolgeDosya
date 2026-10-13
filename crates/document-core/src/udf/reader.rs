@@ -546,6 +546,7 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
                     "paragraph" => {
                         if let Some(mut p) = para.take() {
                             trim_paragraph_terminator(&mut p);
+                            line_feeds_to_breaks(&mut p);
                             push_block(
                                 Block::Paragraph(p),
                                 &mut cell_stack,
@@ -653,17 +654,54 @@ fn push_block(
 
 /// The buffer's paragraph terminator belongs to the format, not to the text. Drop the
 /// trailing newline that the last run carries so the canonical model holds clean text.
+///
+/// TAM BİR sonlandırıcı silinir. Eskiden döngü, sonlandırıcı kendi yaprağındayken
+/// önceki yapraktaki fazladan LF'yi de siliyordu: gerçek 48 UDF'te 1–5 boş satır
+/// kayboluyordu.
 fn trim_paragraph_terminator(p: &mut Paragraph) {
-    while let Some(Run::Text { text, .. }) = p.runs.last_mut() {
+    if let Some(Run::Text { text, .. }) = p.runs.last_mut() {
         if text.ends_with('\n') {
             text.pop();
             if text.is_empty() {
                 p.runs.pop();
-                continue;
             }
         }
-        break;
     }
+}
+
+/// Sonlandırıcıdan sonra kalan her LF görünür bir satır sonudur (Swing'de `\n`
+/// satırı bitirir). Ham LF `w:t` içine gidiyordu ve Word onu BOŞLUK gösteriyordu
+/// (gerçek 64 belgede 89 LF): artık `Run::LineBreak`, yani `<w:br/>`.
+fn line_feeds_to_breaks(p: &mut Paragraph) {
+    if !p
+        .runs
+        .iter()
+        .any(|r| matches!(r, Run::Text { text, .. } if text.contains('\n')))
+    {
+        return;
+    }
+    let mut out = Vec::with_capacity(p.runs.len() + 2);
+    for run in std::mem::take(&mut p.runs) {
+        match run {
+            Run::Text { text, props } if text.contains('\n') => {
+                for (i, piece) in text.split('\n').enumerate() {
+                    if i > 0 {
+                        out.push(Run::LineBreak {
+                            props: props.clone(),
+                        });
+                    }
+                    if !piece.is_empty() {
+                        out.push(Run::Text {
+                            text: piece.to_string(),
+                            props: props.clone(),
+                        });
+                    }
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    p.runs = out;
 }
 
 fn local_name(e: &BytesStart) -> String {

@@ -200,9 +200,16 @@ impl<'a> UdfWriter<'a> {
         for run in &p.runs {
             match run {
                 Run::Text { text, props } => {
-                    let clean = sanitize_text(text);
+                    let mut clean = sanitize_text(text);
                     if clean.is_empty() {
                         continue;
+                    }
+                    // Tamponda satır sonu YALNIZ paragraf sonlandırıcısıdır. Metnin
+                    // içindeki LF öğe ağacında olmayan bir paragraf açar; CR, UYAP'ın
+                    // XML ayrıştırıcısının satır sonu normalleştirmesiyle silinip
+                    // sonraki bütün ofsetleri kaydırır. Word bunları boşluk gösterir.
+                    if clean.contains(['\r', '\n']) {
+                        clean = clean.replace("\r\n", " ").replace(['\r', '\n'], " ");
                     }
                     // A literal tab inside a text run must still be mirrored by a <tab>
                     // element, so split on tabs and emit each piece separately.
@@ -617,6 +624,26 @@ pub fn validate(content_xml: &[u8]) -> Result<()> {
     // document containing a literal "]]>" is rejected by its own validator.
     let buf = s[start..end].replace("]]]]><![CDATA[>", "]]>");
     let buf_len: usize = buf.encode_utf16().count();
+
+    // Satır sonu tamponda yalnız paragraf sonlandırıcısıdır (EXP-002): her
+    // `<paragraph>` tam bir `\n` taşır. Fazladan LF UYAP'ta öğe ağacında olmayan bir
+    // paragraf açar; CR uyumlu her XML ayrıştırıcısında (XML 1.0 §2.11) silinir ve
+    // sonraki bütün ofsetleri kaydırır. İkisi de döşemeyi bozmadan geçebildiği için
+    // ayrıca denetlenir.
+    if buf.contains('\r') {
+        return Err(ConvError::new(
+            ErrorCode::OutputValidationFailed,
+            "carriage return in content buffer",
+        ));
+    }
+    let line_feeds = buf.matches('\n').count();
+    let paragraphs = s[end..].matches("<paragraph").count();
+    if line_feeds != paragraphs {
+        return Err(ConvError::new(
+            ErrorCode::OutputValidationFailed,
+            format!("{line_feeds} line feeds for {paragraphs} paragraphs"),
+        ));
+    }
 
     // Collect every (startOffset, length) leaf in document order.
     let mut spans: Vec<(usize, usize)> = Vec::new();

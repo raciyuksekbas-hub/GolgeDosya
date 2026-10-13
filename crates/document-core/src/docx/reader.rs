@@ -1574,6 +1574,17 @@ impl<'a> BodyBuilder<'a> {
                         {
                             continue;
                         }
+                        // `w:t` içindeki LF/CR satır sonu DEĞİLDİR: Word onu boşluk
+                        // olarak gösterir (satır sonu `w:br`/`w:cr`'dır). Ham kalınca
+                        // UDF tamponunda öğe ağacında olmayan bir paragraf açıyor
+                        // (gerçek 14 belgede 43 LF), CR ise XML satır sonu
+                        // normalleştirmesiyle silinip sonraki bütün ofsetleri
+                        // kaydırıyordu.
+                        let s = if s.contains(['\r', '\n']) {
+                            s.replace("\r\n", " ").replace(['\r', '\n'], " ")
+                        } else {
+                            s
+                        };
                         let run = self.partial_run(&para_style, &run_direct);
                         if run.vanish == Some(true) {
                             // Gizli metin yazdırılmaz; mahkemeye gidecek belgeye girmemeli.
