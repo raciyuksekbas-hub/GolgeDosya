@@ -111,6 +111,7 @@ pub fn write_docx(doc: &Document, warn: &mut WarningSink) -> Result<Vec<u8>> {
     let mut media = MediaPool::default();
 
     doc_rels.add(REL_STYLES, "styles.xml");
+    doc_rels.add(REL_SETTINGS, "settings.xml");
     let has_lists = !doc.lists.is_empty();
     if has_lists {
         doc_rels.add(REL_NUMBERING, "numbering.xml");
@@ -257,6 +258,7 @@ pub fn write_docx(doc: &Document, warn: &mut WarningSink) -> Result<Vec<u8>> {
             doc_rels.to_xml().as_bytes(),
         )?;
         put(&mut z, "word/styles.xml", styles_xml(doc).as_bytes())?;
+        put(&mut z, "word/settings.xml", settings_xml().as_bytes())?;
         if has_lists {
             put(&mut z, "word/numbering.xml", numbering_xml(doc).as_bytes())?;
         }
@@ -317,6 +319,7 @@ fn content_types(media: &MediaPool, numbering: bool, hf_parts: &[HfOut]) -> Stri
     }
     s.push_str("<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>");
     s.push_str("<Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>");
+    s.push_str("<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/>");
     if numbering {
         s.push_str("<Override PartName=\"/word/numbering.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>");
     }
@@ -328,6 +331,18 @@ fn content_types(media: &MediaPool, numbering: bool, hf_parts: &[HfOut]) -> Stri
     }
     s.push_str("</Types>");
     s
+}
+
+/// Belge ayarları: yalnız UYAP'ın görünüşünü korumak için gereken uyumluluk.
+///
+/// UDF paragrafının içindeki LF, Word'de `<w:br/>` olur. Word, iki yana yaslı
+/// paragrafta el ile satır sonuyla biten satırı sayfa genişliğine YAYAR; UYAP
+/// (Swing) yaymaz. `w:doNotExpandShiftReturn` bu satırları Swing gibi bırakır.
+fn settings_xml() -> String {
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
+         <w:settings xmlns:w=\"{NS_W}\"><w:compat><w:doNotExpandShiftReturn/></w:compat></w:settings>"
+    )
 }
 
 fn styles_xml(doc: &Document) -> String {

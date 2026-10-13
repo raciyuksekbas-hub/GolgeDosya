@@ -187,12 +187,53 @@ fn an_interior_line_feed_becomes_a_real_word_line_break() {
 fn only_one_paragraph_terminator_is_trimmed() {
     // Gerçek UYAP biçimi: fazladan LF kendi yaprağında, sonlandırıcı da öyle.
     let mut w = WarningSink::new();
+    // Sondaki fazladan LF Swing'de boş bir satırdır: Word'de boş paragraf olur.
+    // (Önceki sürüm onu `<w:br/>` yazıyordu; iki yana yaslı paragrafta Word son
+    // dolu satırı sayfa genişliğine yayıyordu.)
     let d = udf::reader::read_udf(&udf_package(&["Ad Soyad", "\n", "\n"]), &mut w).unwrap();
-    assert_eq!(shapes(&d), vec!["Ad Soyad⏎"]);
-    // Yalnız satır sonlarından oluşan paragraf: iki satır, bir satır sonu.
+    assert_eq!(shapes(&d), vec!["Ad Soyad", ""]);
+    // Yalnız satır sonlarından oluşan paragraf: iki boş satır.
     let d = udf::reader::read_udf(&udf_package(&["\n\n"]), &mut w).unwrap();
-    assert_eq!(shapes(&d), vec!["⏎"]);
+    assert_eq!(shapes(&d), vec!["", ""]);
     // Sıradan paragraf değişmez.
     let d = udf::reader::read_udf(&udf_package(&["Metin\n"]), &mut w).unwrap();
     assert_eq!(shapes(&d), vec!["Metin"]);
+}
+
+#[test]
+fn a_justified_line_before_a_line_feed_is_not_stretched_in_word() {
+    // Gözden geçirme bulgusu: iki yana yaslı UDF paragrafındaki LF Word'de
+    // `<w:br/>` olunca Word o satırı sayfa genişliğine yayıyordu; UYAP yaymaz.
+    let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<template format_id=\"1.8\" >\n\
+         <content><![CDATA[Ad Soyad\nAdres satırı\n\n]]></content>\n\
+         <elements resolver=\"hvl-default\" ><paragraph Alignment=\"3\">\
+         <content startOffset=\"0\" length=\"9\" /><content startOffset=\"9\" length=\"14\" />\
+         </paragraph></elements>\n\
+         <styles><style name=\"hvl-default\" family=\"Times New Roman\" size=\"12\" /></styles>\n</template>";
+    let mut cur = std::io::Cursor::new(Vec::new());
+    {
+        let mut z = zip::ZipWriter::new(&mut cur);
+        let o: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        z.start_file("content.xml", o).unwrap();
+        z.write_all(xml.as_bytes()).unwrap();
+        z.finish().unwrap();
+    }
+    let udf = cur.into_inner();
+    let mut w = WarningSink::new();
+    let d = udf::reader::read_udf(&udf, &mut w).unwrap();
+    // İç LF satır sonu, sondaki fazladan LF boş paragraf.
+    assert_eq!(shapes(&d), vec!["Ad Soyad⏎Adres satırı", ""]);
+    let docx = convert_bytes(&udf, Direction::UdfToDocx, &mut w).unwrap();
+    let body = part(&docx, "word/document.xml");
+    assert!(
+        !body.contains("<w:br/></w:p>"),
+        "paragraf satır sonuyla bitiyor: {body}"
+    );
+    let settings = part(&docx, "word/settings.xml");
+    assert!(
+        settings.contains("<w:doNotExpandShiftReturn/>"),
+        "{settings}"
+    );
+    assert!(part(&docx, "[Content_Types].xml").contains("/word/settings.xml"));
+    assert!(part(&docx, "word/_rels/document.xml.rels").contains("Target=\"settings.xml\""));
 }

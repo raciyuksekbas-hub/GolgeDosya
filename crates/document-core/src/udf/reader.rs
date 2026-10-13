@@ -657,7 +657,14 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
                         }
                         if let Some(mut p) = para.take() {
                             trim_paragraph_terminator(&mut p);
+                            let blank_lines = take_trailing_line_feeds(&mut p);
                             line_feeds_to_breaks(&mut p);
+                            // Sondaki fazladan LF, Swing'de boş bir satırdır.
+                            // Word'de bunu `<w:br/>` ile yazmak iki yana yaslı
+                            // paragrafın son dolu satırını sayfa genişliğine
+                            // yayıyordu; boş paragraf UYAP'taki görünüşün aynısı.
+                            let mut blank = p.props.clone();
+                            blank.list = None;
                             push_block(
                                 Block::Paragraph(p),
                                 &mut cell_stack,
@@ -666,6 +673,19 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
                                 &mut hf_stack,
                                 &mut body,
                             );
+                            for _ in 0..blank_lines {
+                                push_block(
+                                    Block::Paragraph(Paragraph {
+                                        props: blank.clone(),
+                                        runs: vec![],
+                                    }),
+                                    &mut cell_stack,
+                                    &mut row_stack,
+                                    &mut table_stack,
+                                    &mut hf_stack,
+                                    &mut body,
+                                );
+                            }
                         }
                         if let Some(props) = outer_paras.pop() {
                             ctx.para_attrs = outer_attrs.pop().unwrap_or_default();
@@ -873,7 +893,24 @@ fn trim_paragraph_terminator(p: &mut Paragraph) {
     }
 }
 
-/// Sonlandırıcıdan sonra kalan her LF görünür bir satır sonudur (Swing'de `\n`
+/// Sonlandırıcıdan sonra paragrafın SONUNDA kalan LF'leri çıkarır ve sayısını
+/// döndürür: her biri Swing'de bir boş satırdır.
+fn take_trailing_line_feeds(p: &mut Paragraph) -> usize {
+    let mut count = 0;
+    while let Some(Run::Text { text, .. }) = p.runs.last_mut() {
+        let kept = text.trim_end_matches('\n').len();
+        count += text.len() - kept;
+        let only_line_feeds = kept == 0;
+        text.truncate(kept);
+        if !only_line_feeds {
+            break; // gerçek metne gelindi
+        }
+        p.runs.pop(); // yalnız LF taşıyan yaprak: öncekine bak
+    }
+    count
+}
+
+/// Paragrafın İÇİNDE kalan her LF görünür bir satır sonudur (Swing'de `\n`
 /// satırı bitirir). Ham LF `w:t` içine gidiyordu ve Word onu BOŞLUK gösteriyordu
 /// (gerçek 64 belgede 89 LF): artık `Run::LineBreak`, yani `<w:br/>`.
 fn line_feeds_to_breaks(p: &mut Paragraph) {
