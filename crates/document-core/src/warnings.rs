@@ -325,6 +325,19 @@ impl WarningSink {
         self.push(Warning::new(code));
     }
 
+    /// Ayrı toplanmış uyarıları, tekrar sayılarıyla birlikte buraya aktarır.
+    ///
+    /// Okuyucu bir parçayı (ör. Word'ün ilk sayfa üst bilgisi) kullanıp
+    /// kullanmayacağına okuduktan sonra karar verir; kullanılmayan parçanın
+    /// uyarıları belgeye ait değildir.
+    pub fn absorb(&mut self, other: WarningSink) {
+        for (w, n) in other.items.into_iter().zip(other.counts) {
+            for _ in 0..n {
+                self.push(w.clone());
+            }
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }

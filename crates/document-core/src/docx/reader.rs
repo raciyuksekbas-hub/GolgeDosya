@@ -31,6 +31,8 @@ struct Pkg {
     media: HashMap<String, Arc<Vec<u8>>>,
     headers: HashMap<String, (String, Arc<Vec<u8>>)>,
     footers: HashMap<String, (String, Arc<Vec<u8>>)>,
+    /// `word/settings.xml`: tek/çift sayfa üst bilgisi gibi belge geneli ayarlar.
+    settings: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Default, Debug)]
@@ -500,23 +502,9 @@ pub fn read_docx(bytes: &[u8], warn: &mut WarningSink) -> Result<Document> {
     };
 
     // Word may define default / first-page / even-page variants; UDF has one of each.
-    if sect.header_ids.len() > 1 || sect.footer_ids.len() > 1 {
-        b.warn.warn(WarningCode::HeaderFooterVariantDropped);
-    }
-    if let Some((rid, kind)) = sect.header_ids.first().cloned() {
-        if let Some((part, x)) = b.pkg.headers.get(&rid).cloned() {
-            let mut hf = b.walk_header_footer(&part, &x)?;
-            if kind == "first" {
-                hf.stop_page = Some(1);
-            }
-            section.header = Some(hf);
-        }
-    }
-    if let Some((rid, _)) = sect.footer_ids.first().cloned() {
-        if let Some((part, x)) = b.pkg.footers.get(&rid).cloned() {
-            section.footer = Some(b.walk_header_footer(&part, &x)?);
-        }
-    }
+    let settings = parse_settings(b.pkg.settings.as_deref())?;
+    section.header = b.header_footer(&sect.header_refs, sect.title_pg, &settings, true)?;
+    section.footer = b.header_footer(&sect.footer_refs, sect.title_pg, &settings, false)?;
 
     let lists = std::mem::take(&mut b.lists);
     let default_font = FontSpec {
@@ -564,6 +552,7 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
     let mut document = None;
     let mut styles = None;
     let mut numbering = None;
+    let mut settings = None;
     let mut rels_xml = None;
     let mut part_rels_xml: HashMap<String, Vec<u8>> = HashMap::new();
     let mut media = HashMap::new();
@@ -585,6 +574,7 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
         let want = lower == "word/document.xml"
             || lower == "word/styles.xml"
             || lower == "word/numbering.xml"
+            || lower == "word/settings.xml"
             || lower == "word/_rels/document.xml.rels"
             || (lower.starts_with("word/_rels/") && lower.ends_with(".xml.rels"))
             || lower.starts_with("word/media/")
@@ -607,6 +597,7 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
             "word/document.xml" => document = Some(v),
             "word/styles.xml" => styles = Some(v),
             "word/numbering.xml" => numbering = Some(v),
+            "word/settings.xml" => settings = Some(v),
             "word/_rels/document.xml.rels" => rels_xml = Some(v),
             _ => {
                 if lower.starts_with("word/_rels/") && lower.ends_with(".xml.rels") {
@@ -694,6 +685,7 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
         media,
         headers,
         footers,
+        settings,
     })
 }
 
@@ -1453,11 +1445,61 @@ fn label_sample(level: &NumLevel, levels: &[Option<&NumLevel>]) -> String {
     word_label(level, levels, &ones, &[1; 9]).0
 }
 
+/// `word/settings.xml`'deki, sayfaya bağlı biçimi değiştiren belge ayarları.
+#[derive(Default)]
+struct DocSettings {
+    /// `w:evenAndOddHeaders`: çift sayfalar "even" üst/alt bilgisini gösterir.
+    /// Kapalıyken "even" parçası hiçbir sayfada basılmaz.
+    even_and_odd_headers: bool,
+}
+
+fn parse_settings(xml: Option<&[u8]>) -> Result<DocSettings> {
+    let mut s = DocSettings::default();
+    let Some(xml) = xml else { return Ok(s) };
+    security::reject_doctype(xml)?;
+    let mut rd = Reader::from_reader(xml);
+    rd.config_mut().check_end_names = false;
+    loop {
+        match rd.read_event() {
+            Err(e) => return Err(ConvError::invalid_docx(format!("settings XML error: {e}"))),
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if e.local_name().as_ref() == b"evenAndOddHeaders" =>
+            {
+                s.even_and_odd_headers = toggle(&e);
+            }
+            _ => {}
+        }
+    }
+    Ok(s)
+}
+
+/// Word'de hiçbir şey göstermeyen üst/alt bilgi: yalnız boş paragraflar.
+///
+/// Word "İlk sayfa farklı" seçildiğinde ilk sayfa için BOŞ bir parça yazar; anlamı
+/// "üst bilgi ikinci sayfadan başlar"dır, bir içerik değil.
+fn hf_is_blank(hf: &HeaderFooter) -> bool {
+    hf.page_number.is_none()
+        && hf.blocks.iter().all(|b| match b {
+            Block::Paragraph(p) => p.runs.iter().all(|r| match r {
+                Run::Text { text, .. } => text.trim().is_empty(),
+                Run::Tab { .. } | Run::LineBreak { .. } => true,
+                Run::Image(_) => false,
+            }),
+            Block::Table(_) | Block::PageBreak => false,
+        })
+}
+
 #[derive(Default)]
 struct SectInfo {
     page: PageSetup,
-    header_ids: Vec<(String, String)>,
-    footer_ids: Vec<(String, String)>,
+    /// Üst/alt bilgi başvuruları, çeşidine göre (`default`/`first`/`even`) ilişki
+    /// kimliği. Birden çok `w:sectPr` varsa sonraki aynı çeşidi ezer.
+    header_refs: HashMap<String, String>,
+    footer_refs: HashMap<String, String>,
+    /// Son `w:sectPr`'nin `w:titlePg`'si: "ilk sayfa farklı". Kapalıyken "first"
+    /// parçası hiçbir sayfada gösterilmez.
+    title_pg: bool,
 }
 
 struct BodyBuilder<'a> {
@@ -1476,6 +1518,74 @@ struct BodyBuilder<'a> {
 }
 
 impl<'a> BodyBuilder<'a> {
+    /// Word'ün bölümde GERÇEKTEN gösterdiği üst ya da alt bilgiyi UDF'nin tek
+    /// parçasına indirir.
+    ///
+    /// - "first" parçası yalnız `w:titlePg` açıkken, "even" parçası yalnız
+    ///   `w:evenAndOddHeaders` açıkken basılır. Basılmayan bir çeşit kayıp değildir;
+    ///   eskiden yine de "aktarılamadı" (KAYIP) uyarısı veriyordu (gerçek 9 belge).
+    /// - Boş ilk sayfa + dolu diğer sayfalar → `startPage="2"`; dolu ilk sayfa + boş
+    ///   diğer sayfalar → `stopPage="1"` (UYAP'ın iki gerçek biçimi).
+    /// - İki parça aynıysa her sayfadadır. İkisi de dolu ve farklıysa UDF tek parça
+    ///   tutar: diğer sayfalarınki korunur, ilk sayfanınki bildirilir.
+    fn header_footer(
+        &mut self,
+        refs: &HashMap<String, String>,
+        title_pg: bool,
+        settings: &DocSettings,
+        is_header: bool,
+    ) -> Result<Option<HeaderFooter>> {
+        let parts = if is_header {
+            &self.pkg.headers
+        } else {
+            &self.pkg.footers
+        };
+        let get = |ty: &str| refs.get(ty).and_then(|rid| parts.get(rid)).cloned();
+        let default = get("default");
+        // OOXML: ilk bölümde "first" başvurusu yoksa ilk sayfa BOŞ bir parça gösterir.
+        let first = title_pg.then(|| get("first"));
+        if settings.even_and_odd_headers && get("even").is_some() {
+            self.warn.warn(WarningCode::HeaderFooterVariantDropped);
+        }
+
+        let mut out = match default {
+            Some((part, x)) => Some(self.walk_header_footer(&part, &x)?),
+            None => None,
+        };
+        let Some(first) = first else {
+            return Ok(out);
+        };
+        // İlk sayfa parçası ayrı bir uyarı toplayıcısıyla okunur: kullanılmazsa
+        // (boşsa ya da diğerinin aynısıysa) uyarıları da iki kez sayılmaz.
+        let (first_hf, first_warn) = match first {
+            Some((part, x)) => {
+                let saved = std::mem::take(&mut *self.warn);
+                let r = self.walk_header_footer(&part, &x);
+                let first_warn = std::mem::replace(&mut *self.warn, saved);
+                (Some(r?), first_warn)
+            }
+            None => (None, WarningSink::new()),
+        };
+        let first_blank = first_hf.as_ref().map_or(true, hf_is_blank);
+        match out.as_mut() {
+            Some(d) if !hf_is_blank(d) => {
+                if first_blank {
+                    d.start_page = Some(2);
+                } else if first_hf.as_ref() != Some(d) {
+                    self.warn.warn(WarningCode::HeaderFooterVariantDropped);
+                }
+            }
+            _ => {
+                if let (Some(mut f), false) = (first_hf, first_blank) {
+                    f.stop_page = Some(1);
+                    self.warn.absorb(first_warn);
+                    out = Some(f);
+                }
+            }
+        }
+        Ok(out)
+    }
+
     fn walk_header_footer(&mut self, part: &str, xml: &[u8]) -> Result<HeaderFooter> {
         self.active_part = Some(part.to_string());
         // Üst/alt bilginin listeleri gövdenin numarasını sürdürmez.
@@ -1707,7 +1817,10 @@ impl<'a> BodyBuilder<'a> {
                         b"sectPr" => {
                             in_sect_pr = true;
                             sect_count += 1;
+                            // `w:titlePg` bölüme aittir, öncekinden miras kalmaz.
+                            sect.title_pg = false;
                         }
+                        b"titlePg" if in_sect_pr => sect.title_pg = toggle(e),
                         b"pgSz" if in_sect_pr => {
                             if let Some(w) = af(e, "w") {
                                 sect.page.width_pt = twips_to_pt(w);
@@ -1739,23 +1852,13 @@ impl<'a> BodyBuilder<'a> {
                                 sect.page.footer_offset_pt = twips_to_pt(v);
                             }
                         }
-                        b"headerReference" if in_sect_pr => {
+                        b"headerReference" | b"footerReference" if in_sect_pr => {
                             if let Some(id) = a(e, "id") {
                                 let kind = a(e, "type").unwrap_or_else(|| "default".into());
-                                if kind == "default" {
-                                    sect.header_ids.insert(0, (id, kind));
+                                if name == b"headerReference" {
+                                    sect.header_refs.insert(kind, id);
                                 } else {
-                                    sect.header_ids.push((id, kind));
-                                }
-                            }
-                        }
-                        b"footerReference" if in_sect_pr => {
-                            if let Some(id) = a(e, "id") {
-                                let kind = a(e, "type").unwrap_or_else(|| "default".into());
-                                if kind == "default" {
-                                    sect.footer_ids.insert(0, (id, kind));
-                                } else {
-                                    sect.footer_ids.push((id, kind));
+                                    sect.footer_refs.insert(kind, id);
                                 }
                             }
                         }

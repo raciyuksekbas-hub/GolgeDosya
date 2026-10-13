@@ -61,7 +61,7 @@ impl MediaPool {
 /// other part. Emitting a header image's relationship into the document part's `.rels` —
 /// which is what Tavzih did — leaves the reference unresolvable and Word renders
 /// "Resim görüntülenemiyor."
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Rels {
     items: Vec<(String, &'static str, String)>, // (rid, type, target)
     next: usize,
@@ -118,20 +118,78 @@ pub fn write_docx(doc: &Document, warn: &mut WarningSink) -> Result<Vec<u8>> {
 
     // Header and footer parts are built first: each returns its own relationship set, and
     // any image inside them registers in THAT set, not in the document's.
-    let header = match &section.header {
-        Some(h) => Some(hf_part("hdr", h, doc, &mut media, warn, text_width_tw)?),
-        None => None,
-    };
-    let footer = match &section.footer {
-        Some(f) => Some(hf_part("ftr", f, doc, &mut media, warn, text_width_tw)?),
-        None => None,
-    };
-    let header_rid = header
+    //
+    // UDF'nin sayfa aralığı (`stopPage="1"`: yalnız ilk sayfa, `startPage="2"`: ikinci
+    // sayfadan sonra) Word'de `w:titlePg` ile "first" ve "default" parçalarıdır.
+    // Eskiden yalnız "default" yazılıyordu: 73 gerçek UDF'nin anteti her sayfada
+    // basılıyor, 35'inin devam başlığı ilk sayfada da çıkıyordu.
+    let hdr_pages = section
+        .header
         .as_ref()
-        .map(|_| doc_rels.add(REL_HEADER, "header1.xml"));
-    let footer_rid = footer
+        .map(|h| hf_pages(h, "Üst bilgi", warn));
+    let ftr_pages = section
+        .footer
         .as_ref()
-        .map(|_| doc_rels.add(REL_FOOTER, "footer1.xml"));
+        .map(|f| hf_pages(f, "Alt bilgi", warn));
+    let title_pg = [hdr_pages, ftr_pages]
+        .iter()
+        .any(|p| matches!(p, Some(HfPages::FirstOnly | HfPages::AfterFirst)));
+    let mut hf_parts: Vec<HfOut> = Vec::new();
+    for (kind, hf, pages) in [
+        ("header", &section.header, hdr_pages),
+        ("footer", &section.footer, ftr_pages),
+    ] {
+        let (Some(hf), Some(pages)) = (hf, pages) else {
+            continue;
+        };
+        let tag = if kind == "header" { "hdr" } else { "ftr" };
+        let (xml, rels) = hf_part(tag, hf, doc, &mut media, warn, text_width_tw)?;
+        // Word'de hiçbir şey göstermeyen parça: yalnız boş bir paragraf.
+        let (empty, _) = hf_part(
+            tag,
+            &HeaderFooter::default(),
+            doc,
+            &mut media,
+            warn,
+            text_width_tw,
+        )?;
+        let (default, first) = match pages {
+            // `w:titlePg` bölümün TAMAMINA uygulanır: aralığı olmayan parçanın ilk
+            // sayfası "first" başvurusu olmadan boş kalırdı. Aynı içerik (aynı resim
+            // hedefleriyle) ikinci bir parça olarak yazılır.
+            HfPages::Every => ((xml.clone(), rels.clone()), title_pg.then_some((xml, rels))),
+            HfPages::FirstOnly => ((empty, Rels::default()), Some((xml, rels))),
+            HfPages::AfterFirst => ((xml, rels), Some((empty, Rels::default()))),
+        };
+        let n = hf_parts.iter().filter(|p| p.kind == kind).count();
+        hf_parts.push(HfOut {
+            kind,
+            ty: "default",
+            part: format!("{kind}{}", n + 1),
+            xml: default.0,
+            rels: default.1,
+        });
+        if let Some((xml, rels)) = first {
+            hf_parts.push(HfOut {
+                kind,
+                ty: "first",
+                part: format!("{kind}{}", n + 2),
+                xml,
+                rels,
+            });
+        }
+    }
+    let hf_refs: Vec<(&str, &str, String)> = hf_parts
+        .iter()
+        .map(|p| {
+            let rel = if p.kind == "header" {
+                REL_HEADER
+            } else {
+                REL_FOOTER
+            };
+            (p.kind, p.ty, doc_rels.add(rel, format!("{}.xml", p.part)))
+        })
+        .collect();
 
     let mut body = String::new();
     write_blocks(
@@ -164,11 +222,7 @@ pub fn write_docx(doc: &Document, warn: &mut WarningSink) -> Result<Vec<u8>> {
     if body.is_empty() {
         body.push_str("<w:p/>");
     }
-    body.push_str(&sect_pr(
-        section,
-        header_rid.as_deref(),
-        footer_rid.as_deref(),
-    ));
+    body.push_str(&sect_pr(section, &hf_refs, title_pg));
 
     let document_xml = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
@@ -193,7 +247,7 @@ pub fn write_docx(doc: &Document, warn: &mut WarningSink) -> Result<Vec<u8>> {
         put(
             &mut z,
             "[Content_Types].xml",
-            content_types(&media, has_lists, header.is_some(), footer.is_some()).as_bytes(),
+            content_types(&media, has_lists, &hf_parts).as_bytes(),
         )?;
         put(&mut z, "_rels/.rels", package_rels().as_bytes())?;
         put(&mut z, "word/document.xml", document_xml.as_bytes())?;
@@ -206,18 +260,19 @@ pub fn write_docx(doc: &Document, warn: &mut WarningSink) -> Result<Vec<u8>> {
         if has_lists {
             put(&mut z, "word/numbering.xml", numbering_xml(doc).as_bytes())?;
         }
-        for (part, built) in [("header1", &header), ("footer1", &footer)] {
-            if let Some((xml, rels)) = built {
-                put(&mut z, &format!("word/{part}.xml"), xml.as_bytes())?;
-                // Only write a .rels for a part that actually has relationships; an empty
-                // one is legal but noise.
-                if !rels.is_empty() {
-                    put(
-                        &mut z,
-                        &format!("word/_rels/{part}.xml.rels"),
-                        rels.to_xml().as_bytes(),
-                    )?;
-                }
+        for HfOut {
+            part, xml, rels, ..
+        } in &hf_parts
+        {
+            put(&mut z, &format!("word/{part}.xml"), xml.as_bytes())?;
+            // Only write a .rels for a part that actually has relationships; an empty
+            // one is legal but noise.
+            if !rels.is_empty() {
+                put(
+                    &mut z,
+                    &format!("word/_rels/{part}.xml.rels"),
+                    rels.to_xml().as_bytes(),
+                )?;
             }
         }
         for m in &media.items {
@@ -238,7 +293,7 @@ fn package_rels() -> String {
     )
 }
 
-fn content_types(media: &MediaPool, numbering: bool, header: bool, footer: bool) -> String {
+fn content_types(media: &MediaPool, numbering: bool, hf_parts: &[HfOut]) -> String {
     let mut s = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
     s.push_str(&format!("<Types xmlns=\"{NS_CT}\">"));
     s.push_str("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>");
@@ -265,11 +320,11 @@ fn content_types(media: &MediaPool, numbering: bool, header: bool, footer: bool)
     if numbering {
         s.push_str("<Override PartName=\"/word/numbering.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>");
     }
-    if header {
-        s.push_str("<Override PartName=\"/word/header1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>");
-    }
-    if footer {
-        s.push_str("<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>");
+    for p in hf_parts {
+        s.push_str(&format!(
+            "<Override PartName=\"/word/{}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.{}+xml\"/>",
+            p.part, p.kind
+        ));
     }
     s.push_str("</Types>");
     s
@@ -351,7 +406,53 @@ fn numbering_xml(doc: &Document) -> String {
     s
 }
 
-fn sect_pr(s: &Section, header_rid: Option<&str>, footer_rid: Option<&str>) -> String {
+/// UDF üst/alt bilgisinin hangi sayfalarda basıldığı, Word'ün ifade edebildiği
+/// biçimiyle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HfPages {
+    Every,
+    /// `stopPage="1"`: yalnız ilk sayfa (gerçek antetlerin biçimi).
+    FirstOnly,
+    /// `startPage="2"`: ilk sayfa hariç.
+    AfterFirst,
+}
+
+/// Word bir bölümde yalnız "ilk sayfa" ve "diğer sayfalar" ayrımını bilir. Başka
+/// bir aralık (ör. yalnız ilk üç sayfa) her sayfaya yazılır; içerik korunur, aralık
+/// kaybı bildirilir.
+fn hf_pages(hf: &HeaderFooter, place: &str, warn: &mut WarningSink) -> HfPages {
+    match (hf.start_page, hf.stop_page) {
+        (None | Some(1), None) => HfPages::Every,
+        (None | Some(1), Some(1)) => HfPages::FirstOnly,
+        (Some(2), None) => HfPages::AfterFirst,
+        (start, stop) => {
+            warn.push(
+                Warning::new(WarningCode::HeaderFooterVariantDropped)
+                    .at(place)
+                    .detail(format!(
+                        "UDF sayfa aralığı {}–{}; her sayfaya yazıldı",
+                        start.unwrap_or(1),
+                        stop.map(|s| s.to_string()).unwrap_or_else(|| "son".into())
+                    )),
+            );
+            HfPages::Every
+        }
+    }
+}
+
+/// Paketteki bir üst/alt bilgi parçası ve onu gösteren `w:sectPr` başvurusu.
+struct HfOut {
+    /// `header` | `footer`
+    kind: &'static str,
+    /// `default` | `first`
+    ty: &'static str,
+    /// Parça adı, `word/` altında ve uzantısız (`header2`).
+    part: String,
+    xml: String,
+    rels: Rels,
+}
+
+fn sect_pr(s: &Section, hf_refs: &[(&str, &str, String)], title_pg: bool) -> String {
     let p = &s.page;
     let (w, h) = (p.width_pt, p.height_pt);
     let orient = match p.orientation {
@@ -359,15 +460,13 @@ fn sect_pr(s: &Section, header_rid: Option<&str>, footer_rid: Option<&str>) -> S
         Orientation::Portrait => "",
     };
     let mut out = String::from("<w:sectPr>");
-    if let Some(r) = header_rid {
-        out.push_str(&format!(
-            "<w:headerReference w:type=\"default\" r:id=\"{r}\"/>"
-        ));
-    }
-    if let Some(r) = footer_rid {
-        out.push_str(&format!(
-            "<w:footerReference w:type=\"default\" r:id=\"{r}\"/>"
-        ));
+    // CT_SectPr: önce bütün üst bilgi, sonra alt bilgi başvuruları.
+    for want in ["header", "footer"] {
+        for (kind, ty, rid) in hf_refs.iter().filter(|(k, _, _)| *k == want) {
+            out.push_str(&format!(
+                "<w:{kind}Reference w:type=\"{ty}\" r:id=\"{rid}\"/>"
+            ));
+        }
     }
     out.push_str(&format!(
         "<w:pgSz w:w=\"{}\" w:h=\"{}\"{orient}/>",
@@ -383,6 +482,10 @@ fn sect_pr(s: &Section, header_rid: Option<&str>, footer_rid: Option<&str>) -> S
         pt_to_twips(p.header_offset_pt),
         pt_to_twips(p.footer_offset_pt),
     ));
+    // CT_SectPr sırasında `w:titlePg`, `w:pgMar`'dan sonra gelir.
+    if title_pg {
+        out.push_str("<w:titlePg/>");
+    }
     out.push_str("</w:sectPr>");
     out
 }

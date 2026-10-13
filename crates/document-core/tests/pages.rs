@@ -1,0 +1,557 @@
+//! Üst/alt bilgi, sayfa numarası ve sayfa sonu: sayfaya bağlı biçim.
+//!
+//! v0.3.2 kabul turunun bağımsız denetimi (199 gerçek Word belgesi ve 293 gerçek
+//! UDF üzerinde ölçüldü, burada sentetik olarak kurulur):
+//! - UDF üst bilgisinin sayfa aralığı (`stopPage="1"`: yalnız ilk sayfa, 73 gerçek
+//!   antet; `startPage="2"`: ikinci sayfadan sonra, 35 gerçek belge) Word'e
+//!   geçmiyordu: antet her sayfada basılıyor, devam başlığı ilk sayfada da
+//!   çıkıyordu; hiçbir uyarı yoktu;
+//! - Word'ün GÖSTERMEDİĞİ üst bilgi çeşitleri (`w:titlePg` kapalıyken "first",
+//!   `w:evenAndOddHeaders` yokken "even") "aktarılamadı" diye KAYIP uyarısı
+//!   veriyordu (9 gerçek belge).
+//!
+//! Bütün belgeler bu dosyada sentetik olarak kurulur; gerçek dava dosyası yok.
+
+use std::io::{Read, Write};
+
+use tavzih_core::convert::{convert_bytes, Direction};
+use tavzih_core::docx;
+use tavzih_core::model::*;
+use tavzih_core::udf;
+use tavzih_core::warnings::{WarningCode, WarningSink};
+
+const NS: &str = r#"xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#;
+const REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+// ------------------------------------------------------------ yardımcılar
+
+/// Sentetik Word paketi: gövde, `w:sectPr` içeriği, üst/alt bilgi parçaları,
+/// isteğe bağlı `word/settings.xml` ve `word/styles.xml`.
+#[derive(Default)]
+struct Docx {
+    body: String,
+    /// `w:sectPr` içinde başvurulardan SONRA gelen öğeler (pgSz, pgMar, titlePg).
+    sect: String,
+    /// (`header`|`footer`, `default`|`first`|`even`, parçanın iç XML'i)
+    parts: Vec<(&'static str, &'static str, String)>,
+    settings: Option<String>,
+    styles: Option<String>,
+}
+
+fn build(d: &Docx) -> Vec<u8> {
+    let mut refs = String::new();
+    let mut rels = String::new();
+    let mut files: Vec<(String, String)> = Vec::new();
+    for (i, (kind, ty, inner)) in d.parts.iter().enumerate() {
+        let n = i + 1;
+        let (el, rel_ty) = if *kind == "header" {
+            ("hdr", "header")
+        } else {
+            ("ftr", "footer")
+        };
+        refs.push_str(&format!(
+            r#"<w:{kind}Reference w:type="{ty}" r:id="rIdHf{n}"/>"#
+        ));
+        rels.push_str(&format!(
+            r#"<Relationship Id="rIdHf{n}" Type="{REL}/{rel_ty}" Target="{kind}{n}.xml"/>"#
+        ));
+        files.push((
+            format!("word/{kind}{n}.xml"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:{el} {NS}>{inner}</w:{el}>"#
+            ),
+        ));
+    }
+    let document = format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document {NS}><w:body>{}<w:sectPr>{refs}{}</w:sectPr></w:body></w:document>"#,
+        d.body, d.sect
+    );
+    files.push(("word/document.xml".into(), document));
+    files.push((
+        "word/_rels/document.xml.rels".into(),
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rels}</Relationships>"#
+        ),
+    ));
+    if let Some(s) = &d.settings {
+        files.push((
+            "word/settings.xml".into(),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings {NS}>{s}</w:settings>"#
+            ),
+        ));
+    }
+    if let Some(s) = &d.styles {
+        files.push((
+            "word/styles.xml".into(),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles {NS}>{s}</w:styles>"#
+            ),
+        ));
+    }
+    let mut cur = std::io::Cursor::new(Vec::new());
+    {
+        let mut z = zip::ZipWriter::new(&mut cur);
+        let o: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        for (name, xml) in &files {
+            z.start_file(name.as_str(), o).unwrap();
+            z.write_all(xml.as_bytes()).unwrap();
+        }
+        z.finish().unwrap();
+    }
+    cur.into_inner()
+}
+
+fn p(inner: &str) -> String {
+    format!("<w:p>{inner}</w:p>")
+}
+
+fn r(text: &str) -> String {
+    format!(r#"<w:r><w:t xml:space="preserve">{text}</w:t></w:r>"#)
+}
+
+fn read_docx(bytes: &[u8]) -> (Document, Vec<WarningCode>) {
+    let mut w = WarningSink::new();
+    let d = docx::reader::read_docx(bytes, &mut w).expect("read docx");
+    (d, w.into_vec().iter().map(|x| x.code).collect())
+}
+
+/// DOCX → UDF; `content.xml` metni ve uyarı kodları.
+fn to_udf(docx: &[u8]) -> (String, Vec<WarningCode>) {
+    let mut w = WarningSink::new();
+    let udf = convert_bytes(docx, Direction::DocxToUdf, &mut w).expect("docx -> udf");
+    (
+        content_xml(&udf),
+        w.into_vec().iter().map(|x| x.code).collect(),
+    )
+}
+
+fn content_xml(udf: &[u8]) -> String {
+    let mut z = zip::ZipArchive::new(std::io::Cursor::new(udf)).unwrap();
+    let mut s = String::new();
+    z.by_name("content.xml")
+        .unwrap()
+        .read_to_string(&mut s)
+        .unwrap();
+    s
+}
+
+fn buffer(content: &str) -> String {
+    let start = content.find("<![CDATA[").expect("content") + 9;
+    let end = content[start..].find("]]>").unwrap() + start;
+    content[start..end].to_string()
+}
+
+/// `<header …>` ya da `<footer …>` açılış etiketi (öznitelikleriyle).
+fn hf_tag(content: &str, tag: &str) -> Option<String> {
+    let i = content.find(&format!("<{tag} "))?;
+    let end = content[i..].find('>')? + i;
+    Some(content[i..=end].to_string())
+}
+
+fn attr(tag: &str, key: &str) -> Option<String> {
+    tag.split(&format!(" {key}=\""))
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .map(|s| s.to_string())
+}
+
+fn zip_part(bytes: &[u8], name: &str) -> String {
+    let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    let mut s = String::new();
+    match z.by_name(name) {
+        Ok(mut f) => {
+            f.read_to_string(&mut s).unwrap();
+        }
+        Err(_) => return String::new(),
+    }
+    s
+}
+
+/// Bir parçanın görünen `w:t` metni.
+fn visible_text(xml: &str) -> String {
+    let mut out = String::new();
+    for seg in xml.split("<w:t").skip(1) {
+        let Some(gt) = seg.find('>') else { continue };
+        if seg[..gt].ends_with('/') {
+            continue;
+        }
+        let rest = &seg[gt + 1..];
+        out.push_str(&rest[..rest.find("</w:t>").unwrap_or(0)]);
+    }
+    out
+}
+
+/// Üretilen Word paketinin bölüm ayarı: `w:titlePg` açık mı, ve her başvuru için
+/// (tür, çeşit, parçanın görünen metni).
+fn word_hf(docx: &[u8]) -> (bool, Vec<(String, String, String)>) {
+    let doc = zip_part(docx, "word/document.xml");
+    let rels = zip_part(docx, "word/_rels/document.xml.rels");
+    let sect = &doc[doc.rfind("<w:sectPr").expect("sectPr")..];
+    let mut out = Vec::new();
+    for kind in ["header", "footer"] {
+        for seg in sect.split(&format!("<w:{kind}Reference ")).skip(1) {
+            let tag = &seg[..seg.find("/>").unwrap()];
+            let ty = attr(&format!(" {tag}"), "w:type").unwrap_or_default();
+            let rid = attr(&format!(" {tag}"), "r:id").unwrap();
+            let rel = rels
+                .split("<Relationship ")
+                .find(|s| s.contains(&format!("Id=\"{rid}\"")))
+                .expect("relationship");
+            let target = attr(&format!(" {rel}"), "Target").unwrap();
+            out.push((
+                kind.to_string(),
+                ty,
+                visible_text(&zip_part(docx, &format!("word/{target}"))),
+            ));
+        }
+    }
+    (sect.contains("<w:titlePg"), out)
+}
+
+/// Sentetik UDF: isteğe bağlı üst bilgi, tek gövde paragrafı, isteğe bağlı alt bilgi.
+/// Her kısım tek paragraftır; (öznitelikler, metin).
+fn udf(header: Option<(&str, &str)>, body: &str, footer: Option<(&str, &str)>) -> Vec<u8> {
+    let mut buf = String::new();
+    let mut elements = String::new();
+    let mut cursor = 0usize;
+    let para = |text: &str, buf: &mut String, cursor: &mut usize| {
+        let t = format!("{text}\n");
+        let len = t.encode_utf16().count();
+        let x = format!(
+            r#"<paragraph Alignment="0"><content startOffset="{cursor}" length="{len}" /></paragraph>"#
+        );
+        buf.push_str(&t);
+        *cursor += len;
+        x
+    };
+    if let Some((attrs, text)) = header {
+        let x = para(text, &mut buf, &mut cursor);
+        elements.push_str(&format!(
+            r#"<header background="-1" foreground="-1"{attrs}>{x}</header>"#
+        ));
+    }
+    elements.push_str(&para(body, &mut buf, &mut cursor));
+    if let Some((attrs, text)) = footer {
+        let x = para(text, &mut buf, &mut cursor);
+        elements.push_str(&format!(
+            r#"<footer background="-1" foreground="-1"{attrs}>{x}</footer>"#
+        ));
+    }
+    let xml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<template format_id=\"1.8\" >\
+         <content><![CDATA[{buf}]]></content>\
+         <properties><pageFormat mediaSizeName=\"1\" leftMargin=\"70.875\" rightMargin=\"70.875\" \
+         topMargin=\"70.875\" bottomMargin=\"70.875\" paperOrientation=\"1\" headerFOffset=\"20.0\" \
+         footerFOffset=\"20.0\" /></properties>\
+         <elements resolver=\"hvl-default\" >{elements}</elements>\
+         <styles><style name=\"hvl-default\" family=\"Times New Roman\" size=\"12\" description=\"Gövde\" /></styles>\
+         </template>"
+    );
+    udf::writer::package(xml.as_bytes()).unwrap()
+}
+
+fn to_docx(udf: &[u8]) -> (Vec<u8>, Vec<WarningCode>) {
+    let mut w = WarningSink::new();
+    let out = convert_bytes(udf, Direction::UdfToDocx, &mut w).expect("udf -> docx");
+    docx::writer::validate(&out).expect("output must validate");
+    (out, w.into_vec().iter().map(|x| x.code).collect())
+}
+
+fn read_udf(bytes: &[u8]) -> Document {
+    let mut w = WarningSink::new();
+    udf::reader::read_udf(bytes, &mut w).expect("read udf")
+}
+
+fn hf_texts(hf: &Option<HeaderFooter>) -> Vec<String> {
+    hf.as_ref()
+        .map(|h| {
+            h.blocks
+                .iter()
+                .filter_map(|b| match b {
+                    Block::Paragraph(p) => Some(p.text()),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+// ------------------------------------------------- (a) UDF sayfa aralığı → Word
+
+/// 73 gerçek UDF'nin anteti `stopPage="1"` taşır: yalnız ilk sayfada basılır.
+/// Word'de bu, `w:titlePg` + "first" üst bilgisi + BOŞ "default" üst bilgisidir.
+#[test]
+fn udf_first_page_only_header_stays_on_the_first_page_in_word() {
+    let (docx, warns) = to_docx(&udf(Some((r#" stopPage="1""#, "ANTET")), "Gövde", None));
+    let (title_pg, refs) = word_hf(&docx);
+    assert!(
+        title_pg,
+        "w:titlePg yok: antet her sayfada basılır ({refs:?})"
+    );
+    let first = refs
+        .iter()
+        .find(|(k, t, _)| k == "header" && t == "first")
+        .unwrap_or_else(|| panic!("ilk sayfa üst bilgisi yok: {refs:?}"));
+    assert_eq!(first.2, "ANTET");
+    let default = refs
+        .iter()
+        .find(|(k, t, _)| k == "header" && t == "default")
+        .unwrap_or_else(|| panic!("diğer sayfalar için boş üst bilgi yok: {refs:?}"));
+    assert_eq!(default.2, "", "antet sonraki sayfalarda da basılıyor");
+    assert!(
+        !warns.contains(&WarningCode::HeaderFooterVariantDropped),
+        "{warns:?}"
+    );
+}
+
+/// 35 gerçek UDF'nin üst bilgisi `startPage="2"` taşır: ilk sayfada yoktur.
+#[test]
+fn udf_header_from_page_two_is_absent_on_the_first_page_in_word() {
+    let (docx, warns) = to_docx(&udf(
+        Some((r#" startPage="2""#, "DEVAM BAŞLIĞI")),
+        "Gövde",
+        None,
+    ));
+    let (title_pg, refs) = word_hf(&docx);
+    assert!(
+        title_pg,
+        "w:titlePg yok: devam başlığı ilk sayfada da basılır"
+    );
+    let first = refs
+        .iter()
+        .find(|(k, t, _)| k == "header" && t == "first")
+        .unwrap_or_else(|| panic!("boş ilk sayfa üst bilgisi yok: {refs:?}"));
+    assert_eq!(first.2, "");
+    let default = refs
+        .iter()
+        .find(|(k, t, _)| k == "header" && t == "default")
+        .unwrap();
+    assert_eq!(default.2, "DEVAM BAŞLIĞI");
+    assert!(
+        !warns.contains(&WarningCode::HeaderFooterVariantDropped),
+        "{warns:?}"
+    );
+}
+
+/// Aynı kural alt bilgide de geçerlidir. `w:titlePg` bölümün TAMAMINA uygulanır:
+/// aralığı olmayan üst bilgi ilk sayfada boş kalmasın diye "first" çeşidi de
+/// aynı içerikle yazılır.
+#[test]
+fn udf_footer_page_range_is_mirrored_and_the_every_page_header_keeps_page_one() {
+    let (docx, warns) = to_docx(&udf(
+        Some(("", "HER SAYFA")),
+        "Gövde",
+        Some((r#" stopPage="1""#, "İLK SAYFA ALT")),
+    ));
+    let (title_pg, refs) = word_hf(&docx);
+    assert!(title_pg);
+    let get = |k: &str, t: &str| {
+        refs.iter()
+            .find(|(kk, tt, _)| kk == k && tt == t)
+            .map(|x| x.2.clone())
+            .unwrap_or_else(|| panic!("{k}/{t} yok: {refs:?}"))
+    };
+    assert_eq!(get("footer", "first"), "İLK SAYFA ALT");
+    assert_eq!(get("footer", "default"), "");
+    assert_eq!(
+        get("header", "first"),
+        "HER SAYFA",
+        "ilk sayfa üst bilgisiz kaldı"
+    );
+    assert_eq!(get("header", "default"), "HER SAYFA");
+    assert!(
+        !warns.contains(&WarningCode::HeaderFooterVariantDropped),
+        "{warns:?}"
+    );
+}
+
+/// Word'ün ifade edemediği bir aralık (ör. yalnız ilk üç sayfa): içerik her sayfada
+/// korunur ve kayıp dürüstçe bildirilir.
+#[test]
+fn an_unsupported_udf_page_range_keeps_the_content_and_warns() {
+    let (docx, warns) = to_docx(&udf(Some((r#" stopPage="3""#, "ANTET")), "Gövde", None));
+    let (_, refs) = word_hf(&docx);
+    assert!(
+        refs.iter()
+            .any(|(k, t, x)| k == "header" && t == "default" && x == "ANTET"),
+        "{refs:?}"
+    );
+    assert!(
+        warns.contains(&WarningCode::HeaderFooterVariantDropped),
+        "{warns:?}"
+    );
+}
+
+/// UDF → Word → UDF: aralık geri gelir (eskiden `stopPage` kayboluyordu).
+#[test]
+fn udf_page_ranges_survive_a_word_round_trip() {
+    for (attrs, stop, start) in [
+        (r#" stopPage="1""#, Some(1), None),
+        (r#" startPage="2""#, None, Some(2)),
+    ] {
+        let (docx, _) = to_docx(&udf(Some((attrs, "ANTET")), "Gövde", Some(("", "ALT"))));
+        let mut w = WarningSink::new();
+        let back = convert_bytes(&docx, Direction::DocxToUdf, &mut w).unwrap();
+        let codes: Vec<WarningCode> = w.into_vec().iter().map(|x| x.code).collect();
+        let d = read_udf(&back);
+        let h = d.sections[0].header.as_ref().expect("üst bilgi kayboldu");
+        assert_eq!((h.stop_page, h.start_page), (stop, start), "{attrs}");
+        assert_eq!(hf_texts(&d.sections[0].header), vec!["ANTET"], "{attrs}");
+        let f = d.sections[0].footer.as_ref().expect("alt bilgi kayboldu");
+        assert_eq!(
+            (f.stop_page, f.start_page),
+            (None, None),
+            "{attrs}: alt bilgi her sayfada"
+        );
+        assert_eq!(hf_texts(&d.sections[0].footer), vec!["ALT"], "{attrs}");
+        assert!(
+            !codes.contains(&WarningCode::HeaderFooterVariantDropped),
+            "{attrs}: {codes:?}"
+        );
+    }
+}
+
+// ------------------------------------------- (a) Word ilk sayfa → UDF aralığı
+
+/// Word'de "İlk sayfa farklı" + BOŞ ilk sayfa üst bilgisi: başlık ikinci sayfadan
+/// başlar. UDF bunu `startPage="2"` ile tutar; eskiden "aktarılamadı" diyordu ve
+/// başlık UDF'de ilk sayfada da basılıyordu.
+#[test]
+fn word_title_page_with_an_empty_first_header_becomes_start_page_two() {
+    let d = Docx {
+        body: p(&r("Gövde")),
+        sect: "<w:titlePg/>".into(),
+        parts: vec![
+            ("header", "default", p(&r("DEVAM BAŞLIĞI"))),
+            ("header", "first", p("")),
+        ],
+        ..Default::default()
+    };
+    let (content, warns) = to_udf(&build(&d));
+    let tag = hf_tag(&content, "header").expect("üst bilgi yok");
+    assert_eq!(attr(&tag, "startPage").as_deref(), Some("2"), "{tag}");
+    assert_eq!(attr(&tag, "stopPage"), None, "{tag}");
+    assert!(buffer(&content).contains("DEVAM BAŞLIĞI"));
+    assert!(
+        !warns.contains(&WarningCode::HeaderFooterVariantDropped),
+        "{warns:?}"
+    );
+}
+
+/// "İlk sayfa farklı" + dolu ilk sayfa + BOŞ diğer sayfalar: antet yalnız ilk
+/// sayfada (`stopPage="1"`). Boş "default" parça eskiden anteti eziyordu.
+#[test]
+fn word_first_page_letterhead_with_an_empty_default_becomes_stop_page_one() {
+    let d = Docx {
+        body: p(&r("Gövde")),
+        sect: "<w:titlePg/>".into(),
+        parts: vec![
+            ("header", "default", p("")),
+            ("header", "first", p(&r("ANTET"))),
+        ],
+        ..Default::default()
+    };
+    let (content, warns) = to_udf(&build(&d));
+    let tag = hf_tag(&content, "header").expect("üst bilgi yok");
+    assert_eq!(attr(&tag, "stopPage").as_deref(), Some("1"), "{tag}");
+    assert!(buffer(&content).contains("ANTET"), "antet kayboldu");
+    assert!(
+        !warns.contains(&WarningCode::HeaderFooterVariantDropped),
+        "{warns:?}"
+    );
+}
+
+/// "İlk sayfa farklı" ama iki parça aynı (Word bunu sık yazar; gerçek belgelerin
+/// 48'inde böyle): her sayfada aynı üst bilgi, uyarı yok.
+#[test]
+fn identical_first_and_default_headers_are_one_every_page_header() {
+    let d = Docx {
+        body: p(&r("Gövde")),
+        sect: "<w:titlePg/>".into(),
+        parts: vec![
+            ("header", "default", p(&r("ANTET"))),
+            ("header", "first", p(&r("ANTET"))),
+        ],
+        ..Default::default()
+    };
+    let (content, warns) = to_udf(&build(&d));
+    let tag = hf_tag(&content, "header").expect("üst bilgi yok");
+    assert_eq!(attr(&tag, "stopPage"), None, "{tag}");
+    assert_eq!(attr(&tag, "startPage"), None, "{tag}");
+    assert_eq!(buffer(&content).matches("ANTET").count(), 1);
+    assert!(
+        !warns.contains(&WarningCode::HeaderFooterVariantDropped),
+        "{warns:?}"
+    );
+}
+
+/// İki farklı, dolu parça: UDF'de tek üst bilgi olabilir. Diğer sayfaların
+/// başlığı korunur, ilk sayfanınki dürüstçe "aktarılamadı" diye bildirilir.
+#[test]
+fn different_first_and_default_headers_still_report_the_lost_variant() {
+    let d = Docx {
+        body: p(&r("Gövde")),
+        sect: "<w:titlePg/>".into(),
+        parts: vec![
+            ("header", "default", p(&r("DEVAM"))),
+            ("header", "first", p(&r("ANTET"))),
+        ],
+        ..Default::default()
+    };
+    let (content, warns) = to_udf(&build(&d));
+    assert!(buffer(&content).contains("DEVAM"));
+    assert!(
+        warns.contains(&WarningCode::HeaderFooterVariantDropped),
+        "{warns:?}"
+    );
+}
+
+/// Word'ün GÖSTERMEDİĞİ çeşitler kayıp değildir: `w:titlePg` yokken "first",
+/// `w:evenAndOddHeaders` yokken "even" parçası hiçbir sayfada basılmaz. Gerçek
+/// 9 belgede bu yüzden yersiz bir KAYIP uyarısı çıkıyordu.
+#[test]
+fn variants_word_never_shows_are_not_reported_as_lost() {
+    let d = Docx {
+        body: p(&r("Gövde")),
+        parts: vec![
+            ("header", "default", p(&r("ANTET"))),
+            ("header", "first", p(&r("KULLANILMAYAN İLK"))),
+            ("header", "even", p(&r("KULLANILMAYAN ÇİFT"))),
+            ("footer", "default", p(&r("ALT"))),
+            ("footer", "even", p(&r("KULLANILMAYAN ÇİFT ALT"))),
+        ],
+        ..Default::default()
+    };
+    let bytes = build(&d);
+    let (doc, warns) = read_docx(&bytes);
+    assert!(
+        !warns.contains(&WarningCode::HeaderFooterVariantDropped),
+        "{warns:?}"
+    );
+    assert_eq!(hf_texts(&doc.sections[0].header), vec!["ANTET"]);
+    assert_eq!(hf_texts(&doc.sections[0].footer), vec!["ALT"]);
+    let h = doc.sections[0].header.as_ref().unwrap();
+    assert_eq!((h.stop_page, h.start_page), (None, None));
+}
+
+/// Tek/çift sayfa üst bilgisi Word'de GERÇEKTEN açıksa (settings.xml), UDF bunu
+/// tutamaz ve bu bildirilir.
+#[test]
+fn an_even_page_header_word_shows_is_reported() {
+    let d = Docx {
+        body: p(&r("Gövde")),
+        parts: vec![
+            ("header", "default", p(&r("TEK"))),
+            ("header", "even", p(&r("ÇİFT"))),
+        ],
+        settings: Some("<w:evenAndOddHeaders/>".into()),
+        ..Default::default()
+    };
+    let (doc, warns) = read_docx(&build(&d));
+    assert!(
+        warns.contains(&WarningCode::HeaderFooterVariantDropped),
+        "{warns:?}"
+    );
+    assert_eq!(hf_texts(&doc.sections[0].header), vec!["TEK"]);
+}
