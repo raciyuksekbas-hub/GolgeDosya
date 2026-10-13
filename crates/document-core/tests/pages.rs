@@ -13,7 +13,10 @@
 //!   Word'den gelirken üretilmiyordu: Word'ün PAGE/NUMPAGES alanı son görünen
 //!   değerine donuyor, UDF'nin her sayfasında aynı numara yazıyordu (118 gerçek
 //!   Word belgesi); UDF → Word → UDF turu da 137 gerçek canlı numarayı sabit
-//!   "1/1" metnine çeviriyordu.
+//!   "1/1" metnine çeviriyordu;
+//! - paragraf içindeki sayfa sonu iki yanındaki sözcükleri birleştiriyordu
+//!   ("önce" + sayfa sonu + "sonra" → "öncesonra"); `w:pageBreakBefore` (22 gerçek
+//!   belge) hiçbir uyarı vermeden düşüyordu.
 //!
 //! Bütün belgeler bu dosyada sentetik olarak kurulur; gerçek dava dosyası yok.
 
@@ -830,4 +833,103 @@ fn first_and_default_footers_differing_only_in_cached_page_digits_are_one_footer
         !warns.contains(&WarningCode::HeaderFooterVariantDropped),
         "{warns:?}"
     );
+}
+
+// ------------------------------------------------------------ (d) sayfa sonu
+
+const PAGE_BREAK: &str = r#"<w:r><w:br w:type="page"/></w:r>"#;
+
+/// Gövdenin blok dizisi: paragraf metni, sayfa sonu, tablo.
+fn block_shape(d: &Document) -> Vec<String> {
+    d.sections[0]
+        .blocks
+        .iter()
+        .map(|b| match b {
+            Block::Paragraph(p) => p.text(),
+            Block::PageBreak => "<SAYFA SONU>".into(),
+            Block::Table(_) => "<TABLO>".into(),
+        })
+        .collect()
+}
+
+/// "önce" + sayfa sonu + "sonra" aynı paragrafta: eskiden "öncesonra" tek sözcük
+/// oluyordu. Paragraf sayfa sonunda bölünür; UDF'de sayfa sonu yine bildirilir.
+#[test]
+fn a_page_break_inside_a_paragraph_does_not_glue_the_words() {
+    let body = p(&format!("{}{PAGE_BREAK}{}", r("önce"), r("sonra")));
+    let bytes = build(&Docx {
+        body,
+        ..Default::default()
+    });
+    let (doc, _) = read_docx(&bytes);
+    assert_eq!(block_shape(&doc), vec!["önce", "<SAYFA SONU>", "sonra"]);
+    let (content, warns) = to_udf(&bytes);
+    let buf = buffer(&content);
+    assert!(!buf.contains("öncesonra"), "{buf:?}");
+    assert!(buf.contains("önce\nsonra\n"), "{buf:?}");
+    assert!(warns.contains(&WarningCode::PageBreakDropped), "{warns:?}");
+}
+
+/// Sayfa sonu paragrafın sonundaysa sayfa sonu paragraftan SONRA gelir (eskiden
+/// öncesine konuyordu) ve boş bir satır eklenmez; başındaysa eskisi gibi önce
+/// gelir. Ctrl+Enter'ın yazdığı yalnız sayfa sonlu paragraf değişmez.
+#[test]
+fn page_breaks_at_the_edges_of_a_paragraph_keep_their_place_without_new_lines() {
+    let body = format!(
+        "{}{}{}",
+        p(&format!("{}{PAGE_BREAK}", r("önce"))),
+        p(&format!("{PAGE_BREAK}{}", r("sonra"))),
+        p(PAGE_BREAK)
+    );
+    let (doc, _) = read_docx(&build(&Docx {
+        body,
+        ..Default::default()
+    }));
+    assert_eq!(
+        block_shape(&doc),
+        vec![
+            "önce",
+            "<SAYFA SONU>",
+            "<SAYFA SONU>",
+            "sonra",
+            "<SAYFA SONU>",
+            ""
+        ]
+    );
+}
+
+/// `w:pageBreakBefore` (paragrafın kendisinde ya da stilinde): paragraf yeni
+/// sayfada başlar. UDF'de karşılığı yok; eskiden hiçbir uyarı vermeden düşüyordu.
+#[test]
+fn page_break_before_is_reported_whether_direct_or_from_the_style() {
+    let body = |ppr: &str| {
+        format!(
+            "{}<w:p><w:pPr>{ppr}</w:pPr>{}</w:p>",
+            p(&r("Kapak")),
+            r("Dilekçe")
+        )
+    };
+    let styles = r#"<w:style w:type="paragraph" w:styleId="Bolum"><w:name w:val="Bölüm"/><w:pPr><w:pageBreakBefore/></w:pPr></w:style>"#;
+    for (body, st) in [
+        (body("<w:pageBreakBefore/>"), None),
+        (
+            body(r#"<w:pStyle w:val="Bolum"/>"#),
+            Some(styles.to_string()),
+        ),
+    ] {
+        let bytes = build(&Docx {
+            body,
+            styles: st,
+            ..Default::default()
+        });
+        let (content, warns) = to_udf(&bytes);
+        assert!(warns.contains(&WarningCode::PageBreakDropped), "{warns:?}");
+        assert!(buffer(&content).contains("Kapak\nDilekçe\n"));
+    }
+    // Kapalı (`w:val="0"`) işaret sayfa sonu değildir.
+    let (_, warns) = to_udf(&build(&Docx {
+        body: body(r#"<w:pageBreakBefore w:val="0"/>"#),
+        ..Default::default()
+    }));
+    assert!(!warns.contains(&WarningCode::PageBreakDropped), "{warns:?}");
 }

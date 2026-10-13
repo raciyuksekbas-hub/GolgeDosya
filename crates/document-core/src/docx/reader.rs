@@ -191,6 +191,8 @@ struct PartialPara {
     num_id: Option<u32>,
     num_level: Option<u32>,
     contextual: Option<bool>,
+    /// `w:pageBreakBefore`: paragraf yeni sayfada başlar.
+    page_break_before: Option<bool>,
 }
 
 #[derive(Clone, Default, Debug)]
@@ -333,6 +335,9 @@ impl PartialPara {
         }
         if o.contextual.is_some() {
             self.contextual = o.contextual;
+        }
+        if o.page_break_before.is_some() {
+            self.page_break_before = o.page_break_before;
         }
     }
 }
@@ -891,6 +896,7 @@ fn apply_ppr_child(e: &BytesStart, p: &mut PartialPara) {
         // Word: "aynı stildeki paragraflar arasına boşluk ekleme". Yok
         // sayıldığında o boşluk her paragrafta gerçekten yazılır. Gerçek bir
         // 52 sayfalık sözleşmede bu işareti taşıyan 165 paragraf vardı.
+        b"pageBreakBefore" => p.page_break_before = Some(toggle(e)),
         b"contextualSpacing" => {
             p.contextual = Some(
                 a(e, "val")
@@ -1829,6 +1835,8 @@ impl<'a> BodyBuilder<'a> {
         // biçimle gösterir.
         let mut mark_run = PartialRun::default();
         let mut pending_break_page = false;
+        // Paragraf bir sayfa sonunda bölündü: baş kısmı yazıldı, kalan kuyruktur.
+        let mut para_split = false;
         // Silinen (`w:del`) ya da başka yere taşınan (`w:moveFrom`) içeriğin
         // derinliği; >0 iken metin, sekme, satır sonu ve resim güncel belgede
         // yoktur. Bayrak değil sayaç: iç içe kayıtlar birbirini kapatmaz.
@@ -2006,6 +2014,7 @@ impl<'a> BodyBuilder<'a> {
                                 } else {
                                     para_fields.clear();
                                     para_fields_plain = true;
+                                    para_split = false;
                                 }
                                 para = Some(Paragraph::default());
                                 para_style = None;
@@ -2230,7 +2239,43 @@ impl<'a> BodyBuilder<'a> {
                         b"line" | b"wgp" => self.warn.warn(WarningCode::ShapeDropped),
                         b"br" | b"cr" if deleted_depth > 0 || in_field_code(&field_stack) => {}
                         b"br" => {
-                            if a(e, "type").as_deref() == Some("page") {
+                            let has_head = para.as_ref().is_some_and(|p| !p.runs.is_empty());
+                            if a(e, "type").as_deref() == Some("page")
+                                && has_head
+                                && host_stack.is_empty()
+                            {
+                                // Sayfa sonundan önce içerik var: paragraf burada
+                                // bölünür. Eskiden sayfa sonu paragrafın ÖNÜNE
+                                // konuyor, iki yanındaki sözcükler birleşiyordu
+                                // ("önce" + sayfa sonu + "sonra" → "öncesonra").
+                                let mut props = self.para_props(&para_style, &direct_para);
+                                if para_split {
+                                    // Kuyruk aynı numaralı maddenin devamıdır.
+                                    props.list = None;
+                                } else if self.page_break_before(&para_style, &direct_para)
+                                    && self.active_part.is_none()
+                                    && cells.is_empty()
+                                    && !out.is_empty()
+                                {
+                                    pending_break_page = true;
+                                }
+                                if std::mem::take(&mut pending_break_page) {
+                                    push_to(&mut cells, &mut out, Block::PageBreak);
+                                }
+                                let runs = para.as_mut().map(|p| std::mem::take(&mut p.runs));
+                                push_to(
+                                    &mut cells,
+                                    &mut out,
+                                    Block::Paragraph(Paragraph {
+                                        props,
+                                        runs: runs.unwrap_or_default(),
+                                    }),
+                                );
+                                push_to(&mut cells, &mut out, Block::PageBreak);
+                                para_split = true;
+                                // Run sırası değişti; sayfa numarası olarak tanınmaz.
+                                para_fields_plain = false;
+                            } else if a(e, "type").as_deref() == Some("page") {
                                 pending_break_page = true;
                             } else if let Some(p) = para.as_mut() {
                                 p.runs.push(Run::LineBreak {
@@ -2514,6 +2559,21 @@ impl<'a> BodyBuilder<'a> {
                         b"p" => {
                             if let Some(mut p) = para.take() {
                                 p.props = self.para_props(&para_style, &direct_para);
+                                if para_split {
+                                    // Bölünen paragrafın kuyruğu aynı maddenin devamıdır.
+                                    p.props.list = None;
+                                } else if host_stack.is_empty()
+                                    && self.active_part.is_none()
+                                    && cells.is_empty()
+                                    && !out.is_empty()
+                                    && self.page_break_before(&para_style, &direct_para)
+                                {
+                                    // `w:pageBreakBefore` (doğrudan ya da stilden):
+                                    // paragraf yeni sayfada başlar. 22 gerçek belgede
+                                    // uyarısız düşüyordu. Belgenin başında ve tabloda
+                                    // Word'de etkisi yoktur.
+                                    pending_break_page = true;
+                                }
                                 if pending_break_page {
                                     pending_break_page = false;
                                     push_to(&mut cells, &mut out, Block::PageBreak);
@@ -2523,7 +2583,11 @@ impl<'a> BodyBuilder<'a> {
                                 // tutulursa yerinde boş bir satır kalır. İçeriği
                                 // kalan paragraf ayrı tutulur: Word onu sonrakiyle
                                 // birleştirir, burada paragraf yapısı yaklaşık kalır.
-                                let keep = !(para_mark_removed && p.runs.is_empty());
+                                // Sayfa sonuyla biten paragrafın boş kuyruğu da
+                                // yazılmaz: Word paragraf işaretini sayfa sonuyla
+                                // aynı satırda tutar, yeni sayfada boş satır yoktur.
+                                let keep = !(para_mark_removed && p.runs.is_empty())
+                                    && !(para_split && p.runs.is_empty());
                                 para_mark_removed = false;
                                 // Liste sayacı yalnız kabul edilmiş belgede var
                                 // olan paragrafta ilerler.
@@ -2728,6 +2792,13 @@ impl<'a> BodyBuilder<'a> {
         }
         r.overlay(direct);
         r
+    }
+
+    /// `w:pageBreakBefore` paragraf stili zinciri ve doğrudan biçimle açık mı?
+    fn page_break_before(&self, style: &Option<String>, direct: &PartialPara) -> bool {
+        let (mut p, _) = self.styles.resolve(style.as_deref());
+        p.overlay(direct);
+        p.page_break_before == Some(true)
     }
 
     fn para_props(&mut self, style: &Option<String>, direct: &PartialPara) -> ParaProps {
