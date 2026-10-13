@@ -649,7 +649,7 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
                 match name.as_str() {
                     "paragraph" if frames.last() == Some(&Frame::ParagraphRow) => {
                         frames.pop();
-                        close_row(&mut row_stack, &mut row_widths, &mut table_stack);
+                        close_row(&mut row_stack, &mut row_widths, &mut table_stack, ctx.warn);
                     }
                     "paragraph" => {
                         if frames.last() == Some(&Frame::Paragraph) {
@@ -708,7 +708,12 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
                             }
                             if frames.last() == Some(&Frame::ImplicitRow) {
                                 frames.pop();
-                                close_row(&mut row_stack, &mut row_widths, &mut table_stack);
+                                close_row(
+                                    &mut row_stack,
+                                    &mut row_widths,
+                                    &mut table_stack,
+                                    ctx.warn,
+                                );
                             }
                         }
                     }
@@ -716,7 +721,7 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
                         if frames.last() == Some(&Frame::Row) {
                             frames.pop();
                         }
-                        close_row(&mut row_stack, &mut row_widths, &mut table_stack);
+                        close_row(&mut row_stack, &mut row_widths, &mut table_stack, ctx.warn);
                     }
                     "table" => {
                         if frames.last() == Some(&Frame::Table) {
@@ -805,11 +810,21 @@ fn push_block(
 
 /// Close the innermost open row, place its cells on the table grid and hand it to the
 /// innermost open table.
-fn close_row(rows: &mut Vec<TableRow>, widths: &mut Vec<Vec<f32>>, tables: &mut [Table]) {
+fn close_row(
+    rows: &mut Vec<TableRow>,
+    widths: &mut Vec<Vec<f32>>,
+    tables: &mut [Table],
+    warn: &mut WarningSink,
+) {
     let own = widths.pop().unwrap_or_default();
     if let Some(mut r) = rows.pop() {
         if let Some(t) = tables.last_mut() {
-            reconcile_row_grid(&mut r, &t.column_widths, &own);
+            // UYAP genişlikleri tamsayıya yuvarlar (icra formlarında satır
+            // "91,109", ızgara "100,5,100": 3 puan); bunun ötesi gerçek bir
+            // farktır ve söylenir.
+            if reconcile_row_grid(&mut r, &t.column_widths, &own) > 0.05 {
+                warn.warn(WarningCode::TableColumnWidthsApproximated);
+            }
             t.rows.push(r);
         }
     }
@@ -1054,17 +1069,20 @@ fn parse_cell_attrs(e: &BytesStart) -> TableCell {
 /// (ızgara 38,302,43,64,85 ve satır 38,409,85 için [1,3,1] yerine [2,2,1]; Word'den
 /// gelen [a][b+c] geri okununca [a+b][c]). Satırın genişlikleri yoksa ya da hücre
 /// sayısıyla uyuşmuyorsa eşit dağıtım sürer.
-fn reconcile_row_grid(row: &mut TableRow, grid: &[f32], own: &[f32]) {
+///
+/// Döner: bir hücre kenarının satırın kendi genişliklerine göre en çok ne kadar
+/// kaydığı (satır genişliğinin oranı olarak; tam oturduysa 0).
+fn reconcile_row_grid(row: &mut TableRow, grid: &[f32], own: &[f32]) -> f32 {
     let cols = grid.len().max(1);
     let n = row.cells.len();
     if n == 0 {
-        return;
+        return 0.0;
     }
     if n >= cols {
         for c in row.cells.iter_mut() {
             c.grid_span = 1;
         }
-        return;
+        return 0.0;
     }
     let grid_total: f32 = grid.iter().sum();
     let row_total: f32 = own.iter().sum();
@@ -1084,13 +1102,14 @@ fn reconcile_row_grid(row: &mut TableRow, grid: &[f32], own: &[f32]) {
             .collect();
         let mut prev = 0usize;
         let mut acc = 0.0f32;
+        let mut shift = 0.0f32;
         for (k, c) in row.cells.iter_mut().enumerate() {
             acc += own[k];
+            let target = acc / row_total * grid_total;
             // Her hücre en az bir sütun alır ve kalan hücrelere de birer sütun kalır.
             let end = if k + 1 == n {
                 cols
             } else {
-                let target = acc / row_total * grid_total;
                 (prev + 1..=cols - (n - k - 1))
                     .min_by(|a, b| {
                         (bounds[a - 1] - target)
@@ -1099,10 +1118,11 @@ fn reconcile_row_grid(row: &mut TableRow, grid: &[f32], own: &[f32]) {
                     })
                     .unwrap_or(prev + 1)
             };
+            shift = shift.max((bounds[end - 1] - target).abs() / grid_total);
             c.grid_span = end - prev;
             prev = end;
         }
-        return;
+        return shift;
     }
     // Merged row without its own widths: spread the grid evenly, extra columns first.
     let base = cols / n;
@@ -1110,6 +1130,7 @@ fn reconcile_row_grid(row: &mut TableRow, grid: &[f32], own: &[f32]) {
     for (i, c) in row.cells.iter_mut().enumerate() {
         c.grid_span = base + usize::from(i < extra);
     }
+    0.0
 }
 
 fn parse_para_props(e: &BytesStart, ctx: &mut Ctx) -> ParaProps {

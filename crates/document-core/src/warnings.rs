@@ -50,6 +50,7 @@ pub enum WarningCode {
     // Sonuç sözleşmesindeki kod adı değişmesin diye tutulur.
     TableNestedFlattened,
     TableBordersApproximated,
+    TableColumnWidthsApproximated,
     // --- images ---
     ImageTranscodedToPng,
     ImageFormatUnsupported,
@@ -98,6 +99,7 @@ impl WarningCode {
             TableVerticalMergeFlattened => "TABLE_VERTICAL_MERGE_FLATTENED",
             TableNestedFlattened => "TABLE_NESTED_FLATTENED",
             TableBordersApproximated => "TABLE_BORDERS_APPROXIMATED",
+            TableColumnWidthsApproximated => "TABLE_COLUMN_WIDTHS_APPROXIMATED",
             ImageTranscodedToPng => "IMAGE_TRANSCODED_TO_PNG",
             ImageFormatUnsupported => "IMAGE_FORMAT_UNSUPPORTED",
             MultiSectionFlattened => "MULTI_SECTION_FLATTENED",
@@ -149,6 +151,13 @@ impl WarningCode {
             // çizilir; başlık sonucu söyler.
             TableBordersApproximated => {
                 "Tablonun yalnız bazı kenarlıkları vardı; UDF'de bütün hücre kenarlıkları çizildi"
+            }
+            // Birleşik UDF satırı kendi hücre genişliklerini taşır; Word'de hücre
+            // tablonun sütun ızgarasına oturur. Satırın bir sınırı hiçbir sütun
+            // sınırına yakın değilse en yakın sınır kullanılır ve hücre genişliği
+            // değişir; başlık sonucu söyler.
+            TableColumnWidthsApproximated => {
+                "Birleştirilmiş tablo satırlarında bazı hücre genişlikleri yaklaşık aktarıldı"
             }
             ImageTranscodedToPng => "Görsel PNG biçimine dönüştürüldü",
             ImageFormatUnsupported => "Görsel biçimi desteklenmiyor ve aktarılamadı",
@@ -240,6 +249,7 @@ impl WarningCode {
             | ListNestingUnverified
             | TableNestedFlattened
             | TableBordersApproximated
+            | TableColumnWidthsApproximated
             | ImageTranscodedToPng
             | PageOrientationUnverified
             | MultiSectionFlattened

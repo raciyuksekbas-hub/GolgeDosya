@@ -799,6 +799,11 @@ fn text_the_reader_cannot_place_is_reported_as_lost() {
 /// `row_spans`'taki kadar hücre taşır (boşsa satır `columnSpans`'sız).
 /// Okuyucunun bu satıra verdiği gridSpan listesi döner.
 fn merged_row_spans(grid: &str, cells: usize, row_spans: &str) -> Vec<usize> {
+    merged_row_read(grid, cells, row_spans).0
+}
+
+/// [`merged_row_spans`] ve okuyucunun uyarı kodları.
+fn merged_row_read(grid: &str, cells: usize, row_spans: &str) -> (Vec<usize>, Vec<String>) {
     let mut u = Udf::default();
     let cols = grid.split(',').count();
     let full: Vec<String> = (0..cols).map(|i| u.p(&format!("s{i}"))).collect();
@@ -809,12 +814,16 @@ fn merged_row_spans(grid: &str, cells: usize, row_spans: &str) -> Vec<usize> {
         format!(r#" columnSpans="{row_spans}""#)
     };
     let rows = format!("{}{}", urow("", &full), urow(&attrs, &merged));
-    let (d, _) = read_udf(&u.build(&utable(grid, &rows)));
-    first_table(&d).rows[1]
+    let (d, warns) = read_udf(&u.build(&utable(grid, &rows)));
+    let spans = first_table(&d).rows[1]
         .cells
         .iter()
         .map(|c| c.grid_span)
-        .collect()
+        .collect();
+    (
+        spans,
+        warns.iter().map(|c| c.as_str().to_string()).collect(),
+    )
 }
 
 #[test]
@@ -845,6 +854,26 @@ fn a_merged_udf_row_takes_its_columns_from_its_own_widths() {
 fn a_merged_udf_row_without_widths_is_still_spread_evenly() {
     // Satırın kendi genişlikleri yoksa eski kural sürer.
     assert_eq!(merged_row_spans("100,100,100", 2, ""), vec![2, 1]);
+}
+
+const WIDTHS_APPROX: &str = "TABLE_COLUMN_WIDTHS_APPROXIMATED";
+
+#[test]
+fn a_merged_row_whose_widths_miss_the_grid_is_reported() {
+    // D136 şekli: satırın sınırı hiçbir sütun sınırına yakın değil. En yakın
+    // sınır ilk hücreye satırın %11'ini verir, kaynakta %22'dir. Word ızgarası
+    // ancak bu yaklaşıklıkla kurulabiliyor; sessiz kalınmaz.
+    let (_, warns) = merged_row_read("120,419,120,419", 2, "120,419");
+    assert!(warns.iter().any(|c| c == WIDTHS_APPROX), "{warns:?}");
+    // Koruma: tam oturan (D135) ve birkaç puanlık yuvarlama farkı olan (icra
+    // formu, 3 puan) satırlar için uyarı yok.
+    for (grid, row) in [("38,302,43,64,85", "38,409,85"), ("100,5,100", "91,109")] {
+        let (_, warns) = merged_row_read(grid, row.split(',').count(), row);
+        assert!(
+            !warns.iter().any(|c| c == WIDTHS_APPROX),
+            "{grid}: {warns:?}"
+        );
+    }
 }
 
 #[test]
