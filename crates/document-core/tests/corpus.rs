@@ -621,6 +621,7 @@ fn c09_bullet_list() {
     d.lists = vec![ListDef {
         list_id: 1,
         kind: ListKind::Bullet(BulletKind::Ellipse),
+        levels: vec![],
     }];
     assert_both("09_bullet_list", &d);
 }
@@ -644,6 +645,7 @@ fn c10_numbered_list() {
     d.lists = vec![ListDef {
         list_id: 1,
         kind: ListKind::Number(NumberKind::DecimalDot),
+        levels: vec![],
     }];
     assert_both("10_numbered_list", &d);
 }
@@ -672,6 +674,7 @@ fn c11_nested_list() {
     d.lists = vec![ListDef {
         list_id: 1,
         kind: ListKind::Number(NumberKind::DecimalDot),
+        levels: vec![],
     }];
     let warns = assert_docx_roundtrip("11_nested_list", &d);
     assert!(
@@ -1009,6 +1012,7 @@ fn c22_long_legal_document() {
     d.lists = vec![ListDef {
         list_id: 1,
         kind: ListKind::Number(NumberKind::DecimalDot),
+        levels: vec![],
     }];
     d.sections[0].footer = Some(HeaderFooter {
         blocks: vec![para("Av. Ayşe FATMA")],
@@ -1643,6 +1647,7 @@ fn c39_list_numbering_is_not_duplicated() {
     d.lists = vec![ListDef {
         list_id: 1,
         kind: ListKind::Number(NumberKind::DecimalDot),
+        levels: vec![],
     }];
     let (back, _) = read_udf(&to_udf(&d));
     let Block::Paragraph(p) = &back.sections[0].blocks[0] else {
@@ -2259,6 +2264,7 @@ fn c54_paragraph_properties_are_in_schema_order() {
     dd.lists = vec![ListDef {
         list_id: 1,
         kind: ListKind::Number(NumberKind::DecimalDot),
+        levels: vec![],
     }];
     let body = part_text(&to_docx(&dd), "word/document.xml");
     let ppr = &body[body.find("<w:pPr>").unwrap()..body.find("</w:pPr>").unwrap()];

@@ -48,8 +48,21 @@ pub mod orientation {
 pub const MEDIA_A4: u8 = 1;
 
 /// List style tokens actually observed in the corpus (EXP-007).
+///
+/// Gerçek kullanıcı derlemindeki (293 UDF) bütün türler. Adı işareti söyleyenler
+/// ("NUMBER_PARANTHESE" = "1)") o işaretle eşlenir. `NUMBER_TRE` ve
+/// `NUMBER_DOT_3`'ün UYAP'ta nasıl göründüğü bir örnekle kanıtlanmadı: okunurken
+/// en yakın karşılık seçilir ve bildirilir; Word listesi hiçbir zaman bu türlere
+/// çevrilmez.
 pub mod list_tokens {
     pub const NUMBER_DOT: &str = "NUMBER_TYPE_NUMBER_DOT";
     pub const CHAR_SMALL_PAREN: &str = "NUMBER_TYPE_CHAR_SMALL_PARANTHESE";
     pub const BULLET_ELLIPSE: &str = "BULLET_TYPE_ELLIPSE";
+    pub const NUMBER_PAREN: &str = "NUMBER_TYPE_NUMBER_PARANTHESE";
+    pub const CHAR_SMALL_DOT: &str = "NUMBER_TYPE_CHAR_SMALL_DOT";
+    pub const ROMAN_BIG_DOT: &str = "NUMBER_TYPE_ROMAN_BIG_DOT";
+    pub const NUMBER_TRE: &str = "NUMBER_TYPE_NUMBER_TRE";
+    pub const NUMBER_DOT_3: &str = "NUMBER_TYPE_NUMBER_DOT_3";
+    pub const BULLET_ARROW: &str = "BULLET_TYPE_ARROW";
+    pub const BULLET_TRIANGLE: &str = "BULLET_TYPE_TRIANGLE";
 }

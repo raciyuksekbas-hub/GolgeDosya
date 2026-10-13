@@ -940,22 +940,75 @@ fn parse_para_props(e: &BytesStart, ctx: &mut Ctx) -> ParaProps {
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(1);
         p.list = Some(ListRef { list_id: id, level });
-        if !ctx.lists.iter().any(|d| d.list_id == id) {
-            let kind = if attr_bool(e, "Bulleted") {
-                ListKind::Bullet(BulletKind::Ellipse)
-            } else {
-                match attr(e, "NumberType").as_deref() {
-                    Some(list_tokens::CHAR_SMALL_PAREN) => {
-                        ListKind::Number(NumberKind::LowerAlphaParen)
-                    }
-                    _ => ListKind::Number(NumberKind::DecimalDot),
+        let kind = list_kind(e, ctx);
+        // `NumberSetted` gerçek 2 UDF'te 4 paragrafta (değerleri 1, 2, 3). Başlangıç
+        // numarası mı, önceki madde sayısı mı olduğu örneklerden çıkarılamıyor;
+        // Word'e tahminle bir `w:start` yazılmaz, bildirilir.
+        if attr(e, "NumberSetted").is_some() {
+            ctx.warn
+                .push(Warning::new(WarningCode::ListNumberingApproximated).detail("NumberSetted"));
+        }
+        match ctx.lists.iter_mut().find(|d| d.list_id == id) {
+            None => {
+                let mut def = ListDef::new(id, kind);
+                def.levels.push((level, kind));
+                ctx.lists.push(def);
+                ctx.next_list_id = ctx.next_list_id.max(id + 1);
+            }
+            // Tür paragrafın özniteliğidir; Word'de ise düzeyin. Bir düzeyin ilk
+            // görülen türü o düzeyin türü olur: aynı düzeyde tür değiştiren tek
+            // gerçek örnek (aynı listede "1." ve `NUMBER_DOT_3`) zaten bildirilir.
+            Some(def) => {
+                if !def.levels.iter().any(|(l, _)| *l == level) {
+                    def.levels.push((level, kind));
                 }
-            };
-            ctx.lists.push(ListDef { list_id: id, kind });
-            ctx.next_list_id = ctx.next_list_id.max(id + 1);
+            }
         }
     }
     p
+}
+
+/// Paragrafın UDF liste türü (`NumberType` / `BulletType`).
+///
+/// Eskiden "a)" dışındaki her numara türü "1.", her madde imi yuvarlak imdi:
+/// gerçek 21 UDF'te 220 paragrafın işareti ("I.", "a.", "1)") sessizce
+/// değişiyordu ve "a) bendi" gibi atıflar boşa düşüyordu. Görüntüsü bir örnekle
+/// kanıtlanamayan türler en yakın karşılıkla okunur ve bildirilir.
+fn list_kind(e: &BytesStart, ctx: &mut Ctx) -> ListKind {
+    let approximated = |ctx: &mut Ctx, token: &str| {
+        ctx.warn
+            .push(Warning::new(WarningCode::ListNumberingApproximated).detail(token));
+    };
+    if attr_bool(e, "Bulleted") {
+        return ListKind::Bullet(match attr(e, "BulletType").as_deref() {
+            None | Some(list_tokens::BULLET_ELLIPSE) => BulletKind::Ellipse,
+            Some(list_tokens::BULLET_ARROW) => BulletKind::Arrow,
+            Some(list_tokens::BULLET_TRIANGLE) => BulletKind::Triangle,
+            Some(other) => {
+                approximated(ctx, other);
+                BulletKind::Ellipse
+            }
+        });
+    }
+    ListKind::Number(match attr(e, "NumberType").as_deref() {
+        None | Some(list_tokens::NUMBER_DOT) => NumberKind::DecimalDot,
+        Some(list_tokens::CHAR_SMALL_PAREN) => NumberKind::LowerAlphaParen,
+        Some(list_tokens::NUMBER_PAREN) => NumberKind::DecimalParen,
+        Some(list_tokens::CHAR_SMALL_DOT) => NumberKind::LowerAlphaDot,
+        Some(list_tokens::ROMAN_BIG_DOT) => NumberKind::UpperRomanDot,
+        // "TRE" büyük olasılıkla "tire": "1-". Görüntüsü kanıtlanmadı.
+        Some(list_tokens::NUMBER_TRE) => {
+            approximated(ctx, list_tokens::NUMBER_TRE);
+            NumberKind::DecimalDash
+        }
+        // `NUMBER_DOT_3` tek gerçek UDF'te, aynı listede "1." ile birlikte ve alt
+        // düzeylerde kullanılmış; görüntüsü bilinmiyor. Bilinmeyen her tür gibi
+        // en yakın karşılığı "1.".
+        Some(other) => {
+            approximated(ctx, other);
+            NumberKind::DecimalDot
+        }
+    })
 }
 
 /// Yaprağın karakter biçimi: kendi → kendi `resolver` zinciri → paragrafı →
@@ -1352,10 +1405,12 @@ mod tests {
             ListDef {
                 list_id: 1,
                 kind: ListKind::Number(NumberKind::DecimalDot),
+                levels: vec![],
             },
             ListDef {
                 list_id: 2,
                 kind: ListKind::Bullet(BulletKind::Ellipse),
+                levels: vec![],
             },
         ];
         let (back, _) = roundtrip(&d);

@@ -1971,7 +1971,7 @@ impl<'a> BodyBuilder<'a> {
                         ListKind::Number(NumberKind::DecimalDot)
                     }
                 };
-                self.lists.push(ListDef { list_id: id, kind });
+                self.lists.push(ListDef::new(id, kind));
             }
             Some(ListRef { list_id: id, level })
         });

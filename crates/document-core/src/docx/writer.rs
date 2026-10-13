@@ -298,21 +298,34 @@ fn numbering_xml(doc: &Document) -> String {
     let mut s = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
     s.push_str(&format!("<w:numbering xmlns:w=\"{NS_W}\">"));
     for l in &doc.lists {
-        let (fmt, txt, font) = match &l.kind {
-            ListKind::Bullet(BulletKind::Ellipse) => {
-                ("bullet", "\u{2022}".to_string(), Some("Symbol"))
-            }
-            ListKind::Number(NumberKind::DecimalDot) => ("decimal", "%1.".to_string(), None),
-            ListKind::Number(NumberKind::LowerAlphaParen) => {
-                ("lowerLetter", "%1)".to_string(), None)
-            }
-        };
         s.push_str(&format!(
             "<w:abstractNum w:abstractNumId=\"{id}\">",
             id = l.list_id
         ));
         // Emit nine levels so nested lists have somewhere to land.
         for lvl in 0..9u32 {
+            // Her düzey KENDİ sayacını gösterir: `%1` birinci düzeyin sayacıdır.
+            // Her düzeye "%1." yazıldığında Word alt maddelerde üst maddenin
+            // numarasını gösteriyordu (gerçek 5 UDF'te 291 alt madde).
+            let n = lvl + 1;
+            let (fmt, txt, font) = match l.kind_at(n) {
+                ListKind::Bullet(BulletKind::Ellipse) => {
+                    ("bullet", "\u{2022}".to_string(), Some("Symbol"))
+                }
+                // Word'ün yerleşik ok imi: Wingdings F0D8 (➢).
+                ListKind::Bullet(BulletKind::Arrow) => {
+                    ("bullet", "\u{F0D8}".to_string(), Some("Wingdings"))
+                }
+                ListKind::Bullet(BulletKind::Triangle) => ("bullet", "\u{25BA}".to_string(), None),
+                ListKind::Number(k) => match k {
+                    NumberKind::DecimalDot => ("decimal", format!("%{n}."), None),
+                    NumberKind::LowerAlphaParen => ("lowerLetter", format!("%{n})"), None),
+                    NumberKind::DecimalParen => ("decimal", format!("%{n})"), None),
+                    NumberKind::LowerAlphaDot => ("lowerLetter", format!("%{n}."), None),
+                    NumberKind::UpperRomanDot => ("upperRoman", format!("%{n}."), None),
+                    NumberKind::DecimalDash => ("decimal", format!("%{n}-"), None),
+                },
+            };
             let ind = 720 + 360 * lvl as i64;
             s.push_str(&format!(
                 "<w:lvl w:ilvl=\"{lvl}\"><w:start w:val=\"1\"/><w:numFmt w:val=\"{fmt}\"/>\
@@ -1378,10 +1391,12 @@ mod tests {
             ListDef {
                 list_id: 1,
                 kind: ListKind::Number(NumberKind::DecimalDot),
+                levels: vec![],
             },
             ListDef {
                 list_id: 2,
                 kind: ListKind::Bullet(BulletKind::Ellipse),
+                levels: vec![],
             },
         ];
         let back = roundtrip(&d);

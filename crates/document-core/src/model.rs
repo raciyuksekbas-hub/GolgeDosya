@@ -315,10 +315,36 @@ pub struct ListRef {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListDef {
     pub list_id: u32,
+    /// Listenin türü; `levels` bir düzey için başka tür söylemiyorsa o düzeyin de türü.
     pub kind: ListKind,
+    /// Türü `kind`'dan farklı olan düzeyler: (1 tabanlı düzey, tür).
+    ///
+    /// Tür eskiden listenin İLK görülen paragrafından bir kez seçiliyordu: "1."
+    /// listesinin "a)" alt düzeyi ve madde imli alt düzeyi "1." oluyordu. UDF'te
+    /// tür paragrafın kendi özniteliğidir; Word'de her düzeyin kendi biçimi var.
+    pub levels: Vec<(u32, ListKind)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl ListDef {
+    pub fn new(list_id: u32, kind: ListKind) -> Self {
+        Self {
+            list_id,
+            kind,
+            levels: Vec::new(),
+        }
+    }
+
+    /// Bir düzeyin (1 tabanlı) türü.
+    pub fn kind_at(&self, level: u32) -> ListKind {
+        self.levels
+            .iter()
+            .find(|(l, _)| *l == level)
+            .map(|(_, k)| *k)
+            .unwrap_or(self.kind)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListKind {
     Bullet(BulletKind),
     Number(NumberKind),
@@ -327,7 +353,12 @@ pub enum ListKind {
 /// Only tokens actually observed in the UDF corpus (EXP-007). We do not invent tokens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BulletKind {
+    /// UDF `BULLET_TYPE_ELLIPSE` — yuvarlak, dolu madde imi.
     Ellipse,
+    /// UDF `BULLET_TYPE_ARROW` (gerçek 5 UDF'te 22 paragraf).
+    Arrow,
+    /// UDF `BULLET_TYPE_TRIANGLE` (gerçek 2 UDF'te 11 paragraf).
+    Triangle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -336,6 +367,16 @@ pub enum NumberKind {
     DecimalDot,
     /// `a)` — UDF `NUMBER_TYPE_CHAR_SMALL_PARANTHESE`
     LowerAlphaParen,
+    /// `1)` — UDF `NUMBER_TYPE_NUMBER_PARANTHESE`
+    DecimalParen,
+    /// `a.` — UDF `NUMBER_TYPE_CHAR_SMALL_DOT`
+    LowerAlphaDot,
+    /// `I.` — UDF `NUMBER_TYPE_ROMAN_BIG_DOT`
+    UpperRomanDot,
+    /// `1-` — UDF `NUMBER_TYPE_NUMBER_TRE` ("tire"). UYAP'taki görüntüsü bir
+    /// örnekle kanıtlanmadı: UDF'ten okunurken bildirilir, Word'ün "1-"
+    /// listesi de bu türe çevrilmez (numara metin olarak yazılır).
+    DecimalDash,
 }
 
 #[derive(Debug, Clone, PartialEq)]

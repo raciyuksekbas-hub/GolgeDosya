@@ -485,22 +485,31 @@ impl<'a> UdfWriter<'a> {
             if l.level > 1 {
                 self.warn.warn(WarningCode::ListNestingUnverified);
             }
+            // Tür düzey başınadır: "1." listesinin "a)" alt düzeyi kendi türüyle yazılır.
             match doc
                 .lists
                 .iter()
                 .find(|d| d.list_id == l.list_id)
-                .map(|d| &d.kind)
+                .map(|d| d.kind_at(l.level))
             {
-                Some(ListKind::Bullet(BulletKind::Ellipse)) => {
-                    a.push_str(&format!(
-                        " Bulleted=\"true\" BulletType=\"{}\"",
-                        list_tokens::BULLET_ELLIPSE
-                    ));
+                Some(ListKind::Bullet(b)) => {
+                    let tok = match b {
+                        BulletKind::Ellipse => list_tokens::BULLET_ELLIPSE,
+                        BulletKind::Arrow => list_tokens::BULLET_ARROW,
+                        BulletKind::Triangle => list_tokens::BULLET_TRIANGLE,
+                    };
+                    a.push_str(&format!(" Bulleted=\"true\" BulletType=\"{tok}\""));
                 }
                 Some(ListKind::Number(k)) => {
                     let tok = match k {
                         NumberKind::DecimalDot => list_tokens::NUMBER_DOT,
                         NumberKind::LowerAlphaParen => list_tokens::CHAR_SMALL_PAREN,
+                        NumberKind::DecimalParen => list_tokens::NUMBER_PAREN,
+                        NumberKind::LowerAlphaDot => list_tokens::CHAR_SMALL_DOT,
+                        NumberKind::UpperRomanDot => list_tokens::ROMAN_BIG_DOT,
+                        // Yalnız UDF'ten okunmuş bir "1-" listesi buraya gelir;
+                        // kaynaktaki tür olduğu gibi geri yazılır.
+                        NumberKind::DecimalDash => list_tokens::NUMBER_TRE,
                     };
                     a.push_str(&format!(" Numbered=\"true\" NumberType=\"{tok}\""));
                 }
