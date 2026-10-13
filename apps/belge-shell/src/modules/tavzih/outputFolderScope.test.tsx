@@ -44,16 +44,21 @@ describe("Dönüştür'ün çıktı klasörü satırı", () => {
 // Saha: "Varsayılan olarak dönüştürülen UDF dosyalarında satır aralığı 1,5;
 // öncesinde ve sonrasında boşluk olmamalı." Varsayılan açıktır; kapatılınca
 // Word'deki aralıklar korunur. Motor tarafı `udf_spacing.rs`'te kilitli.
-describe("Word'den UDF'e dilekçe aralığı", () => {
+describe("Word'den UDF'ye dilekçe aralığı", () => {
   const html = (checked: boolean) =>
     renderToStaticMarkup(<PetitionSpacingRow checked={checked} onChange={noop} />).replace(/&#x27;/gu, "'");
 
   it("satır ne yaptığını ve kapalıyken ne olduğunu söyler", () => {
     const on = html(true);
-    expect(on).toContain("Word'den UDF'e satır aralığı 1,5");
+    // "UDF'ye": kısaltma son harfinin okunuşuna göre ek alır (fe → 'ye).
+    expect(on).toContain("Word'den UDF'ye satır aralığı 1,5");
+    expect(on).not.toContain("UDF'e");
+    // Ad ile açıklama ayrı: kutunun adı etiket, açıklaması ipucu.
+    expect(on).toMatch(/<input type="checkbox" aria-label="Word'den UDF'ye satır aralığı 1,5" aria-describedby="ayar-dilekce-araligi-not"/);
+    expect(on).toContain('id="ayar-dilekce-araligi-not"');
     expect(on).toContain("Paragraf öncesi ve sonrası boşluk bırakılmaz.");
     expect(on).toContain("Kapalıyken Word belgesindeki aralıklar korunur.");
-    expect(on).toMatch(/<input type="checkbox" checked=""/);
+    expect(on).toMatch(/<input type="checkbox"[^>]* checked=""/);
     expect(html(false)).not.toContain('checked=""');
   });
 
@@ -69,5 +74,24 @@ describe("Word'den UDF'e dilekçe aralığı", () => {
     expect(mock).toContain("udfPetitionSpacing: true");
     const rust = readFileSync(resolve(here, "../../../src-tauri/src/settings.rs"), "utf8");
     expect(rust).toMatch(/#\[serde\(default = "yes"\)\]\s*pub udf_petition_spacing: bool/);
+  });
+});
+
+// Tercihlerdeki "Değiştir": seçici hiç açılamazsa bu vazgeçme değildir.
+// Eskiden `.catch(() => null)` reddi vazgeçme sayıyor, düğme hiçbir şey
+// yapmamış gibi görünüyordu (Dönüştür akışındaki kardeşi söylüyordu).
+describe("tercihlerde klasör seçici hatası", () => {
+  it("söylenir ve duyurulur; vazgeçme sessiz kalır", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const { dirname, resolve } = await import("node:path");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(resolve(here, "OutputFolderField.tsx"), "utf8");
+    const choose = src.slice(src.indexOf("const choose = useCallback("), src.indexOf("const reset = useCallback("));
+    expect(choose).not.toContain(".catch(() => null)");
+    expect(choose).toMatch(/catch \(e\) \{[\s\S]*setError\(message\);\s*announce\(message\);\s*return;/);
+    expect(choose).toContain('if (typeof picked !== "string") return;');
+    // <p> içinde <p> yok: Status kendisi bir paragraftır.
+    expect(src).not.toMatch(/<p className="prefs-hint">\s*<Status/);
   });
 });

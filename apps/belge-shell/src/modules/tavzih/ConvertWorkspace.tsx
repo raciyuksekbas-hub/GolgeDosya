@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type Ref } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "./api";
 import type { BatchResult, ConversionResult, InspectOutcome, OutputFolder } from "./types";
@@ -58,11 +58,13 @@ export function formatParts(label: string | null | undefined): { name: string; e
  * ne dönüştürdüm" sorusunun cevabını hâlâ ekranda görmeli. Eskiden sonuç ayrı
  * bir ekran gibi açılıyor ve model kayboluyordu.
  */
-export function FlowPair({ fromName, fromKind, toName, toKind }: {
+export function FlowPair({ fromName, fromKind, toName, toKind, toId }: {
   fromName: string;
   fromKind: string;
   toName: string;
   toKind: string;
+  /** Hedef adının kimliği; "Belgeyi Aç" neyi açtığını buradan söyler. */
+  toId?: string;
 }) {
   return (
     <div className="flow-pair">
@@ -74,7 +76,7 @@ export function FlowPair({ fromName, fromKind, toName, toKind }: {
       <span className="flow-arrow" aria-hidden="true">→</span>
       <div className="flow-end">
         <p className="flow-label">Hedef</p>
-        <p className="flow-name" title={toName}>{toName}</p>
+        <p className="flow-name" id={toId} title={toName}>{toName}</p>
         <p className="flow-kind">{toKind}</p>
       </div>
     </div>
@@ -172,6 +174,48 @@ export function ConvertFlow({
 }
 
 /**
+ * Sonucun başlığı — ekranda ve ekran okuyucuda AYNI cümle.
+ *
+ * Başlık gerçeği söylemeli:
+ *  · HİÇBİRİ dönüşmediyse "tamamlandı" yanlıştır — hiçbir şey üretilmedi.
+ *  · İçerik KAYBI olduysa yalın yeşil ✓ kaybı gizler; hukuki belgede bu
+ *    fark önemlidir. Uyarılar zaten aşağıda listeleniyor, başlık da bunu
+ *    yansıtır.
+ * Duyuru eskiden ayrı kuruluyordu ve uyarılara hiç bakmıyordu: ekran "içerik
+ * kaybı var" derken ekran okuyucu yalnız "Dönüştürme tamamlandı" diyordu.
+ */
+export function resultHeadline(items: ConversionResult[]): {
+  headline: string;
+  mark: string;
+  tone: "error" | "warn" | undefined;
+} {
+  const failed = items.filter((r) => r.status === "failure").length;
+  const allFailed = items.length > 0 && failed === items.length;
+  const lossy = items.some((r) => r.warnings.some((w) => w.severity === "LOSS"));
+  const mark = allFailed || failed > 0 ? "✕" : lossy ? "!" : "✓";
+  const tone = failed > 0 ? "error" : lossy ? "warn" : undefined;
+  const headline = allFailed
+    ? `Dönüştürme başarısız: ${failed} belge dönüştürülemedi`
+    : failed > 0
+      ? `${items.length - failed} belge dönüştürüldü, ${failed} belge başarısız`
+      : lossy
+        ? items.length > 1
+          ? `${items.length} belge dönüştürüldü — içerik kaybı var`
+          : "Dönüştürme tamamlandı — içerik kaybı var"
+        : items.length > 1
+          ? `${items.length} belge dönüştürüldü`
+          : "Dönüştürme tamamlandı";
+  return { headline, mark, tone };
+}
+
+/** Ekran okuyucu duyurusu: başlık, tek belgede başarısızlığın sebebiyle. */
+export function resultAnnouncement(items: ConversionResult[]): string {
+  const { headline } = resultHeadline(items);
+  const reason = items.length === 1 && items[0].status === "failure" ? items[0].error?.message : undefined;
+  return reason ? `${headline}. ${reason}` : `${headline}.`;
+}
+
+/**
  * Tamamlandı — ne üretildi, nerede, sırada ne var.
  *
  * Akış KAYBOLMAZ: iki durak aynı yerde durur, yalnız hedef artık bir biçim
@@ -180,7 +224,7 @@ export function ConvertFlow({
  *
  * Kaynağın değişmediği her sonuçta açıkça yazılır; motor bunu hash'le kanıtlar.
  */
-export function ConvertDone({ items, from, to, folder, archiveName, onReveal, onOpen, onNew }: {
+export function ConvertDone({ items, from, to, folder, archiveName, onReveal, onOpen, onNew, headingRef }: {
   items: ConversionResult[];
   /** Kaynağın biçim etiketi — akışın sol durağı için. */
   from: string | null;
@@ -198,31 +242,13 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
    *  (çıktı klasörü, onay) kalır. Eskiden buradaki "Yeniden Dönüştür" AYNI
    *  belgeyi yeniden dönüştürüp sessizce "X (2).udf" üretiyordu. */
   onNew: () => void;
+  /** Tamamlanınca klavye odağı başlığa gelir (Ekler'deki gibi). */
+  headingRef?: Ref<HTMLParagraphElement>;
 }) {
-  const failed = items.filter((r) => r.status === "failure").length;
   const single = items.length === 1 ? items[0] : null;
   const openable = single && single.status !== "failure" && single.output ? single.output : null;
   const unchanged = items.every((r) => r.source_unchanged);
-  // Başlık gerçeği söylemeli:
-  //  · HİÇBİRİ dönüşmediyse "tamamlandı" yanlıştır — hiçbir şey üretilmedi.
-  //  · İçerik KAYBI olduysa yalın yeşil ✓ kaybı gizler; hukuki belgede bu
-  //    fark önemlidir. Uyarılar zaten aşağıda listeleniyor, başlık da bunu
-  //    yansıtır.
-  const allFailed = items.length > 0 && failed === items.length;
-  const lossy = items.some((r) => r.warnings.some((w) => w.severity === "LOSS"));
-  const mark = allFailed || failed > 0 ? "✕" : lossy ? "!" : "✓";
-  const tone = failed > 0 ? "error" : lossy ? "warn" : undefined;
-  const headline = allFailed
-    ? `Dönüştürme başarısız: ${failed} belge dönüştürülemedi`
-    : failed > 0
-      ? `${items.length - failed} belge dönüştürüldü, ${failed} belge başarısız`
-      : lossy
-        ? items.length > 1
-          ? `${items.length} belge dönüştürüldü — içerik kaybı var`
-          : "Dönüştürme tamamlandı — içerik kaybı var"
-        : items.length > 1
-          ? `${items.length} belge dönüştürüldü`
-          : "Dönüştürme tamamlandı";
+  const { headline, mark, tone } = resultHeadline(items);
 
   return (
     <section className="convert-done" aria-labelledby="sonuc-baslik">
@@ -232,10 +258,11 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
           fromKind={from ?? "—"}
           toName={single.output_name ?? "—"}
           toKind={to ?? "—"}
+          toId="sonuc-hedef"
         />
       ) : null}
 
-      <p className="flow-result" id="sonuc-baslik" data-tone={tone}>
+      <p className="flow-result" id="sonuc-baslik" ref={headingRef} tabIndex={-1} data-tone={tone}>
         <span className="flow-result-mark" aria-hidden="true">{mark}</span>
         {headline}
       </p>
@@ -264,6 +291,9 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
             <span className="flow-warn-mark" aria-hidden="true">{w.severity === "INFO" ? "i" : "▲"}</span>
             <span>
               {SEVERITY_LABEL[w.severity] ?? w.severity}: {w.title}
+              {/* Ayrıntı gösterilmeyince aynı koddan iki uyarı (ör. "üstü
+                  çizili" ve "üst simge") birebir aynı satır gibi okunuyordu. */}
+              {w.detail ? ` — ${w.detail}` : ""}
               {w.location ? ` (${w.location})` : ""}
             </span>
           </p>
@@ -287,7 +317,7 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
             Editörü ya da Word); klasör ikinci eylemdir. Toplu işte açılacak
             tek belge yok: arşiv ya da liste klasörde gösterilir. */}
         {openable && onOpen ? (
-          <Button variant="primary" onClick={() => onOpen(openable)}>
+          <Button variant="primary" aria-describedby="sonuc-hedef" onClick={() => onOpen(openable)}>
             Belgeyi Aç
           </Button>
         ) : null}
@@ -346,15 +376,27 @@ export function ConvertWorkspace({ paths, onNewConversion }: {
       // indirilmiş cümle gösterilir, ayrıntı konsolda kalır.
       .catch((e) => {
         logFailure("tavzih inspect failure", e);
-        setFailure(safeMessage(e, "Belgeler incelenemedi. Dosyaları kontrol edip yeniden deneyin."));
+        const message = safeMessage(e, "Belgeler incelenemedi. Dosyaları kontrol edip yeniden deneyin.");
+        setFailure(message);
+        announce(message);
       });
   }, [paths]);
+
+  // Tamamlanınca klavye kullanıcısı sonucun başına gelir ("Belgeyi Aç" bir
+  // Sekme ötede). Eskiden "Dönüştür" devre dışı kalınca odak gövdeye düşüyor,
+  // sonraki Sekme sayfanın başındaki atlama bağlantısına gidiyordu.
+  const doneHeading = useRef<HTMLParagraphElement>(null);
+  const finished = phase === "done" && outcome !== null;
+  useEffect(() => {
+    if (finished) doneHeading.current?.focus();
+  }, [finished]);
 
   const usable = selected.filter((s) => s.info);
 
   const run = useCallback(async () => {
     setPhase("running");
     setFailure(null);
+    announce("Dönüştürülüyor…");
     try {
       const list = usable.map((s) => s.path);
       const result =
@@ -363,20 +405,14 @@ export function ConvertWorkspace({ paths, onNewConversion }: {
           : await api.convertBatch(list, api.localStamp());
       setOutcome(result);
       setPhase("done");
-      const total = "items" in result ? result.total : 1;
-      const failed = "items" in result ? result.failed : result.status === "failure" ? 1 : 0;
       // Ekran okuyucu kullanıcısı sonucu yalnız renkten/ikondan çıkaramaz;
-      // duyuru da başlıkla aynı gerçeği söylemeli.
-      announce(
-        failed > 0 && failed === total
-          ? `Dönüştürme başarısız. ${failed} belge dönüştürülemedi.`
-          : failed > 0
-            ? `${total - failed} belge dönüştürüldü, ${failed} belge başarısız.`
-            : "Dönüştürme tamamlandı.",
-      );
+      // duyuru başlıkla AYNI cümledir (içerik kaybı ve başarısızlık sebebi dâhil).
+      announce(resultAnnouncement(results(result)));
     } catch (e) {
       logFailure("tavzih convert failure", e);
-      setFailure(safeMessage((e as { message?: string })?.message ?? e, "Dönüştürme tamamlanamadı. Yeniden deneyin."));
+      const message = safeMessage(e, "Dönüştürme tamamlanamadı. Yeniden deneyin.");
+      setFailure(message);
+      announce(message);
       setPhase("idle");
     }
   }, [usable]);
@@ -386,6 +422,7 @@ export function ConvertWorkspace({ paths, onNewConversion }: {
     // söz reddi yakalanmıyor, kullanıcı düğmeye basıyor ve hiçbir şey
     // olmuyordu. VAZGEÇMEK ile BAŞARISIZLIK ayrı şeylerdir: ilki sessizdir,
     // ikincisi değil.
+    setFailure(null);
     try {
       const picked = await open({ directory: true, multiple: false });
       if (typeof picked !== "string") return;
@@ -410,6 +447,7 @@ export function ConvertWorkspace({ paths, onNewConversion }: {
    * gibi görünüyordu. Tercihler penceresindeki kardeşi zaten korunuyordu.
    */
   const resetFolder = useCallback(async () => {
+    setFailure(null);
     try {
       setFolder(await api.setOutputFolder(null));
       announce("Çıktı klasörü varsayılana döndürüldü.");
@@ -422,10 +460,28 @@ export function ConvertWorkspace({ paths, onNewConversion }: {
   }, []);
 
   /**
+   * Klasörde Göster. Yüzen bir sözdü: klasör silinmiş ya da taşınmışsa dosya
+   * yöneticisi açılmıyor, kullanıcıya hiçbir şey söylenmiyordu.
+   */
+  const revealOutput = useCallback(async () => {
+    setFailure(null);
+    try {
+      await api.revealOutputFolder(revealTargets(outcome));
+    } catch (e) {
+      logFailure("tavzih reveal output folder", e);
+      const message = safeMessage(e, "Çıktı klasörü açılamadı. Klasör taşınmış veya silinmiş olabilir.");
+      setFailure(message);
+      announce(message);
+    }
+  }, [outcome]);
+
+  /**
    * Dönüştürülen belgeyi varsayılan uygulamasında aç (UYAP Doküman Editörü,
    * Word). Yol arka uçta yeniden doğrulanır; açılamazsa sebep söylenir.
    */
   const openOutput = useCallback(async (path: string) => {
+    // Önceki denemenin hatası, başarılı yeni denemenin üstünde kalmasın.
+    setFailure(null);
     try {
       await api.openOutput(path);
     } catch (e) {
@@ -492,23 +548,10 @@ export function ConvertWorkspace({ paths, onNewConversion }: {
               from={usable[0]?.info?.source_format ?? null}
               to={target}
               folder={folder}
-              onReveal={async () => {
-                // Yüzen bir sözdü: klasör silinmiş ya da taşınmışsa dosya
-                // yöneticisi açılmıyor, kullanıcıya hiçbir şey söylenmiyordu.
-                try {
-                  await api.revealOutputFolder(revealTargets(outcome));
-                } catch (e) {
-                  logFailure("tavzih reveal output folder", e);
-                  const message = safeMessage(
-                    e,
-                    "Çıktı klasörü açılamadı. Klasör taşınmış veya silinmiş olabilir.",
-                  );
-                  setFailure(message);
-                  announce(message);
-                }
-              }}
+              onReveal={revealOutput}
               onOpen={openOutput}
               onNew={onNewConversion}
+              headingRef={doneHeading}
             />
           ) : selected.length > 0 ? (
             <ConvertFlow

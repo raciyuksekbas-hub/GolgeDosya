@@ -715,6 +715,9 @@ button.file-row:hover { background: var(--surface-hover); }
    hiçbiri gereksiz büyümüyor. */
 .field > select,
 .field > input { width: 100%; }
+/* Onay kutusu kolonu doldurmaz: kutu sağda, odak halkası kutunun kendisi
+   (genel kural onu 200 px'lik bir çubuğa çeviriyordu). */
+.field.prefs-check > input { width: auto; }
 .field > .btn { justify-self: end; }
 .field-value {
   overflow: hidden;

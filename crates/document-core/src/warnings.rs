@@ -137,7 +137,7 @@ impl WarningCode {
             // yok" tutabiliyor. Kısmen kenarlıklı Word tablosu bütün kenarlıklarıyla
             // çizilir; başlık sonucu söyler.
             TableBordersApproximated => {
-                "Tablonun yalnız bazı kenarlıkları vardı; UDF'te bütün hücre kenarlıkları çizildi"
+                "Tablonun yalnız bazı kenarlıkları vardı; UDF'de bütün hücre kenarlıkları çizildi"
             }
             ImageTranscodedToPng => "Görsel PNG biçimine dönüştürüldü",
             ImageFormatUnsupported => "Görsel biçimi desteklenmiyor ve aktarılamadı",

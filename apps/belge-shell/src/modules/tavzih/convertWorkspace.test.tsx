@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ConvertDone, ConvertFlow, formatParts } from "./ConvertWorkspace";
+import { ConvertDone, ConvertFlow, formatParts, resultAnnouncement, resultHeadline } from "./ConvertWorkspace";
 import type { ConversionResult, InspectOutcome, OutputFolder } from "./types";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -146,5 +146,69 @@ describe("durum sözleşmesi", () => {
     // Parantez yoksa etiket olduğu gibi kalır.
     expect(formatParts("PDF")).toEqual({ name: "PDF", ext: "" });
     expect(formatParts(null)).toEqual({ name: "—", ext: "" });
+  });
+});
+
+// Erişilebilirlik denetimi (v0.3.2 kabul turu): ekran okuyucu ekranla aynı
+// gerçeği duymalı; klavye kullanıcısı sonuca gelmeli.
+describe("sonuç ekran okuyucuda da aynı", () => {
+  const withWarning = (severity: string, detail: string | null = null) =>
+    [
+      {
+        ...RESULT[0],
+        warnings: [{ code: "RUN_FEATURE_DROPPED", severity, title: "Bazı karakter biçimleri aktarılamadı", location: null, detail }],
+      },
+    ] as unknown as ConversionResult[];
+
+  it("içerik kaybı duyuruda da söylenir", () => {
+    expect(resultAnnouncement(RESULT)).toBe("Dönüştürme tamamlandı.");
+    expect(resultAnnouncement(withWarning("LOSS"))).toBe("Dönüştürme tamamlandı — içerik kaybı var.");
+    expect(resultHeadline(withWarning("LOSS")).headline).toBe("Dönüştürme tamamlandı — içerik kaybı var");
+  });
+
+  it("tek belge başarısızsa sebep de duyurulur", () => {
+    const failed = [
+      { ...RESULT[0], status: "failure", output_name: null, error: { code: "INVALID_DOCX", message: "Belge okunamadı.", detail: "" } },
+    ] as unknown as ConversionResult[];
+    expect(resultAnnouncement(failed)).toBe("Dönüştürme başarısız: 1 belge dönüştürülemedi. Belge okunamadı.");
+  });
+
+  it("dönüştürme duyurusu başlık işlevinden gelir; ayrı bir cümle kurulmaz", () => {
+    expect(source).toContain("announce(resultAnnouncement(results(result)))");
+    expect(source).not.toContain('"Dönüştürme tamamlandı."');
+  });
+
+  it("başlık odaklanabilir ve tamamlanınca odak ona gelir", () => {
+    expect(done).toMatch(/<p class="flow-result" id="sonuc-baslik" tabindex="-1"/);
+    expect(source).toMatch(/if \(finished\) doneHeading\.current\?\.focus\(\)/);
+    expect(source).toContain("headingRef={doneHeading}");
+  });
+
+  it("uyarının ayrıntısı gösterilir; aynı koddan iki uyarı aynı satır gibi okunmaz", () => {
+    const html = renderToStaticMarkup(
+      <ConvertDone items={withWarning("APPROXIMATION", "üst simge")} from="Word (.docx)" to="UYAP (.udf)" folder={FOLDER} onReveal={noop} onNew={noop} />,
+    );
+    expect(html).toContain("Bazı karakter biçimleri aktarılamadı — üst simge");
+  });
+
+  it("'Belgeyi Aç' neyi açtığını söyler", () => {
+    const withOutput = [{ ...RESULT[0], output: "/Users/ornek/Belgeler/Dönüştürülen Belgeler/ornek-dilekce.udf" }] as unknown as ConversionResult[];
+    const html = renderToStaticMarkup(
+      <ConvertDone items={withOutput} from="Word (.docx)" to="UYAP (.udf)" folder={FOLDER} onReveal={noop} onOpen={noop} onNew={noop} />,
+    );
+    expect(html).toMatch(/<p class="flow-name" id="sonuc-hedef" title="ornek-dilekce\.udf">ornek-dilekce\.udf<\/p>/);
+    expect(html).toMatch(/aria-describedby="sonuc-hedef"[^>]*>Belgeyi Aç</);
+  });
+
+  it("dönüştürme ve inceleme hataları da duyurulur; yeni deneme eski hatayı siler", () => {
+    for (const handler of ["const openOutput = useCallback(", "const revealOutput = useCallback(", "const resetFolder = useCallback("]) {
+      const at = source.indexOf(handler);
+      expect(at, handler).toBeGreaterThan(-1);
+      expect(source.slice(at, at + 400), handler).toContain("setFailure(null)");
+    }
+    const run = source.slice(source.indexOf("const run = useCallback("), source.indexOf("const chooseFolder"));
+    expect(run).toMatch(/catch \(e\) \{[\s\S]*setFailure\(message\);\s*announce\(message\);/);
+    const inspect = source.slice(source.indexOf(".inspectFiles(paths)"), source.indexOf("const doneHeading"));
+    expect(inspect).toContain("announce(message)");
   });
 });

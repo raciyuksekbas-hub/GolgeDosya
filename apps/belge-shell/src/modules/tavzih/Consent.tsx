@@ -87,9 +87,18 @@ export function ConversionWarning({
 
   return (
     <div className="sheet-backdrop">
-      <div className="sheet" ref={sheet} role="dialog" aria-modal="true" aria-labelledby="uyari-baslik">
+      {/* Odak doğrudan "Anladım, Dönüştür"e gelir; uyarı metni pencerenin
+          açıklaması olmazsa ekran okuyucu onu hiç okumuyordu. */}
+      <div
+        className="sheet"
+        ref={sheet}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="uyari-baslik"
+        aria-describedby="uyari-metin"
+      >
         <h2 id="uyari-baslik">Dönüştürmeden önce</h2>
-        <p style={{ color: "var(--text-secondary)" }}>
+        <p id="uyari-metin" style={{ color: "var(--text-secondary)" }}>
           {count > 1
             ? `${count} belge dönüştürülecek. `
             : ""}

@@ -97,7 +97,10 @@ describe("Klasörde Göster", () => {
   // `onReveal={() => api.revealOutputFolder()}` yüzen bir sözdü: Finder
   // açılmıyor, hiçbir şey söylenmiyordu.
   it("açılamayan klasör söylenir", () => {
-    const reveal = body(convert, "onReveal={");
+    // İşleyici adlandırılmış bir callback'e taşındı (yeniden deneyince eski
+    // hatayı da temizler); sözleşme aynı.
+    expect(convert).toContain("onReveal={revealOutput}");
+    const reveal = body(convert, "const revealOutput = useCallback(");
     expect(reveal).toContain("try {");
     expect(reveal).toContain("await api.revealOutputFolder(revealTargets(outcome))");
     expect(reveal).toContain("catch");

@@ -215,6 +215,19 @@ export function App() {
     announce("Belge kapatıldı.");
   }, []);
 
+  /**
+   * Dönüştür'ün "Yeni Dönüştürme"si: belge ve bağlam bırakılır (Kapat gibi),
+   * tercihlere dokunulmaz. Ama ne olduğunu söyler ve odağı içeriğe taşır:
+   * düğme kaybolunca odak gövdeye düşüyor, ekran okuyucu "Belge kapatıldı."
+   * diyordu.
+   */
+  const newConversion = useCallback(() => {
+    setDocuments([]);
+    setContext(null);
+    announce("Yeni dönüştürme. Belge seçerek başlayın.");
+    requestAnimationFrame(() => document.getElementById("icerik")?.focus());
+  }, []);
+
   /** Bardaki "Kapat" ve ürün işareti: kaydedilmemiş iş varsa önce sorar. */
   const requestClose = useCallback((action: LeaveAction = "close") => guard(action, closeDocuments), [guard, closeDocuments]);
 
@@ -397,7 +410,7 @@ export function App() {
               onNewOperation={newAnnexOperation}
             />
           ) : usable && active.key === "tavzih" ? (
-            <ConvertWorkspace paths={carried} onNewConversion={closeDocuments} />
+            <ConvertWorkspace paths={carried} onNewConversion={newConversion} />
           ) : usable && active.key === "ikincigoz" ? (
             <ReviewWorkspace path={carried[0]} />
           ) : usable && active.key === "degisikis" ? (

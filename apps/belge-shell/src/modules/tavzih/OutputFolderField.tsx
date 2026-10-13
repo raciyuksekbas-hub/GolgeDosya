@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "./api";
 import type { OutputFolder } from "./types";
 import { Button, Status } from "../../shared-ui/primitives";
+import { announce } from "../../shared-ui/Announcer";
 import { logFailure, safeMessage } from "../../shared-ui/failure";
 import { fileNameOf } from "../../shell/modes";
 
@@ -55,10 +56,11 @@ export function OutputFolderRow({
         <Button onClick={onChoose}>Değiştir</Button>
       </div>
       <p className="prefs-hint">{OUTPUT_FOLDER_HINT}</p>
+      {/* `Status` kendisi bir <p>'dir; <p> içinde <p> geçersizdi. */}
       {error ? (
-        <p className="prefs-hint">
+        <div className="prefs-hint">
           <Status tone="error">{error}</Status>
-        </p>
+        </div>
       ) : null}
       {!folder.is_default ? (
         <p className="prefs-hint">
@@ -79,6 +81,8 @@ export function OutputFolderRow({
  * Kapalıyken Word belgesindeki aralıklar korunur (sayfa akışı korunması gereken
  * sözleşme gibi belgeler için).
  */
+const PETITION_SPACING_LABEL = "Word'den UDF'ye satır aralığı 1,5";
+
 export function PetitionSpacingRow({
   checked,
   onChange,
@@ -88,11 +92,21 @@ export function PetitionSpacingRow({
 }) {
   return (
     <label className="field prefs-check">
+      {/* Ad yalnız etiket, açıklama ayrı: ikisi tek ada birleşince ekran
+          okuyucu "…1,5Paragraf öncesi…" diye bitişik okuyordu. */}
       <span className="field-label">
-        Word'den UDF'e satır aralığı 1,5
-        <span>Paragraf öncesi ve sonrası boşluk bırakılmaz. Kapalıyken Word belgesindeki aralıklar korunur.</span>
+        {PETITION_SPACING_LABEL}
+        <span id="ayar-dilekce-araligi-not">
+          Paragraf öncesi ve sonrası boşluk bırakılmaz. Kapalıyken Word belgesindeki aralıklar korunur.
+        </span>
       </span>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <input
+        type="checkbox"
+        aria-label={PETITION_SPACING_LABEL}
+        aria-describedby="ayar-dilekce-araligi-not"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
     </label>
   );
 }
@@ -141,17 +155,27 @@ export function OutputFolderField({
         setFolder(await api.setOutputFolder(next));
       } catch (e) {
         logFailure("tavzih output folder", e);
-        setError(
-          safeMessage(e, "Bu klasör kullanılamadı. Yazma izni olan başka bir klasör seçin."),
-        );
+        const message = safeMessage(e, "Bu klasör kullanılamadı. Yazma izni olan başka bir klasör seçin.");
+        setError(message);
+        announce(message);
       }
     },
     [],
   );
 
   const choose = useCallback(async () => {
-    const picked = await open({ directory: true, multiple: false }).catch(() => null);
-    // Kullanıcı vazgeçtiyse bu bir hata değildir; sessizlik doğrudur.
+    // Vazgeçmek sessizdir; seçicinin hiç açılamaması değil. Eskiden ret de
+    // vazgeçme sayılıyor, düğme hiçbir şey yapmamış gibi görünüyordu.
+    let picked: string | string[] | null;
+    try {
+      picked = await open({ directory: true, multiple: false });
+    } catch (e) {
+      logFailure("tavzih output folder picker", e);
+      const message = safeMessage(e, "Klasör seçilemedi. Başka bir klasör deneyin.");
+      setError(message);
+      announce(message);
+      return;
+    }
     if (typeof picked !== "string") return;
     await apply(picked);
   }, [apply]);

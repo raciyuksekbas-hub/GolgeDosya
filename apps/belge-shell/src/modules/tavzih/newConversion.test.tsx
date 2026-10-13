@@ -90,12 +90,25 @@ describe("Yeni Dönüştürme (madde 16)", () => {
   it("kabuk belgeyi bırakır; tercihlere (çıktı klasörü, onay) dokunulmaz", () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const app = readFileSync(resolve(here, "../../App.tsx"), "utf8");
-    expect(app).toContain("<ConvertWorkspace paths={carried} onNewConversion={closeDocuments} />");
-    // closeDocuments yalnız belge ve bağlamı bırakır.
-    const at = app.indexOf("const closeDocuments");
+    expect(app).toContain("<ConvertWorkspace paths={carried} onNewConversion={newConversion} />");
+    // Yalnız belge ve bağlam bırakılır; tercihlere dokunulmaz.
+    const at = app.indexOf("const newConversion");
     const body = app.slice(at, app.indexOf("}, []);", at));
     expect(body).toContain("setDocuments([])");
+    expect(body).toContain("setContext(null)");
     expect(body).not.toMatch(/setOutputFolder|acceptTerms|forgetDocuments|saveSettings/);
+  });
+
+  it("ne olduğunu söyler ve odağı içeriğe taşır; 'Belge kapatıldı.' demez", () => {
+    // Erişilebilirlik denetimi: düğme kaybolunca odak gövdeye düşüyor, ekran
+    // okuyucu "Belge kapatıldı." diyordu (Ekler'in yeni işlemi doğru söylüyor).
+    const here = dirname(fileURLToPath(import.meta.url));
+    const app = readFileSync(resolve(here, "../../App.tsx"), "utf8");
+    const at = app.indexOf("const newConversion");
+    const body = app.slice(at, app.indexOf("}, []);", at));
+    expect(body).toContain('announce("Yeni dönüştürme. Belge seçerek başlayın.")');
+    expect(body).toContain('getElementById("icerik")?.focus()');
+    expect(body).not.toContain("Belge kapatıldı");
   });
 });
 

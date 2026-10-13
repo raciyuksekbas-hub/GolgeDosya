@@ -151,9 +151,9 @@ export function PreferencesSheet({
     >
       <div className="sheet prefs" ref={ref} role="dialog" aria-modal="true" aria-labelledby="ayar-baslik">
         {error ? (
-          <p className="prefs-hint">
+          <div className="prefs-hint">
             <Status tone="error">{error}</Status>
-          </p>
+          </div>
         ) : null}
         <nav className="prefs-tabs" aria-label="Tercih bölümleri">
           {TABS.map((t) => (
