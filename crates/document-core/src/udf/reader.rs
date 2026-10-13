@@ -9,6 +9,7 @@
 //! overrun the buffer by a character, and legacy `format_id` values. None of those should
 //! cost the user their document.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use base64::Engine as _;
@@ -104,6 +105,87 @@ struct Ctx<'a> {
     /// Başvurularla istenen birimlerin toplamı ve üst sınırı (OR-03).
     referenced: usize,
     reference_limit: usize,
+    /// Belgenin `<style>` tanımları; öznitelik çözümlemesi bunlara dayanır.
+    styles: StyleMap,
+    /// Açık paragrafın KENDİ öznitelikleri: yaprak, kendinde ve kendi stil
+    /// zincirinde olmayanı burada arar (Swing'de yaprağın ebeveyni paragraftır).
+    para_attrs: Attrs,
+}
+
+/// UDF `<style>` tanımları: stil adı → öznitelikleri.
+type StyleMap = HashMap<String, HashMap<String, String>>;
+/// Bir öğenin kendi öznitelikleri (yerel ad → ham değer).
+type Attrs = HashMap<String, String>;
+
+/// Swing'in `StyleContext.DEFAULT_STYLE`'ı. UYAP bu stili kendisi tanımlamaz:
+/// metin alanının ARAYÜZ yazı tipi ve rengi belge açılırken onun üstüne yazılır
+/// (`FONT_ATTRIBUTE_KEY` işareti; Windows'ta Dialog 12, macOS'ta Lucida Grande
+/// 13). Dosyadaki family/size/foreground değerleri yazarın ekranını anlatır,
+/// belgeyi değil; bu yüzden zincir bu anahtarlarda orada belirsiz biter ve
+/// belgenin varsayılan yazı tipi kullanılır. bold/italic gibi diğer anahtarlar
+/// Swing'deki gibi okunur.
+const SWING_DEFAULT_STYLE: &str = "default";
+const UI_FONT_KEYS: &[&str] = &["family", "size", "foreground"];
+
+/// Bir stil zincirinde aramanın sonucu.
+enum Chain<'a> {
+    Found(&'a str),
+    /// Değer ortama bağlı (Swing `default` stilinin arayüz anahtarı): arama biter.
+    Unknown,
+    NotFound,
+}
+
+/// `start` stilinden başlayıp `style@resolver` bağlarını izleyerek `key`'i arar.
+fn style_chain<'a>(styles: &'a StyleMap, start: Option<&'a str>, key: &str) -> Chain<'a> {
+    let mut cur = start;
+    let mut hops = 0;
+    while let Some(name) = cur {
+        if name == SWING_DEFAULT_STYLE && UI_FONT_KEYS.contains(&key) {
+            return Chain::Unknown;
+        }
+        let Some(style) = styles.get(name) else {
+            return Chain::NotFound;
+        };
+        if let Some(v) = style.get(key) {
+            return Chain::Found(v);
+        }
+        cur = style.get("resolver").map(String::as_str);
+        hops += 1;
+        if hops > 32 {
+            break; // döngüsel resolver: dur, dönme
+        }
+    }
+    Chain::NotFound
+}
+
+/// Swing `AbstractElement.getAttribute` sırası: öğenin kendi özniteliği → kendi
+/// `resolver` stil zinciri → ebeveyn öğe (kendi özniteliği → onun zinciri) → en
+/// sonda `hvl-default`.
+///
+/// Okuyucu eskiden yalnız öğenin KENDİ özniteliklerini okuyordu: `<paragraph
+/// bold="true">` içindeki, kendi `bold`'u olmayan yapraklar (gerçek 24 UDF'te
+/// 17.018 harf) Word'de düz, `edf_*` stilinden gelen hiza ve paragraf aralıkları
+/// (124 ve 82 paragraf) kayıp çıkıyordu. Açık öznitelik her zaman kazanır.
+fn resolve<'a>(
+    styles: &'a StyleMap,
+    own: &'a Attrs,
+    parent: Option<&'a Attrs>,
+    key: &str,
+) -> Option<&'a str> {
+    for el in std::iter::once(own).chain(parent) {
+        if let Some(v) = el.get(key) {
+            return Some(v);
+        }
+        match style_chain(styles, el.get("resolver").map(String::as_str), key) {
+            Chain::Found(v) => return Some(v),
+            Chain::Unknown => return None,
+            Chain::NotFound => {}
+        }
+    }
+    match style_chain(styles, Some(DEFAULT_RESOLVER), key) {
+        Chain::Found(v) => Some(v),
+        _ => None,
+    }
 }
 
 impl<'a> Ctx<'a> {
@@ -194,6 +276,8 @@ fn parse_content_xml(
         lost_field_text: false,
         referenced: 0,
         reference_limit,
+        styles: parse_styles(text),
+        para_attrs: Attrs::new(),
     };
 
     let page = parse_page_format(text);
@@ -343,6 +427,31 @@ fn parse_default_style(text: &str) -> FontSpec {
     f
 }
 
+/// Her `<style>`'ı adıyla bir haritaya alır. Stiller dosyada öğe ağacından SONRA
+/// gelir; çözümleme ağaç okunurken gerektiği için önce bunlar okunur.
+fn parse_styles(text: &str) -> StyleMap {
+    let mut out = StyleMap::new();
+    let Some(i) = text.find("<styles") else {
+        return out;
+    };
+    let mut rd = Reader::from_str(&text[i..]);
+    rd.config_mut().check_end_names = false;
+    loop {
+        match rd.read_event() {
+            Err(_) | Ok(Event::Eof) => break,
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if e.local_name().as_ref() == b"style" => {
+                let attrs = attr_map(&e);
+                if let Some(name) = attrs.get("name") {
+                    out.insert(name.clone(), attrs);
+                }
+            }
+            Ok(Event::End(e)) if e.local_name().as_ref() == b"styles" => break,
+            _ => {}
+        }
+    }
+    out
+}
+
 type Parsed = (Option<HeaderFooter>, Option<HeaderFooter>, Vec<Block>);
 
 fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
@@ -382,6 +491,7 @@ fn parse_elements(text: &str, ctx: &mut Ctx) -> Result<Parsed> {
                     "row" => row_stack.push(parse_row_attrs(&e)),
                     "cell" => cell_stack.push(parse_cell_attrs(&e)),
                     "paragraph" => {
+                        ctx.para_attrs = attr_map(&e);
                         para = Some(Paragraph {
                             props: parse_para_props(&e, ctx),
                             runs: vec![],
@@ -573,6 +683,20 @@ fn attr(e: &BytesStart, key: &str) -> Option<String> {
     None
 }
 
+/// Öğenin bütün öznitelikleri; değerler `attr` ile aynı biçimde (ham) okunur ki
+/// açık bir özniteliğin anlamı değişmesin.
+fn attr_map(e: &BytesStart) -> Attrs {
+    e.attributes()
+        .flatten()
+        .map(|a| {
+            (
+                String::from_utf8_lossy(a.key.local_name().as_ref()).to_string(),
+                String::from_utf8_lossy(&a.value).to_string(),
+            )
+        })
+        .collect()
+}
+
 fn attr_f32(e: &BytesStart, key: &str) -> Option<f32> {
     attr(e, key).and_then(|v| v.trim().parse().ok())
 }
@@ -700,21 +824,27 @@ fn parse_para_props(e: &BytesStart, ctx: &mut Ctx) -> ParaProps {
     // The canonical model uses OOXML semantics, where `left_indent_pt` is where the body
     // sits — so the two must be composed here. Reading `LeftIndent` alone put the first
     // line at a negative position and pushed legal labels off the page.
-    let hanging = attr_f32(e, "Hanging").unwrap_or(0.0).max(0.0);
+    //
+    // Paragraf öznitelikleri Swing'deki gibi çözülür: kendi → `resolver` stil
+    // zinciri → `hvl-default` (bkz. `resolve`).
+    let own = attr_map(e);
+    let get = |k: &str| resolve(&ctx.styles, &own, None, k);
+    let num = |k: &str| get(k).and_then(|v| v.trim().parse::<f32>().ok());
+    let hanging = num("Hanging").unwrap_or(0.0).max(0.0);
     let mut p = ParaProps {
-        alignment: match attr_usize(e, "Alignment").unwrap_or(0) {
-            x if x == align::CENTER as usize => Alignment::Center,
-            x if x == align::RIGHT as usize => Alignment::Right,
-            x if x == align::JUSTIFIED as usize => Alignment::Justify,
+        alignment: match get("Alignment").and_then(|v| v.trim().parse::<usize>().ok()) {
+            Some(x) if x == align::CENTER as usize => Alignment::Center,
+            Some(x) if x == align::RIGHT as usize => Alignment::Right,
+            Some(x) if x == align::JUSTIFIED as usize => Alignment::Justify,
             _ => Alignment::Left,
         },
-        left_indent_pt: attr_f32(e, "LeftIndent").unwrap_or(0.0) + hanging,
-        right_indent_pt: attr_f32(e, "RightIndent").unwrap_or(0.0),
-        first_line_indent_pt: attr_f32(e, "FirstLineIndent").unwrap_or(0.0),
+        left_indent_pt: num("LeftIndent").unwrap_or(0.0) + hanging,
+        right_indent_pt: num("RightIndent").unwrap_or(0.0),
+        first_line_indent_pt: num("FirstLineIndent").unwrap_or(0.0),
         hanging_pt: hanging,
-        space_before_pt: attr_f32(e, "SpaceAbove").unwrap_or(0.0),
-        space_after_pt: attr_f32(e, "SpaceBelow").unwrap_or(0.0),
-        line_spacing_extra: attr_f32(e, "LineSpacing").unwrap_or(0.0),
+        space_before_pt: num("SpaceAbove").unwrap_or(0.0),
+        space_after_pt: num("SpaceBelow").unwrap_or(0.0),
+        line_spacing_extra: num("LineSpacing").unwrap_or(0.0),
         tab_stops: Vec::new(),
         list: None,
         // UDF'te bu kural yoktur: bosluk zaten yazilmis haldedir.
@@ -722,7 +852,7 @@ fn parse_para_props(e: &BytesStart, ctx: &mut Ctx) -> ParaProps {
         style_name: attr(e, "description"),
     };
 
-    if let Some(ts) = attr(e, "TabSet") {
+    if let Some(ts) = get("TabSet") {
         let mut stops: Vec<f32> = ts
             .split(',')
             .filter_map(|s| s.split(':').next()?.trim().parse::<f32>().ok())
@@ -761,16 +891,21 @@ fn parse_para_props(e: &BytesStart, ctx: &mut Ctx) -> ParaProps {
     p
 }
 
-fn parse_run_props(e: &BytesStart) -> RunProps {
+/// Yaprağın karakter biçimi: kendi → kendi `resolver` zinciri → paragrafı →
+/// paragrafın zinciri → `hvl-default` (Swing'de yaprağın ebeveyni paragraftır).
+fn parse_run_props(e: &BytesStart, ctx: &Ctx) -> RunProps {
+    let own = attr_map(e);
+    let get = |k: &str| resolve(&ctx.styles, &own, Some(&ctx.para_attrs), k);
+    let flag = |k: &str| get(k).is_some_and(|v| v.eq_ignore_ascii_case("true"));
     RunProps {
-        bold: attr_bool(e, "bold"),
-        italic: attr_bool(e, "italic"),
-        underline: attr_bool(e, "underline"),
+        bold: flag("bold"),
+        italic: flag("italic"),
+        underline: flag("underline"),
         strike: false,
         vert_align: VertAlign::Baseline,
-        font_family: attr(e, "family"),
-        font_size_pt: attr_f32(e, "size"),
-        color: attr(e, "foreground")
+        font_family: get("family").map(str::to_string),
+        font_size_pt: get("size").and_then(|v| v.trim().parse().ok()),
+        color: get("foreground")
             .and_then(|v| v.trim().parse::<i32>().ok())
             .map(Color::from_java_argb),
     }
@@ -784,7 +919,7 @@ fn parse_run_props(e: &BytesStart) -> RunProps {
 /// which does emit a real `<w:tab/>` for every tab, would disagree with the UDF side about
 /// how many tabs a document has, and tab stops carry the layout of a legal pleading.
 fn parse_leaf(name: &str, e: &BytesStart, ctx: &mut Ctx) -> Result<Vec<Run>> {
-    let props = parse_run_props(e);
+    let props = parse_run_props(e, ctx);
 
     match name {
         "image" => {
