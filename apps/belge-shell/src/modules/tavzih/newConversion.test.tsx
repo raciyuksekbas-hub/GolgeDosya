@@ -98,3 +98,55 @@ describe("Yeni Dönüştürme (madde 16)", () => {
     expect(body).not.toMatch(/setOutputFolder|acceptTerms|forgetDocuments|saveSettings/);
   });
 });
+
+// Saha: "Bu sekmede 'Belgeyi aç' butonu da olmalı." Tek belgede kullanıcının
+// sıradaki işi belgeyi UYAP Doküman Editörü ya da Word'de açmaktır; düğme
+// ÜRETİLEN dosyayı açar, kaynağı değil. Yol arka uçta yeniden doğrulanır
+// (`tavzih.rs` open_target).
+describe("Belgeyi Aç", () => {
+  const folder = { path: DIR, default_path: DIR, is_default: true } as OutputFolder;
+  const done = (items: ConversionResult[], onOpen = vi.fn()) =>
+    ConvertDone({ items, from: "Word (.docx)", to: "UYAP (.udf)", folder, onReveal: vi.fn(), onOpen, onNew: vi.fn() });
+
+  it("tek belge: üretilen dosyayı açar; birincil eylem odur", () => {
+    const out = `${DIR}\\dilekçe.udf`;
+    const onOpen = vi.fn();
+    const tree = done([result("dilekçe", out)], onOpen);
+    const button = findButton(tree, "Belgeyi Aç") as ReactElement<{ onClick: () => void; variant?: string }> | null;
+    expect(button).not.toBeNull();
+    expect(button!.props.variant).toBe("primary");
+    button!.props.onClick();
+    expect(onOpen).toHaveBeenCalledWith(out);
+    // Klasör ikinci eylem olarak kalır; iki baskın eylem olmaz.
+    const reveal = findButton(tree, "Klasörde Göster") as ReactElement<{ variant?: string }> | null;
+    expect(reveal).not.toBeNull();
+    expect(reveal!.props.variant).toBeUndefined();
+  });
+
+  it("başarısız belgede açılacak bir şey yoktur", () => {
+    const tree = done([result("dilekçe", null, "failure")]);
+    expect(findButton(tree, "Belgeyi Aç")).toBeNull();
+    const reveal = findButton(tree, "Klasörde Göster") as ReactElement<{ variant?: string }> | null;
+    expect(reveal!.props.variant).toBe("primary");
+  });
+
+  it("toplu işte tek bir belge yoktur: klasör birincil kalır", () => {
+    const tree = done([result("a", `${DIR}\\a.udf`), result("b", `${DIR}\\b.udf`)]);
+    expect(findButton(tree, "Belgeyi Aç")).toBeNull();
+    const reveal = findButton(tree, "Klasörde Göster") as ReactElement<{ variant?: string }> | null;
+    expect(reveal!.props.variant).toBe("primary");
+  });
+
+  it("açma hatası sessiz kalmaz; komut arka uçta", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const workspace = readFileSync(resolve(here, "ConvertWorkspace.tsx"), "utf8");
+    const at = workspace.indexOf("const openOutput = useCallback");
+    expect(at).toBeGreaterThan(-1);
+    const body = workspace.slice(at, workspace.indexOf("}, []);", at));
+    expect(body).toContain("api.openOutput(path)");
+    expect(body).toContain("setFailure(message)");
+    expect(body).toContain("announce(message)");
+    const api = readFileSync(resolve(here, "api.ts"), "utf8");
+    expect(api).toContain('invoke<void>("tavzih_open_output", { path })');
+  });
+});

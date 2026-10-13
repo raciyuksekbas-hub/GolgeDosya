@@ -18,6 +18,11 @@ export const setOutputFolder = (path: string | null) =>
  */
 export const revealOutputFolder = (outputs: string[]) =>
   invoke<void>("tavzih_reveal_output_folder", { outputs });
+/**
+ * Az önce dönüştürülen belgeyi varsayılan uygulamasıyla açar. Arka uç yalnız
+ * bu oturumda çıktı klasörüne yazılmış bir .udf/.docx dosyasını kabul eder.
+ */
+export const openOutput = (path: string) => invoke<void>("tavzih_open_output", { path });
 
 /**
  * Yerel `YYYY-MM-DD_HHMM` damgası.

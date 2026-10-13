@@ -180,7 +180,7 @@ export function ConvertFlow({
  *
  * Kaynağın değişmediği her sonuçta açıkça yazılır; motor bunu hash'le kanıtlar.
  */
-export function ConvertDone({ items, from, to, folder, archiveName, onReveal, onNew }: {
+export function ConvertDone({ items, from, to, folder, archiveName, onReveal, onOpen, onNew }: {
   items: ConversionResult[];
   /** Kaynağın biçim etiketi — akışın sol durağı için. */
   from: string | null;
@@ -192,6 +192,8 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
    *  dosyaları arar. */
   archiveName?: string | null;
   onReveal: () => void;
+  /** Tek belge başarıyla dönüştüyse onu varsayılan uygulamasıyla aç. */
+  onOpen?: (path: string) => void;
   /** Yeni bir dönüştürmeye başla: eski kaynak ve sonuç bırakılır, tercihler
    *  (çıktı klasörü, onay) kalır. Eskiden buradaki "Yeniden Dönüştür" AYNI
    *  belgeyi yeniden dönüştürüp sessizce "X (2).udf" üretiyordu. */
@@ -199,6 +201,7 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
 }) {
   const failed = items.filter((r) => r.status === "failure").length;
   const single = items.length === 1 ? items[0] : null;
+  const openable = single && single.status !== "failure" && single.output ? single.output : null;
   const unchanged = items.every((r) => r.source_unchanged);
   // Başlık gerçeği söylemeli:
   //  · HİÇBİRİ dönüşmediyse "tamamlandı" yanlıştır — hiçbir şey üretilmedi.
@@ -280,8 +283,16 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
       {folder ? <FlowDestination folder={folder} /> : null}
 
       <div className="flow-action">
+        {/* Tek belgede kullanıcının sıradaki işi belgeyi açmaktır (UYAP Doküman
+            Editörü ya da Word); klasör ikinci eylemdir. Toplu işte açılacak
+            tek belge yok: arşiv ya da liste klasörde gösterilir. */}
+        {openable && onOpen ? (
+          <Button variant="primary" onClick={() => onOpen(openable)}>
+            Belgeyi Aç
+          </Button>
+        ) : null}
         {folder ? (
-          <Button variant="primary" onClick={onReveal}>
+          <Button variant={openable && onOpen ? undefined : "primary"} onClick={onReveal}>
             Klasörde Göster
           </Button>
         ) : null}
@@ -296,8 +307,7 @@ export function ConvertDone({ items, from, to, folder, archiveName, onReveal, on
 /**
  * Dönüştür — DOCX ↔ UDF.
  *
- * Motor `document-core`'un `convert` modülüdür ve hiç değiştirilmemiştir.
- * Akış da aynı: onay → seçim → uyarı → dönüştürme → sonuç.
+ * Motor `document-core`'un `convert` modülüdür. Akış: onay → seçim → uyarı → dönüştürme → sonuç.
  *
  * Yüzey bir form değil, tek bir dönüşüm akışıdır: KAYNAK → HEDEF, altında
  * çıktı konumu, altında tek birincil eylem. Yardımcı bar yönü taşır.
@@ -411,6 +421,24 @@ export function ConvertWorkspace({ paths, onNewConversion }: {
     }
   }, []);
 
+  /**
+   * Dönüştürülen belgeyi varsayılan uygulamasında aç (UYAP Doküman Editörü,
+   * Word). Yol arka uçta yeniden doğrulanır; açılamazsa sebep söylenir.
+   */
+  const openOutput = useCallback(async (path: string) => {
+    try {
+      await api.openOutput(path);
+    } catch (e) {
+      logFailure("tavzih open output", e);
+      const message = safeMessage(
+        e,
+        "Belge açılamadı. Bu türdeki belgeyi açacak bir uygulama yüklü olmayabilir.",
+      );
+      setFailure(message);
+      announce(message);
+    }
+  }, []);
+
   if (accepted === false) {
     return (
       <FirstUseAcceptance
@@ -479,6 +507,7 @@ export function ConvertWorkspace({ paths, onNewConversion }: {
                   announce(message);
                 }
               }}
+              onOpen={openOutput}
               onNew={onNewConversion}
             />
           ) : selected.length > 0 ? (

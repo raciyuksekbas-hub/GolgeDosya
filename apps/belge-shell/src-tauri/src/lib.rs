@@ -275,6 +275,7 @@ pub fn run() {
         modules::tavzih::tavzih_output_folder,
         modules::tavzih::tavzih_set_output_folder,
         modules::tavzih::tavzih_reveal_output_folder,
+        modules::tavzih::tavzih_open_output,
         modules::ikincigoz::ikincigoz_analyze_document,
         modules::ikincigoz::ikincigoz_apply_fixes,
         modules::ikincigoz::ikincigoz_preview_fixes,
@@ -331,6 +332,7 @@ pub fn run() {
         modules::tavzih::tavzih_output_folder,
         modules::tavzih::tavzih_set_output_folder,
         modules::tavzih::tavzih_reveal_output_folder,
+        modules::tavzih::tavzih_open_output,
     ]);
 
     #[cfg(all(

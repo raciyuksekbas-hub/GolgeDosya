@@ -415,6 +415,74 @@ pub fn tavzih_reveal_output_folder(
     })
 }
 
+/// "Belgeyi Aç"ın açabileceği tek şey: Dönüştür'ün BU oturumda, çıktı
+/// klasörüne yazdığı bir UDF ya da Word belgesi.
+///
+/// "Klasörde Göster"den farklı olarak bu, belgeyi uygulamasıyla AÇAR; arayüzden
+/// gelen bir yol bu yüzden sıkı denetlenir: mutlak, bağlantı (symlink) değil,
+/// gerçek bir dosya, uzantısı `.udf`/`.docx`, doğrudan çıktı klasöründe ve
+/// uygulama açıldıktan sonra yazılmış. Arşiv (`.zip`) açılmaz; toplu işte
+/// "Klasörde Göster" kullanılır.
+pub(crate) fn open_target(
+    path: &Path,
+    out_dir: &Path,
+    session_start: std::time::SystemTime,
+) -> Result<PathBuf, String> {
+    const NOT_FOUND: &str = "Belge bulunamadı. Taşınmış veya silinmiş olabilir.";
+    if !path.is_absolute() {
+        return Err(NOT_FOUND.into());
+    }
+    let meta = std::fs::symlink_metadata(path).map_err(|_| NOT_FOUND.to_string())?;
+    if meta.file_type().is_symlink() || !meta.is_file() {
+        return Err(NOT_FOUND.into());
+    }
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    if !matches!(ext.as_str(), "udf" | "docx") {
+        return Err(NOT_FOUND.into());
+    }
+    let fresh = meta
+        .modified()
+        .is_ok_and(|m| m >= crate::output_place::session_floor(session_start));
+    let same = |a: &Path, b: &Path| match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    };
+    let in_output = path.parent().is_some_and(|parent| same(parent, out_dir));
+    if !fresh || !in_output {
+        return Err(NOT_FOUND.into());
+    }
+    Ok(path.to_path_buf())
+}
+
+/// Az önce dönüştürülen belgeyi varsayılan uygulamasıyla aç (UDF için UYAP
+/// Doküman Editörü, Word belgesi için Word…).
+#[tauri::command]
+pub fn tavzih_open_output(app: tauri::AppHandle, path: String) -> Result<(), AppError> {
+    use tauri_plugin_opener::OpenerExt;
+    let file = open_target(
+        Path::new(&path),
+        &effective_output_dir(),
+        crate::output_place::session_start(),
+    )
+    .map_err(|message| AppError {
+        code: "NOT_FOUND".into(),
+        message,
+        detail: String::new(),
+    })?;
+    app.opener()
+        .open_path(file.to_string_lossy(), None::<&str>)
+        .map_err(|e| AppError {
+            code: "OPEN_FAILED".into(),
+            message: "Belge açılamadı. Bu türdeki belgeyi açacak bir uygulama yüklü olmayabilir."
+                .into(),
+            detail: e.to_string(),
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,6 +500,55 @@ mod tests {
         let file = dir.join("Müvekkil'in dilekçesi.udf");
         std::fs::write(&file, b"PK").unwrap();
         (root, dir, file)
+    }
+
+    #[test]
+    fn open_accepts_only_a_fresh_converted_document_in_the_output_folder() {
+        let (root, dir, udf) = output_tree();
+        let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(5);
+        assert_eq!(open_target(&udf, &dir, earlier), Ok(udf.clone()));
+
+        let docx = dir.join("Dilekçe.DOCX");
+        std::fs::write(&docx, b"PK").unwrap();
+        assert!(
+            open_target(&docx, &dir, earlier).is_ok(),
+            "büyük harfli uzantı da belge"
+        );
+
+        // Klasör, arşiv, başka tür: "aç" bunları hiçbir zaman çalıştırmaz.
+        assert!(open_target(&dir, dir.parent().unwrap(), earlier).is_err());
+        for name in [
+            "arsiv.zip",
+            "betik.command",
+            "uygulama.app",
+            "kisayol.lnk",
+            "belge.pdf",
+        ] {
+            let other = dir.join(name);
+            std::fs::write(&other, b"x").unwrap();
+            assert!(
+                open_target(&other, &dir, earlier).is_err(),
+                "{name} açılmamalı"
+            );
+        }
+
+        // Çıktı klasörünün dışındaki bir belge açılmaz.
+        let outside = root.path().join("baska.udf");
+        std::fs::write(&outside, b"PK").unwrap();
+        assert!(open_target(&outside, &dir, earlier).is_err());
+
+        // Bu oturumdan önce yazılmış belge açılmaz (saat kayması payı 2 dk).
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(600);
+        assert!(open_target(&udf, &dir, later).is_err());
+
+        // Göreli yol ve bağlantı (symlink) açılmaz.
+        assert!(open_target(Path::new("Müvekkil'in dilekçesi.udf"), &dir, earlier).is_err());
+        #[cfg(unix)]
+        {
+            let link = dir.join("bag.udf");
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            assert!(open_target(&link, &dir, earlier).is_err());
+        }
     }
 
     #[test]
