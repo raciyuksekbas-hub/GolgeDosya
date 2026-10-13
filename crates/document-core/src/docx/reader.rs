@@ -429,10 +429,24 @@ impl Styles {
 ///
 /// Yalnız ARDIŞIK paragraflara bakılır; araya tablo veya sayfa sonu girerse
 /// komşuluk biter — Word de öyle davranır.
+///
+/// Kural her blok dizisinde ayrı uygulanır: tablo hücresinin ve üst/alt
+/// bilginin paragrafları da (bkz. `walk_header_footer`). Eskiden yalnız gövdenin
+/// üst düzeyine uygulanıyordu; hücredeki ve antetteki aynı stilli paragraflar
+/// arasında Word'ün çizmediği boşluk UDF'e yazılıyordu (Source kipinde görünür).
 fn apply_contextual_spacing(blocks: &mut [Block]) {
     /// İki paragraf Word'ün gözünde "aynı stil" mi?
     fn same_style(a: &Paragraph, b: &Paragraph) -> bool {
         a.props.style_name == b.props.style_name
+    }
+    for b in blocks.iter_mut() {
+        if let Block::Table(t) = b {
+            for row in &mut t.rows {
+                for cell in &mut row.cells {
+                    apply_contextual_spacing(&mut cell.blocks);
+                }
+            }
+        }
     }
     for i in 0..blocks.len() {
         let (left, right) = blocks.split_at_mut(i + 1);
@@ -1090,7 +1104,8 @@ impl<'a> BodyBuilder<'a> {
         self.active_part = Some(part.to_string());
         let r = self.walk_body(xml);
         self.active_part = None;
-        let (blocks, _) = r?;
+        let (mut blocks, _) = r?;
+        apply_contextual_spacing(&mut blocks);
         Ok(HeaderFooter {
             blocks,
             stop_page: None,

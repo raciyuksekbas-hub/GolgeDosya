@@ -191,3 +191,107 @@ fn text_inside_a_revision_record_is_not_emitted_as_content() {
     let ps = paragraphs(&docx(&para_with_revision()));
     assert_eq!(ps[0].text(), "metin");
 }
+
+// ------------------------------------------------- tablo hücresi ve üst/alt bilgi
+//
+// Bağımsız denetim (v0.3.2 kabul turu, F19): kural yalnız gövdenin ÜST
+// DÜZEYİNE uygulanıyordu. Tablo hücresindeki ve üst/alt bilgideki aynı stilli
+// paragraflar arasındaki boşluk, Word çizmediği hâlde UDF'e yazılıyordu.
+// Dilekçe aralığı (Petition) hücrede bunu gizler, üst/alt bilgide gizlemez;
+// Source kipinde ikisi de görünür.
+
+/// Üst bilgili asgari paket: `header` üst bilgi gövdesidir.
+fn docx_with_header(body: &str, header: &str) -> Vec<u8> {
+    const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const R: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    let mut out = Vec::new();
+    {
+        let mut z = zip::ZipWriter::new(std::io::Cursor::new(&mut out));
+        let opts: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        let mut put = |name: &str, data: String| {
+            z.start_file(name, opts).unwrap();
+            z.write_all(data.as_bytes()).unwrap();
+        };
+        put(
+            "word/document.xml",
+            format!(
+                r#"<?xml version="1.0"?><w:document xmlns:w="{W}" xmlns:r="{R}"><w:body>{body}<w:sectPr><w:headerReference w:type="default" r:id="rIdH"/></w:sectPr></w:body></w:document>"#
+            ),
+        );
+        put(
+            "word/_rels/document.xml.rels",
+            format!(
+                r#"<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdH" Type="{R}/header" Target="header1.xml"/></Relationships>"#
+            ),
+        );
+        put(
+            "word/header1.xml",
+            format!(r#"<?xml version="1.0"?><w:hdr xmlns:w="{W}">{header}</w:hdr>"#),
+        );
+        z.finish().unwrap();
+    }
+    out
+}
+
+fn cell_paragraphs(d: &tavzih_core::model::Document) -> Vec<tavzih_core::model::Paragraph> {
+    let mut out = Vec::new();
+    for b in &d.sections[0].blocks {
+        if let Block::Table(t) = b {
+            for r in &t.rows {
+                for c in &r.cells {
+                    for cb in &c.blocks {
+                        if let Block::Paragraph(p) = cb {
+                            out.push(p.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn contextual_spacing_also_applies_inside_a_table_cell() {
+    let body = format!(
+        "<w:tbl><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc>{}{}</w:tc></w:tr></w:tbl><w:p/>",
+        para("ListParagraph", 200, true, "a"),
+        para("ListParagraph", 200, true, "b"),
+    );
+    let mut w = WarningSink::new();
+    let d = docx::reader::read_docx(&docx(&body), &mut w).expect("docx");
+    let ps = cell_paragraphs(&d);
+    assert_eq!(ps.len(), 2);
+    assert_eq!(ps[0].props.space_after_pt, 0.0, "hücrede 1-2 arası boşluk");
+    assert_eq!(
+        ps[1].props.space_after_pt, 10.0,
+        "son paragrafın boşluğu kalır"
+    );
+}
+
+#[test]
+fn contextual_spacing_also_applies_in_a_header() {
+    let header = format!(
+        "{}{}",
+        para("Antet", 200, true, "BÜRO"),
+        para("Antet", 200, true, "Adres"),
+    );
+    let mut w = WarningSink::new();
+    let bytes = docx_with_header(&para("Normal", 0, false, "gövde"), &header);
+    let d = docx::reader::read_docx(&bytes, &mut w).expect("docx");
+    let h = d.sections[0].header.as_ref().expect("üst bilgi");
+    let ps: Vec<_> = h
+        .blocks
+        .iter()
+        .filter_map(|b| match b {
+            Block::Paragraph(p) => Some(p),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ps.len(), 2);
+    assert_eq!(
+        ps[0].props.space_after_pt, 0.0,
+        "üst bilgide 1-2 arası boşluk"
+    );
+    assert_eq!(ps[1].props.space_after_pt, 10.0);
+}
