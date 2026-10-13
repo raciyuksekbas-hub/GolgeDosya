@@ -212,6 +212,9 @@ struct PartialRun {
     highlight: Option<Option<Color>>,
     /// Run gölgelemesi (`w:rPr/w:shd` dolgusu); `Some(None)` = "auto".
     shading: Option<Option<Color>>,
+    /// Alt çizgi tek düz çizgi DEĞİL (çift, kalın, noktalı, dalgalı, yalnız
+    /// sözcükler…): UDF'te (Swing) yalnız tek çizgi var.
+    underline_styled: Option<bool>,
 }
 
 impl PartialRun {
@@ -251,6 +254,9 @@ impl PartialRun {
         }
         if o.shading.is_some() {
             self.shading = o.shading;
+        }
+        if o.underline_styled.is_some() {
+            self.underline_styled = o.underline_styled;
         }
     }
 
@@ -966,6 +972,10 @@ fn apply_rpr_child(e: &BytesStart, r: &mut PartialRun) {
                 !matches!(a(e, "val").as_deref(), Some("none") | None if a(e, "val").is_some()),
             )
             .map(|_| a(e, "val").as_deref() != Some("none"));
+            r.underline_styled = Some(!matches!(
+                a(e, "val").as_deref(),
+                None | Some("single") | Some("none")
+            ));
         }
         b"strike" => r.strike = Some(toggle(e)),
         b"dstrike" => r.strike = Some(toggle(e)),
@@ -1661,6 +1671,14 @@ impl<'a> BodyBuilder<'a> {
                         } else {
                             s
                         };
+                        // Çift/kalın/noktalı alt çizgi UDF'te tek çizgi olur: metin
+                        // altı çizili kalır, biçim farkı sessiz kalmaz.
+                        if run.underline == Some(true) && run.underline_styled == Some(true) {
+                            self.warn.push(
+                                Warning::new(WarningCode::RunFeatureDropped)
+                                    .detail("alt çizgi biçimi tek çizgi oldu"),
+                            );
+                        }
                         let props = run.into_props();
                         if s.contains('\t') {
                             for (i, piece) in s.split('\t').enumerate() {

@@ -174,6 +174,29 @@ fn a_fractional_default_size_is_said_too() {
             && x.detail.as_deref().is_some_and(|d| d.contains("kesirli"))));
 }
 
+#[test]
+fn a_double_underline_is_kept_as_single_and_said() {
+    // Swing'in (UDF) tek alt çizgisi var: çift/kalın/noktalı çizgi tek çizgi olur.
+    // Altı çizili kalır, ama biçim farkı söylenir. Düz tek çizgi uyarı üretmez.
+    let mut w = WarningSink::new();
+    let body = r#"<w:p><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t>tek</w:t></w:r></w:p>"#;
+    convert_bytes(&docx_package(body, STYLES), Direction::DocxToUdf, &mut w).unwrap();
+    assert!(w.is_empty(), "{:?}", w.into_vec());
+
+    let mut w = WarningSink::new();
+    let body = r#"<w:p><w:r><w:rPr><w:u w:val="double"/></w:rPr><w:t>çift</w:t></w:r></w:p>"#;
+    let out = convert_bytes(&docx_package(body, STYLES), Direction::DocxToUdf, &mut w).unwrap();
+    assert!(content_tags(&part(&out, "content.xml"))[0].contains(" underline=\"true\""));
+    let warns = w.into_vec();
+    assert!(
+        warns
+            .iter()
+            .any(|x| x.code == WarningCode::RunFeatureDropped
+                && x.detail.as_deref().is_some_and(|d| d.contains("alt çizgi"))),
+        "{warns:?}"
+    );
+}
+
 // ------------------------------------------------------------------ UDF → Word
 
 #[test]
