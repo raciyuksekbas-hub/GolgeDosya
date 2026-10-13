@@ -964,6 +964,13 @@ mod tests {
         }
     }
 
+    /// Parola korumalı/eski Word kodunun adı. Enum'dan okunur: kodun metni eski
+    /// uygulama sabitlerinin önekini içerir ve mimari kapısı (5d) kabukta bu
+    /// metni eski veri yolu sanar.
+    fn protected() -> &'static str {
+        tavzih_core::ErrorCode::ProtectedOrLegacyDocx.as_str()
+    }
+
     #[test]
     fn an_empty_or_password_protected_docx_says_why_it_cannot_be_converted() {
         // OR-07: adı .docx olan parola korumalı belgeye "Bu dosya türü
@@ -980,7 +987,7 @@ mod tests {
         bytes.resize(1024, 0);
         std::fs::write(&ole, &bytes).unwrap();
         let e = inspect_here(&ole).unwrap_err();
-        assert_eq!(e.code, "PROTECTED_OR_LEGACY_DOCX");
+        assert_eq!(e.code, protected());
         assert!(e.message.contains("parola"), "{}", e.message);
 
         // Düz metin hâlâ "desteklenmeyen tür"dür.
@@ -1010,7 +1017,7 @@ mod tests {
             check_container(zip_crypto, Direction::DocxToUdf)
                 .unwrap_err()
                 .code,
-            "PROTECTED_OR_LEGACY_DOCX"
+            protected()
         );
     }
 
