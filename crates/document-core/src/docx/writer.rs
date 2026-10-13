@@ -587,7 +587,7 @@ fn write_paragraph(
                 out.push_str(&format!("<w:r>{}<w:br/></w:r>", rpr(props, doc)));
             }
             Run::Image(img) => {
-                out.push_str(&write_image(img, rels, media, warn));
+                out.push_str(&write_image(img, rels, media, warn, text_width_tw));
             }
         }
     }
@@ -595,11 +595,49 @@ fn write_paragraph(
     Ok(())
 }
 
+/// Kaynağın boyut söylemediği görselin çizim boyutu, pt.
+///
+/// UDF'te `width`/`height`'ı olmayan `<image>` gerçek: 26 belgede 54 görsel (çoğu
+/// 16x17 piksellik simge). Eskiden hepsi sabit 72x72 pt kare çiziliyordu: simgeler
+/// ~4,5 kat büyüyor, 2:1 görseller kareye eziliyordu. UYAP (Swing) görseli 72
+/// dpi'da çizer, yani 1 piksel = 1 pt. Tek boyut verilmişse öteki en-boy oranından
+/// gelir; piksellerden gelen boyut metin genişliğini aşarsa oranla küçültülür.
+/// Açıkça yazılmış iki boyut olduğu gibi kalır.
+fn image_size_pt(img: &Image, text_width_tw: i64) -> (f32, f32) {
+    let (w, h) = (img.width_pt, img.height_pt);
+    if w > 0.5 && h > 0.5 {
+        return (w, h);
+    }
+    let pixels = image::ImageReader::new(std::io::Cursor::new(img.data.as_slice()))
+        .with_guessed_format()
+        .ok()
+        .and_then(|r| r.into_dimensions().ok())
+        .filter(|(pw, ph)| *pw > 0 && *ph > 0);
+    let Some((pw, ph)) = pixels else {
+        return (72.0, 72.0);
+    };
+    let (pw, ph) = (pw as f32, ph as f32);
+    let (w, h) = if w > 0.5 {
+        (w, w * ph / pw)
+    } else if h > 0.5 {
+        (h * pw / ph, h)
+    } else {
+        (pw, ph)
+    };
+    let max_w = text_width_tw as f32 / 20.0;
+    if w > max_w && max_w > 0.0 {
+        (max_w, h * max_w / w)
+    } else {
+        (w, h)
+    }
+}
+
 fn write_image(
     img: &Image,
     rels: &mut Rels,
     media: &mut MediaPool,
     warn: &mut WarningSink,
+    text_width_tw: i64,
 ) -> String {
     if img.format == ImageFormat::Unsupported {
         warn.push(Warning::new(WarningCode::ImageFormatUnsupported).detail("bilinmeyen"));
@@ -611,12 +649,7 @@ fn write_image(
     let idx = media.items.len();
     let rid = rels.add(REL_IMAGE, target);
 
-    // Fall back to a sane default when the source gave no extent.
-    let (w, h) = if img.width_pt > 0.5 && img.height_pt > 0.5 {
-        (img.width_pt, img.height_pt)
-    } else {
-        (72.0, 72.0)
-    };
+    let (w, h) = image_size_pt(img, text_width_tw);
     let (cx, cy) = (pt_to_emu(w), pt_to_emu(h));
     format!(
         "<w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">\
