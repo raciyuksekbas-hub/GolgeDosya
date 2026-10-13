@@ -26,7 +26,9 @@ use crate::warnings::{Warning, WarningCode, WarningSink};
 const KNOWN_FORMAT_IDS: &[&str] = &["1.7", "1.8"];
 
 pub fn read_udf(bytes: &[u8], warn: &mut WarningSink) -> Result<Document> {
-    let mut budget = ArchiveBudget::new();
+    // Bozuk bir girdi "geçerli bir UDF belgesi değil" olarak bildirilir; Word
+    // dosyası diye değil (OR-06).
+    let mut budget = ArchiveBudget::for_format(ErrorCode::InvalidUdf);
     let mut zipf = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| ConvError::invalid_udf(format!("not a ZIP container: {e}")))?;
 

@@ -29,8 +29,8 @@ struct Pkg {
     part_rels: HashMap<String, HashMap<String, (String, String)>>,
     /// part name (relative to `word/`) -> bytes
     media: HashMap<String, Arc<Vec<u8>>>,
-    headers: HashMap<String, (String, Vec<u8>)>,
-    footers: HashMap<String, (String, Vec<u8>)>,
+    headers: HashMap<String, (String, Arc<Vec<u8>>)>,
+    footers: HashMap<String, (String, Arc<Vec<u8>>)>,
 }
 
 #[derive(Clone, Default, Debug)]
@@ -491,8 +491,9 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
     let mut rels_xml = None;
     let mut part_rels_xml: HashMap<String, Vec<u8>> = HashMap::new();
     let mut media = HashMap::new();
-    let mut headers_raw: HashMap<String, Vec<u8>> = HashMap::new();
-    let mut footers_raw: HashMap<String, Vec<u8>> = HashMap::new();
+    // Üst/alt bilgi parçalarının yalnız YERİ not edilir; belgenin ilişkileri
+    // okunduktan sonra yalnız başvurulanlar açılır (aşağıda).
+    let mut hf_entries: Vec<(usize, String)> = Vec::new();
 
     for i in 0..z.len() {
         budget.count_entry()?;
@@ -518,6 +519,10 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
         if !want {
             continue;
         }
+        if lower.starts_with("word/header") || lower.starts_with("word/footer") {
+            hf_entries.push((i, name["word/".len()..].to_string()));
+            continue;
+        }
 
         // Beyan edilen boyut denetimi geçti, ama gerçek deflate akışı çok daha
         // büyük olabilir; okuma sert sınıra kadar yapılır (zip bomb koruması).
@@ -538,10 +543,6 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
                 } else if lower.starts_with("word/media/") {
                     budget.add_image(v.len())?;
                     media.insert(name["word/".len()..].to_string(), Arc::new(v));
-                } else if lower.starts_with("word/header") {
-                    headers_raw.insert(name["word/".len()..].to_string(), v);
-                } else if lower.starts_with("word/footer") {
-                    footers_raw.insert(name["word/".len()..].to_string(), v);
                 }
             }
         }
@@ -564,22 +565,50 @@ fn load_package(bytes: &[u8]) -> Result<Pkg> {
         part_rels.insert(part.clone(), parse_rels(Some(xml))?);
     }
 
-    // Key headers/footers by relationship id so sectPr references resolve, and keep the
-    // part file name: its own .rels is where any image inside it is declared.
-    let mut headers: HashMap<String, (String, Vec<u8>)> = HashMap::new();
-    let mut footers: HashMap<String, (String, Vec<u8>)> = HashMap::new();
-    for (rid, (ty, target)) in &rels {
-        let t = target
+    let part_of = |target: &str| {
+        target
             .trim_start_matches("/word/")
             .trim_start_matches("word/")
-            .to_string();
+            .to_string()
+    };
+
+    // Yalnız belgenin başvurduğu üst/alt bilgi parçaları açılır. Saha denetimi
+    // (OR-02): her `word/header*.xml` ve `word/footer*.xml` koşulsuz belleğe
+    // açılıyordu; başvurusuz, boyutu hakkında yalan söyleyen 16 parça 1,9 MB'lık
+    // bir dosyadan 2,3 GB bellek tüketti. Hiçbir yerden başvurulmayan parça
+    // belgenin parçası değildir; açılmaz, bozuksa belgeyi de düşürmez. Gerçek
+    // derlemde (199 DOCX) her üst/alt bilgi parçası başvuruludur, en çok 6 tane.
+    let referenced: std::collections::HashSet<String> = rels
+        .values()
+        .filter(|(ty, _)| ty == REL_HEADER || ty == REL_FOOTER)
+        .map(|(_, target)| part_of(target))
+        .collect();
+    let mut hf_raw: HashMap<String, Arc<Vec<u8>>> = HashMap::new();
+    for (i, part) in hf_entries {
+        if !referenced.contains(&part) {
+            continue;
+        }
+        let mut f = z
+            .by_index(i)
+            .map_err(|e| ConvError::invalid_docx(format!("unreadable archive entry: {e}")))?;
+        let declared = f.size();
+        let v = budget.read_entry_capped(&mut f, declared, security::MAX_ENTRY_UNCOMPRESSED)?;
+        hf_raw.insert(part, Arc::new(v));
+    }
+
+    // Key headers/footers by relationship id so sectPr references resolve, and keep the
+    // part file name: its own .rels is where any image inside it is declared.
+    let mut headers: HashMap<String, (String, Arc<Vec<u8>>)> = HashMap::new();
+    let mut footers: HashMap<String, (String, Arc<Vec<u8>>)> = HashMap::new();
+    for (rid, (ty, target)) in &rels {
+        let t = part_of(target);
         if ty == REL_HEADER {
-            if let Some(v) = headers_raw.get(&t) {
-                headers.insert(rid.clone(), (t.clone(), v.clone()));
+            if let Some(v) = hf_raw.get(&t) {
+                headers.insert(rid.clone(), (t.clone(), Arc::clone(v)));
             }
         } else if ty == REL_FOOTER {
-            if let Some(v) = footers_raw.get(&t) {
-                footers.insert(rid.clone(), (t.clone(), v.clone()));
+            if let Some(v) = hf_raw.get(&t) {
+                footers.insert(rid.clone(), (t.clone(), Arc::clone(v)));
             }
         }
     }

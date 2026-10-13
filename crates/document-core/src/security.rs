@@ -16,7 +16,7 @@
 //!     DOCTYPE/ENTITY declarations; `reject_doctype` refuses documents that contain one,
 //!   * network access — the engine performs no I/O other than the two files it is given.
 
-use crate::error::{ConvError, Result};
+use crate::error::{ConvError, ErrorCode, Result};
 
 /// Total bytes any single archive may decompress to.
 pub const MAX_TOTAL_UNCOMPRESSED: u64 = 512 * 1024 * 1024;
@@ -79,9 +79,19 @@ pub fn check_entry_name(name: &str) -> Result<()> {
 /// Running budget for one archive.
 #[derive(Debug)]
 pub struct ArchiveBudget {
+    /// Merkezi dizinde BEYAN edilen boyutların toplamı (erken ret için).
     total_uncompressed: u64,
+    /// Gerçekten açılıp okunan baytların toplamı. Beyan saldırganın elindedir;
+    /// sınırın asıl dayanağı budur.
+    actual_uncompressed: u64,
+    /// Gerçek baytlar için toplam sınır ([`MAX_TOTAL_UNCOMPRESSED`]; testte küçültülür).
+    total_limit: u64,
     entries: usize,
     image_bytes: usize,
+    /// Okunamayan (bozuk) bir girdinin hangi biçim hatasıyla bildirileceği.
+    /// Eskiden her okuma hatası "geçerli bir Word belgesi değil" oluyordu;
+    /// bozuk bir .udf de kullanıcıya Word dosyası diye anlatılıyordu (OR-06).
+    corrupt: ErrorCode,
 }
 
 impl Default for ArchiveBudget {
@@ -91,12 +101,36 @@ impl Default for ArchiveBudget {
 }
 
 impl ArchiveBudget {
+    /// DOCX okuyucusunun bütçesi: bozuk girdi `INVALID_DOCX` olarak bildirilir.
     pub fn new() -> Self {
+        Self::for_format(ErrorCode::InvalidDocx)
+    }
+
+    /// Bozuk bir girdiyi `corrupt` koduyla bildiren bütçe (UDF: `INVALID_UDF`).
+    pub fn for_format(corrupt: ErrorCode) -> Self {
         Self {
             total_uncompressed: 0,
+            actual_uncompressed: 0,
+            total_limit: MAX_TOTAL_UNCOMPRESSED,
             entries: 0,
             image_bytes: 0,
+            corrupt,
         }
+    }
+
+    /// Toplam sınırı küçük bir bütçe; yalnız testlerde, sınır davranışını
+    /// yüzlerce MiB açmadan sınamak için.
+    #[cfg(test)]
+    fn with_total_limit(total_limit: u64) -> Self {
+        Self {
+            total_limit,
+            ..Self::new()
+        }
+    }
+
+    /// Şimdiye kadar gerçekten açılan bayt sayısı.
+    pub fn actual_uncompressed(&self) -> u64 {
+        self.actual_uncompressed
     }
 
     pub fn count_entry(&mut self) -> Result<()> {
@@ -112,9 +146,16 @@ impl ArchiveBudget {
     /// Bir arşiv girdisini BEYAN EDİLEN boyuta güvenmeden, sert bir sınıra kadar
     /// okur. Merkezi dizindeki boyut saldırganın denetimindedir: küçük bir boyut
     /// beyan edip (denetimi geçip) deflate akışında gigabaytlarca genişleyen bir
-    /// girdi, `read_to_end` ile sınırsız açılıp belleği tüketiyordu. Burada okuma
-    /// `cap` baytıyla sınırlanır; aşılırsa reddedilir. (İkinciGöz ayrıştırıcısı
-    /// bunu zaten böyle yapıyordu; dönüşüm motoru yapmıyordu.)
+    /// girdi, `read_to_end` ile sınırsız açılıp belleği tüketiyordu. (İkinciGöz
+    /// ayrıştırıcısı bunu zaten böyle yapıyordu; dönüşüm motoru yapmıyordu.)
+    ///
+    /// Okuma üç sınırın en küçüğünde kesilir: beyan edilen boyut, girdi başına
+    /// `cap` ve arşivin kalan toplam bütçesi. Saha denetimi (OR-02): yalnız
+    /// `cap` ile kesmek yetmiyordu. 100 bayt beyan edip 120 MiB'a açılan 16
+    /// üst bilgi parçası, her biri girdi sınırının altında kaldığı için
+    /// 1,9 MB'lık bir dosyadan 2,3 GB bellek tüketti; toplam sınıra yalnız
+    /// BEYANLAR sayılıyordu. Geçerli bir ZIP girdisi beyanından büyük açılmaz,
+    /// açılan girdi yalan söylüyordur ve bir bayt ötesinde reddedilir.
     pub fn read_entry_capped<R: std::io::Read>(
         &mut self,
         mut reader: R,
@@ -122,17 +163,28 @@ impl ArchiveBudget {
         cap: u64,
     ) -> Result<Vec<u8>> {
         use std::io::Read as _;
-        let mut buf = Vec::with_capacity((declared.min(cap)).min(16 * 1024 * 1024) as usize);
+        let remaining = self.total_limit.saturating_sub(self.actual_uncompressed);
+        let limit = declared.min(cap).min(remaining);
+        let mut buf = Vec::with_capacity(limit.min(16 * 1024 * 1024) as usize);
         let read = reader
             .by_ref()
-            .take(cap + 1)
+            .take(limit.saturating_add(1))
             .read_to_end(&mut buf)
-            .map_err(|e| ConvError::invalid_docx(format!("archive entry unreadable: {e}")))?;
-        if read as u64 > cap {
-            return Err(ConvError::unsafe_archive(format!(
-                "archive entry exceeds {cap} bytes when decompressed"
-            )));
+            .map_err(|e| ConvError::new(self.corrupt, format!("archive entry unreadable: {e}")))?
+            as u64;
+        if read > limit {
+            return Err(ConvError::unsafe_archive(if read > declared {
+                format!("archive entry inflates past its declared {declared} bytes")
+            } else if read > cap {
+                format!("archive entry exceeds {cap} bytes when decompressed")
+            } else {
+                format!(
+                    "archive decompresses to more than {} bytes in total",
+                    self.total_limit
+                )
+            }));
         }
+        self.actual_uncompressed = self.actual_uncompressed.saturating_add(read);
         Ok(buf)
     }
 
@@ -278,6 +330,76 @@ mod tests {
             .read_entry_capped(actual.as_slice(), 10, 1000)
             .unwrap_err();
         assert_eq!(e.code, ErrorCode::UnsafeArchive);
+    }
+
+    /// Sonsuz bir akış; kaç bayt verildiğini sayar.
+    struct Endless {
+        pulled: u64,
+    }
+
+    impl std::io::Read for Endless {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            buf.fill(b' ');
+            self.pulled += buf.len() as u64;
+            Ok(buf.len())
+        }
+    }
+
+    #[test]
+    fn a_lying_entry_is_cut_one_byte_past_its_declaration() {
+        // OR-02: 100 bayt beyan eden girdi gerçekte sınırsız açılıyor.
+        // Eskiden okuma girdi sınırına (128 MiB) kadar sürüyordu; şimdi
+        // beyanın bir bayt ötesinde durur.
+        let mut b = ArchiveBudget::new();
+        let mut endless = Endless { pulled: 0 };
+        let e = b
+            .read_entry_capped(&mut endless, 100, MAX_ENTRY_UNCOMPRESSED)
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::UnsafeArchive);
+        assert!(endless.pulled <= 101, "{} bayt açıldı", endless.pulled);
+        assert_eq!(b.actual_uncompressed(), 0);
+    }
+
+    #[test]
+    fn actual_bytes_count_against_the_total_budget() {
+        // Dürüst beyanlı girdiler de toplamda sınırı aşamaz; sayılan GERÇEK
+        // baytlardır ve okuma kalan bütçenin bir bayt ötesinde kesilir.
+        let mut b = ArchiveBudget::with_total_limit(1000);
+        let first = vec![1u8; 600];
+        assert_eq!(
+            b.read_entry_capped(first.as_slice(), 600, 10_000)
+                .unwrap()
+                .len(),
+            600
+        );
+        assert_eq!(b.actual_uncompressed(), 600);
+        let mut endless = Endless { pulled: 0 };
+        let e = b.read_entry_capped(&mut endless, 600, 10_000).unwrap_err();
+        assert_eq!(e.code, ErrorCode::UnsafeArchive);
+        assert!(endless.pulled <= 401, "{} bayt açıldı", endless.pulled);
+    }
+
+    #[test]
+    fn a_damaged_entry_is_reported_as_the_format_being_read() {
+        // OR-06: bozuk bir .udf "geçerli bir Word belgesi değil" diye
+        // bildiriliyordu.
+        struct Broken;
+        impl std::io::Read for Broken {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Invalid checksum",
+                ))
+            }
+        }
+        let e = ArchiveBudget::for_format(ErrorCode::InvalidUdf)
+            .read_entry_capped(Broken, 10, 1000)
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::InvalidUdf);
+        let e = ArchiveBudget::new()
+            .read_entry_capped(Broken, 10, 1000)
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::InvalidDocx);
     }
 
     #[test]
