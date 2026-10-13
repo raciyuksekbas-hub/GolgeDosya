@@ -198,6 +198,13 @@ struct PartialRun {
     family: Option<String>,
     size: Option<f32>,
     color: Option<Color>,
+    /// `w:caps` / `w:smallCaps`: Word metni BÜYÜK harfle gösterir. UDF'te bu
+    /// özellik yok; metin büyük harfe çevrilerek yazılır.
+    caps: Option<bool>,
+    /// `w:vanish`: gizli metin. Yazdırılmaz, belgeye ait sayılmaz.
+    vanish: Option<bool>,
+    /// `w:rStyle`: karakter stili (yalnız doğrudan biçimde anlamlı).
+    char_style: Option<String>,
 }
 
 impl PartialRun {
@@ -225,6 +232,12 @@ impl PartialRun {
         }
         if o.color.is_some() {
             self.color = o.color;
+        }
+        if o.caps.is_some() {
+            self.caps = o.caps;
+        }
+        if o.vanish.is_some() {
+            self.vanish = o.vanish;
         }
     }
 
@@ -317,6 +330,26 @@ impl Styles {
             out.overlay(&e.table_borders);
         }
         out
+    }
+
+    /// Bir karakter stilinin (`w:rStyle`) kendi zinciri (basedOn), belge
+    /// varsayılanları olmadan: paragraf stilinin üstüne bindirilir.
+    fn char_style_run(&self, style_id: &str) -> PartialRun {
+        let mut chain: Vec<&StyleEntry> = Vec::new();
+        let mut cursor = Some(style_id.to_string());
+        while let Some(id) = cursor {
+            let Some(e) = self.map.get(&id) else { break };
+            chain.push(e);
+            cursor = e.based_on.clone();
+            if chain.len() > 32 {
+                break; // döngüsel w:basedOn
+            }
+        }
+        let mut run = PartialRun::default();
+        for e in chain.iter().rev() {
+            run.overlay(&e.run);
+        }
+        run
     }
 
     fn resolve(&self, style_id: Option<&str>) -> (PartialPara, PartialRun) {
@@ -775,6 +808,30 @@ fn apply_ppr_child(e: &BytesStart, p: &mut PartialPara) {
     }
 }
 
+/// Metin kutusu paragrafı okunurken bekleyen dış paragrafın durumu.
+struct HostParagraph {
+    para: Option<Paragraph>,
+    style: Option<String>,
+    direct: PartialPara,
+    mark_removed: bool,
+    run: PartialRun,
+}
+
+/// Açık alanlardan herhangi birinin KOD kısmında mıyız?
+fn in_field_code(stack: &[bool]) -> bool {
+    stack.iter().any(|in_code| *in_code)
+}
+
+/// Türkçe büyük harf: `i` → `İ`, `ı` → `I` (Word, Türkçe metinde böyle gösterir).
+fn turkish_upper(s: &str) -> String {
+    s.chars()
+        .flat_map(|c| match c {
+            'i' => vec!['İ'],
+            _ => c.to_uppercase().collect(),
+        })
+        .collect()
+}
+
 fn apply_rpr_child(e: &BytesStart, r: &mut PartialRun) {
     match e.local_name().as_ref() {
         b"b" => r.bold = Some(toggle(e)),
@@ -787,6 +844,16 @@ fn apply_rpr_child(e: &BytesStart, r: &mut PartialRun) {
         }
         b"strike" => r.strike = Some(toggle(e)),
         b"dstrike" => r.strike = Some(toggle(e)),
+        // `w:caps` ile `w:smallCaps` ayrı açılıp kapanabilir; ikisinden biri
+        // açıksa metin büyük harfle görünür.
+        b"caps" | b"smallCaps" => {
+            let on = toggle(e);
+            if on || r.caps.is_none() {
+                r.caps = Some(on);
+            }
+        }
+        b"vanish" => r.vanish = Some(toggle(e)),
+        b"rStyle" => r.char_style = a(e, "val"),
         b"vertAlign" => {
             r.vert = match a(e, "val").as_deref() {
                 Some("superscript") => Some(VertAlign::Superscript),
@@ -938,6 +1005,28 @@ impl<'a> BodyBuilder<'a> {
         // gövde metnine sızar. `deleted_depth` ile aynı mantık.
         let mut in_instr = false;
         let mut preserve_space = false;
+        // Yalnız WordprocessingML `w:t` metni belge metnidir. Eskiden paragraf
+        // içindeki HER metin düğümü yazılıyordu: çizim konumları
+        // (`wp:posOffset`), `wp:align`, `w:fldData`, OLE bağlantı bilgisi ve
+        // denklem metni (`m:t`) belgeye rakam/sözcük olarak sızıyordu.
+        let mut in_w_t = false;
+        // Açık alanlar (fldChar begin … separate … end): `true` = alanın KOD
+        // kısmındayız. İç içe alanda içteki alanın sonucu dıştakinin kodunun
+        // parçasıdır ve gösterilmez.
+        let mut field_stack: Vec<bool> = Vec::new();
+        // `mc:AlternateContent` içindeki `mc:Fallback` derinliği: aynı içeriğin
+        // eski biçimli kopyasıdır (metin kutusu, resim). İşlenirse metin iki
+        // kez çıkıyordu.
+        let mut fallback_depth: usize = 0;
+        // Metin kutusu (`w:txbxContent`) paragrafı bir paragrafın İÇİNDE açılır.
+        // Eskiden içteki paragraf dıştakini siliyordu: kutudan önceki ve
+        // sonraki metin ve paragraf biçimi kayboluyordu. Dıştaki paragrafın
+        // durumu burada bekler; içteki paragraflar ondan sonra yazılır.
+        let mut host_stack: Vec<HostParagraph> = Vec::new();
+        let mut floats: Vec<Block> = Vec::new();
+        // Çizim şekli (`wps:wsp`) içinde metin kutusu var mı?
+        let mut shape_stack: Vec<bool> = Vec::new();
+        let mut hidden_text_dropped = false;
 
         let mut tables: Vec<Table> = Vec::new();
         let mut table_borders: Vec<TableBorderState> = Vec::new();
@@ -1005,6 +1094,15 @@ impl<'a> BodyBuilder<'a> {
                     if revision_depth > 0 {
                         continue;
                     }
+                    if name == b"Fallback" {
+                        if !is_empty {
+                            fallback_depth += 1;
+                        }
+                        continue;
+                    }
+                    if fallback_depth > 0 {
+                        continue;
+                    }
                     // Kenarlık bildirimlerinin çocukları (`w:top`, `w:insideH`…)
                     // paragraf ya da sayfa kenarlığıyla aynı adları taşır; yalnız
                     // tablo ve hücre kenarlığı içindeyken kaydedilir.
@@ -1035,12 +1133,26 @@ impl<'a> BodyBuilder<'a> {
                             if is_empty {
                                 // <w:p/> is a blank line. quick-xml emits no End event for
                                 // it, so it must be flushed here or it disappears.
-                                push_to(
-                                    &mut cells,
-                                    &mut out,
-                                    Block::Paragraph(Paragraph::default()),
-                                );
+                                if para.is_some() {
+                                    floats.push(Block::Paragraph(Paragraph::default()));
+                                } else {
+                                    push_to(
+                                        &mut cells,
+                                        &mut out,
+                                        Block::Paragraph(Paragraph::default()),
+                                    );
+                                }
                             } else {
+                                if para.is_some() {
+                                    // Metin kutusunun paragrafı: dıştakini beklet.
+                                    host_stack.push(HostParagraph {
+                                        para: para.take(),
+                                        style: para_style.take(),
+                                        direct: std::mem::take(&mut direct_para),
+                                        mark_removed: para_mark_removed,
+                                        run: std::mem::take(&mut run_direct),
+                                    });
+                                }
                                 para = Some(Paragraph::default());
                                 para_style = None;
                                 direct_para = PartialPara::default();
@@ -1169,8 +1281,20 @@ impl<'a> BodyBuilder<'a> {
                         }
 
                         // --- runs ---
-                        b"t" => preserve_space = a(e, "space").as_deref() == Some("preserve"),
-                        b"tab" if !in_ppr && deleted_depth > 0 => {}
+                        // Biçim, run'ın kendi `w:rPr`'ından gelir. `w:sdtPr/w:rPr`
+                        // (denetimin yer tutucusuna ait biçim) eskiden ilk içerik
+                        // run'ına sızıyordu.
+                        b"r" if !is_empty => run_direct = PartialRun::default(),
+                        b"t" => {
+                            preserve_space = a(e, "space").as_deref() == Some("preserve");
+                            // `m:t` (denklem) ve `a:t` (DrawingML) belge metni değildir.
+                            let qname = e.name();
+                            let prefix = qname.prefix().map(|p| p.into_inner().to_vec());
+                            in_w_t =
+                                !is_empty && !matches!(prefix.as_deref(), Some(b"m") | Some(b"a"));
+                        }
+                        b"tab" if !in_ppr && (deleted_depth > 0 || in_field_code(&field_stack)) => {
+                        }
                         b"tab" if !in_ppr => {
                             if let Some(p) = para.as_mut() {
                                 p.runs.push(Run::Tab {
@@ -1179,7 +1303,68 @@ impl<'a> BodyBuilder<'a> {
                             }
                         }
                         b"tab" if in_tabs => apply_ppr_child(e, &mut direct_para),
-                        b"br" if deleted_depth > 0 => {}
+                        // Mutlak konumlu sekme: sekme olarak taşınır (eskiden düşüyor,
+                        // iki yanındaki sözcükler birleşiyordu).
+                        b"ptab" if deleted_depth == 0 && !in_field_code(&field_stack) => {
+                            if let Some(p) = para.as_mut() {
+                                p.runs.push(Run::Tab {
+                                    props: self.run_props(&para_style, &run_direct),
+                                });
+                            }
+                        }
+                        // Satır sonu (`w:cr`) `w:br` gibidir.
+                        b"cr" if deleted_depth == 0 && !in_field_code(&field_stack) => {
+                            if let Some(p) = para.as_mut() {
+                                p.runs.push(Run::LineBreak {
+                                    props: self.run_props(&para_style, &run_direct),
+                                });
+                            }
+                        }
+                        // Bölünmez kısa çizgi: "2024-129" eskiden "2024129" oluyordu —
+                        // başka, geçerli görünen bir sayı.
+                        b"noBreakHyphen" if deleted_depth == 0 && !in_field_code(&field_stack) => {
+                            if let Some(p) = para.as_mut() {
+                                p.runs.push(Run::Text {
+                                    text: "-".into(),
+                                    props: self.run_props(&para_style, &run_direct),
+                                });
+                            }
+                        }
+                        // Sembol yazı tipi karakteri: karakter ve yazı tipiyle taşınır.
+                        b"sym" if deleted_depth == 0 && !in_field_code(&field_stack) => {
+                            let ch = a(e, "char")
+                                .and_then(|h| u32::from_str_radix(h.trim(), 16).ok())
+                                .and_then(char::from_u32);
+                            match (ch, para.as_mut()) {
+                                (Some(ch), Some(p)) => {
+                                    let mut props = self.run_props(&para_style, &run_direct);
+                                    if let Some(font) = a(e, "font") {
+                                        props.font_family = Some(font);
+                                    }
+                                    p.runs.push(Run::Text {
+                                        text: ch.to_string(),
+                                        props,
+                                    });
+                                }
+                                (None, Some(_)) => self.warn.push(
+                                    Warning::new(WarningCode::RunFeatureDropped).detail("sembol"),
+                                ),
+                                _ => {}
+                            }
+                        }
+                        // Tarih ve sayfa blokları Word'de açılışta hesaplanır.
+                        b"dayLong" | b"dayShort" | b"monthLong" | b"monthShort" | b"yearLong"
+                        | b"yearShort" | b"pgNum" => self.warn.warn(WarningCode::FieldFlattened),
+                        b"fldSimple" => self.warn.warn(WarningCode::FieldFlattened),
+                        // Çizim şekli: metin kutusu değilse UDF'te karşılığı yok.
+                        b"wsp" if !is_empty => shape_stack.push(false),
+                        b"txbx" => {
+                            if let Some(top) = shape_stack.last_mut() {
+                                *top = true;
+                            }
+                        }
+                        b"line" | b"wgp" => self.warn.warn(WarningCode::ShapeDropped),
+                        b"br" | b"cr" if deleted_depth > 0 || in_field_code(&field_stack) => {}
                         b"br" => {
                             if a(e, "type").as_deref() == Some("page") {
                                 pending_break_page = true;
@@ -1237,7 +1422,23 @@ impl<'a> BodyBuilder<'a> {
                         b"object" | b"OLEObject" => {
                             self.warn.warn(WarningCode::EmbeddedObjectDropped)
                         }
-                        b"fldChar" => self.warn.warn(WarningCode::FieldFlattened),
+                        b"fldChar" => {
+                            if deleted_depth == 0 {
+                                match a(e, "fldCharType").as_deref() {
+                                    Some("begin") => field_stack.push(true),
+                                    Some("separate") => {
+                                        if let Some(top) = field_stack.last_mut() {
+                                            *top = false;
+                                        }
+                                    }
+                                    Some("end") => {
+                                        field_stack.pop();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            self.warn.warn(WarningCode::FieldFlattened)
+                        }
                         b"instrText" => {
                             // Boş `<w:instrText/>` metin taşımaz ve End üretmez; bayrağı
                             // yalnızca gerçek Start için kur, yoksa sonraki paragrafın
@@ -1261,10 +1462,13 @@ impl<'a> BodyBuilder<'a> {
                 }
 
                 Ok(Event::Text(t)) => {
+                    if !in_w_t || revision_depth > 0 || fallback_depth > 0 {
+                        continue; // yalnız w:t metni belge metnidir
+                    }
                     if deleted_depth > 0 {
                         continue; // deleted text is not part of the current document
                     }
-                    if in_instr {
+                    if in_instr || in_field_code(&field_stack) {
                         continue; // alan komut kodu; kullanıcıya gösterilen metin değil
                     }
                     if let Some(p) = para.as_mut() {
@@ -1272,10 +1476,32 @@ impl<'a> BodyBuilder<'a> {
                         if s.is_empty() {
                             continue;
                         }
-                        if !preserve_space && s.trim().is_empty() {
+                        // Yalnız XML boşluğu biçimlemedir. `trim()` U+00A0'ı (bölünmez
+                        // boşluk) da siliyordu; Word onu xml:space olmadan yazar ve
+                        // "Madde 5" "Madde5" oluyordu.
+                        if !preserve_space
+                            && s.chars().all(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))
+                        {
                             continue;
                         }
-                        let props = self.run_props(&para_style, &run_direct);
+                        let run = self.partial_run(&para_style, &run_direct);
+                        if run.vanish == Some(true) {
+                            // Gizli metin yazdırılmaz; mahkemeye gidecek belgeye girmemeli.
+                            if !hidden_text_dropped {
+                                hidden_text_dropped = true;
+                                self.warn.push(
+                                    Warning::new(WarningCode::RunFeatureDropped)
+                                        .detail("gizli metin"),
+                                );
+                            }
+                            continue;
+                        }
+                        let s = if run.caps == Some(true) {
+                            turkish_upper(&s)
+                        } else {
+                            s
+                        };
+                        let props = run.into_props();
                         if s.contains('\t') {
                             for (i, piece) in s.split('\t').enumerate() {
                                 if i > 0 {
@@ -1315,6 +1541,13 @@ impl<'a> BodyBuilder<'a> {
                     if revision_depth > 0 {
                         continue;
                     }
+                    if ln.as_ref() == b"Fallback" {
+                        fallback_depth = fallback_depth.saturating_sub(1);
+                        continue;
+                    }
+                    if fallback_depth > 0 {
+                        continue;
+                    }
                     match e.local_name().as_ref() {
                         b"pPr" => in_ppr = false,
                         b"rPr" => {
@@ -1332,7 +1565,15 @@ impl<'a> BodyBuilder<'a> {
                         b"tblBorders" => in_tbl_borders = false,
                         b"tcBorders" => in_tc_borders = false,
                         b"tblPrEx" => in_tblpr_ex = false,
-                        b"t" => preserve_space = false,
+                        b"t" => {
+                            preserve_space = false;
+                            in_w_t = false;
+                        }
+                        b"wsp" => {
+                            if shape_stack.pop() == Some(false) {
+                                self.warn.warn(WarningCode::ShapeDropped);
+                            }
+                        }
                         b"del" | b"moveFrom" => deleted_depth = deleted_depth.saturating_sub(1),
                         b"instrText" => in_instr = false,
                         b"extent" => in_drawing_extent = false,
@@ -1357,10 +1598,30 @@ impl<'a> BodyBuilder<'a> {
                                 // tutulursa yerinde boş bir satır kalır. İçeriği
                                 // kalan paragraf ayrı tutulur: Word onu sonrakiyle
                                 // birleştirir, burada paragraf yapısı yaklaşık kalır.
-                                if !(para_mark_removed && p.runs.is_empty()) {
-                                    push_to(&mut cells, &mut out, Block::Paragraph(p));
-                                }
+                                let keep = !(para_mark_removed && p.runs.is_empty());
                                 para_mark_removed = false;
+                                if let Some(host) = host_stack.pop() {
+                                    // Metin kutusunun paragrafı: dıştaki paragraf bitince yazılır.
+                                    if keep {
+                                        floats.push(Block::Paragraph(p));
+                                    }
+                                    para = host.para;
+                                    para_style = host.style;
+                                    direct_para = host.direct;
+                                    para_mark_removed = host.mark_removed;
+                                    run_direct = host.run;
+                                } else {
+                                    if keep {
+                                        push_to(&mut cells, &mut out, Block::Paragraph(p));
+                                    }
+                                    for f in floats.drain(..) {
+                                        push_to(&mut cells, &mut out, f);
+                                    }
+                                    // Bozuk belgede kapanmayan alan kodu sonraki
+                                    // paragrafların metnini yutmasın: kod kısmı
+                                    // paragraf sonunda biter.
+                                    field_stack.retain(|in_code| !in_code);
+                                }
                             }
                         }
                         b"tc" => {
@@ -1480,9 +1741,19 @@ impl<'a> BodyBuilder<'a> {
     }
 
     fn run_props(&self, style: &Option<String>, direct: &PartialRun) -> RunProps {
+        self.partial_run(style, direct).into_props()
+    }
+
+    /// Word'ün sırası: belge varsayılanı → paragraf stili → karakter stili
+    /// (`w:rStyle`) → doğrudan biçim. Karakter stili eskiden hiç çözülmüyordu:
+    /// kalın bir karakter stiliyle yazılmış metin UDF'te düz çıkıyordu.
+    fn partial_run(&self, style: &Option<String>, direct: &PartialRun) -> PartialRun {
         let (_, mut r) = self.styles.resolve(style.as_deref());
+        if let Some(cs) = direct.char_style.as_deref() {
+            r.overlay(&self.styles.char_style_run(cs));
+        }
         r.overlay(direct);
-        r.into_props()
+        r
     }
 
     fn para_props(&mut self, style: &Option<String>, direct: &PartialPara) -> ParaProps {
