@@ -108,6 +108,34 @@ struct TableBorderState {
     rows: Vec<Vec<(usize, BorderSet)>>,
 }
 
+/// Okunmakta olan hücrenin `w:tcPr` bilgisi. Hücre içinde iç içe tablo
+/// açılabildiği için bunlar yığında durur (en içteki sonda); tek değişken
+/// olduklarında iç tablonun son hücresi dış hücrenin değerlerini eziyordu.
+struct CellState {
+    span: usize,
+    valign: CellVAlign,
+    vmerge_continue: bool,
+    borders: BorderSet,
+}
+
+impl Default for CellState {
+    fn default() -> Self {
+        Self {
+            span: 1,
+            valign: CellVAlign::Top,
+            vmerge_continue: false,
+            borders: BorderSet::default(),
+        }
+    }
+}
+
+/// Okunmakta olan satırın `w:trPr` bilgisi (iç içe tablolar için yığında).
+#[derive(Default)]
+struct RowState {
+    header: bool,
+    height: Option<f32>,
+}
+
 /// UDF bir tabloda yalnız iki şey tutabilir: bütün hücre kenarlıkları ya da
 /// hiç kenarlık. Word'de görünen kenarlıklar hesaplanır; hiçbir kenar
 /// görünmüyorsa tablo kenarlıksız yazılır. Yalnız bazı kenarlar görünüyorsa
@@ -1900,20 +1928,19 @@ impl<'a> BodyBuilder<'a> {
 
         let mut tables: Vec<Table> = Vec::new();
         let mut table_borders: Vec<TableBorderState> = Vec::new();
-        let mut cell_borders = BorderSet::default();
         let mut in_tbl_borders = false;
         let mut in_tc_borders = false;
         let mut in_tblpr_ex = false;
         let mut table_count = 0usize;
         let mut rows: Vec<TableRow> = Vec::new();
         let mut cells: Vec<TableCell> = Vec::new();
-        let mut pending_cell_span: usize = 1;
-        let mut pending_cell_valign = CellVAlign::Top;
-        let mut pending_vmerge_continue = false;
+        // `rows`/`cells` ile aynı derinlikte: iç içe tablonun hücresi dıştaki
+        // hücrenin gridSpan, vAlign, vMerge ve kenarlığını; iç satır da dış
+        // satırın tblHeader ve trHeight değerini ezmesin.
+        let mut cell_state: Vec<CellState> = Vec::new();
+        let mut row_state: Vec<RowState> = Vec::new();
         let mut in_tcpr = false;
         let mut in_trpr = false;
-        let mut pending_row_header = false;
-        let mut pending_row_height: Option<f32> = None;
         let mut in_drawing_extent = false;
         let mut pending_img: Option<(f32, f32)> = None;
 
@@ -1983,7 +2010,9 @@ impl<'a> BodyBuilder<'a> {
                         continue;
                     }
                     if in_tc_borders {
-                        cell_borders.record(e);
+                        if let Some(c) = cell_state.last_mut() {
+                            c.borders.record(e);
+                        }
                         continue;
                     }
                     match name {
@@ -2123,39 +2152,47 @@ impl<'a> BodyBuilder<'a> {
                                 t.rows.push(Vec::new());
                             }
                             rows.push(TableRow::default());
-                            pending_row_header = false;
-                            pending_row_height = None;
+                            row_state.push(RowState::default());
                         }
                         b"trPr" => in_trpr = true,
-                        b"tblHeader" if in_trpr => pending_row_header = true,
+                        b"tblHeader" if in_trpr => {
+                            if let Some(r) = row_state.last_mut() {
+                                r.header = true;
+                            }
+                        }
                         b"trHeight" if in_trpr => {
-                            pending_row_height = af(e, "val").map(twips_to_pt)
+                            if let Some(r) = row_state.last_mut() {
+                                r.height = af(e, "val").map(twips_to_pt);
+                            }
                         }
                         b"tc" => {
                             cells.push(TableCell::default());
-                            cell_borders = BorderSet::default();
-                            pending_cell_span = 1;
-                            pending_cell_valign = CellVAlign::Top;
-                            pending_vmerge_continue = false;
+                            cell_state.push(CellState::default());
                         }
                         b"tcPr" => in_tcpr = true,
                         b"gridSpan" if in_tcpr => {
-                            pending_cell_span = af(e, "val").unwrap_or(1.0).max(1.0) as usize;
+                            if let Some(c) = cell_state.last_mut() {
+                                c.span = af(e, "val").unwrap_or(1.0).max(1.0) as usize;
+                            }
                         }
                         b"vMerge" if in_tcpr => {
                             // Absent w:val, or val="continue", means "part of the cell above".
                             let v = a(e, "val").unwrap_or_else(|| "continue".into());
                             if v == "continue" {
-                                pending_vmerge_continue = true;
+                                if let Some(c) = cell_state.last_mut() {
+                                    c.vmerge_continue = true;
+                                }
                             }
                             self.warn.warn(WarningCode::TableVerticalMergeFlattened);
                         }
                         b"vAlign" if in_tcpr => {
-                            pending_cell_valign = match a(e, "val").as_deref() {
-                                Some("center") => CellVAlign::Center,
-                                Some("bottom") => CellVAlign::Bottom,
-                                _ => CellVAlign::Top,
-                            };
+                            if let Some(c) = cell_state.last_mut() {
+                                c.valign = match a(e, "val").as_deref() {
+                                    Some("center") => CellVAlign::Center,
+                                    Some("bottom") => CellVAlign::Bottom,
+                                    _ => CellVAlign::Top,
+                                };
+                            }
                         }
 
                         // --- runs ---
@@ -2680,15 +2717,16 @@ impl<'a> BodyBuilder<'a> {
                             }
                         }
                         b"tc" => {
+                            let state = cell_state.pop().unwrap_or_default();
                             if let Some(row) =
                                 table_borders.last_mut().and_then(|t| t.rows.last_mut())
                             {
-                                row.push((pending_cell_span, cell_borders));
+                                row.push((state.span, state.borders));
                             }
                             if let Some(mut c) = cells.pop() {
-                                c.grid_span = pending_cell_span;
-                                c.vertical_align = pending_cell_valign;
-                                if pending_vmerge_continue {
+                                c.grid_span = state.span;
+                                c.vertical_align = state.valign;
+                                if state.vmerge_continue {
                                     // Flatten: keep an empty cell so the geometry survives.
                                     c.blocks.clear();
                                 }
@@ -2698,9 +2736,10 @@ impl<'a> BodyBuilder<'a> {
                             }
                         }
                         b"tr" => {
+                            let state = row_state.pop().unwrap_or_default();
                             if let Some(mut r) = rows.pop() {
-                                r.is_header = pending_row_header;
-                                r.height_pt = pending_row_height;
+                                r.is_header = state.header;
+                                r.height_pt = state.height;
                                 if let Some(t) = tables.last_mut() {
                                     t.rows.push(r);
                                 }

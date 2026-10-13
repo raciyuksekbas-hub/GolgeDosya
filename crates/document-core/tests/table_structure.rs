@@ -6,6 +6,10 @@
 //!   koyar (22 UDF'te 224 iç tablo). Word → UDF yalnız ilk iç düzeyin
 //!   paragraflarını yazıyordu; daha derindeki tabloların metni "düzleştirildi"
 //!   uyarısının arkasında kayboluyordu (UDF → Word → UDF'te 21 gerçek belge).
+//! - Word okuyucusu hücre ve satır özelliklerini (gridSpan, vAlign, vMerge,
+//!   tcBorders, tblHeader, trHeight) tek değişkende tutuyordu: hücredeki iç
+//!   tablo dış hücrenin değerlerini eziyor, vMerge'li bir iç hücre dış
+//!   hücrenin bütün içeriğini siliyordu.
 //!
 //! Bütün belgeler bu dosyada sentetik olarak kurulur; gerçek dava dosyası yok.
 
@@ -332,4 +336,140 @@ fn four_level_uyap_tables_survive_udf_to_word_to_udf() {
         "metin kayboldu; uyarılar {warns:?}"
     );
     assert_eq!(table_depths(&back), vec![0, 1, 2, 3]);
+}
+
+// ------------------------------------------------------------ Word hücre/satır durumu
+
+const SINGLE_ALL: &str = r#"<w:tblBorders><w:top w:val="single" w:sz="4"/><w:left w:val="single" w:sz="4"/><w:bottom w:val="single" w:sz="4"/><w:right w:val="single" w:sz="4"/><w:insideH w:val="single" w:sz="4"/><w:insideV w:val="single" w:sz="4"/></w:tblBorders>"#;
+const NONE_CELL: &str = r#"<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/></w:tcBorders>"#;
+
+fn first_table(d: &Document) -> &Table {
+    d.sections[0]
+        .blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::Table(t) => Some(t),
+            _ => None,
+        })
+        .expect("tablo yok")
+}
+
+fn table_in(c: &TableCell) -> &Table {
+    c.blocks
+        .iter()
+        .find_map(|b| match b {
+            Block::Table(t) => Some(t),
+            _ => None,
+        })
+        .expect("hücrede iç tablo yok")
+}
+
+fn cell_text(c: &TableCell) -> String {
+    text(&Document {
+        sections: vec![Section {
+            blocks: c.blocks.clone(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    })
+}
+
+#[test]
+fn a_nested_table_leaves_the_outer_cell_and_row_as_word_shows_them() {
+    // Dış hücre iki sütunu kaplar ve dikeyde ortalıdır; satır başlık satırıdır
+    // ve 100 pt yüksekliktedir. İç tablonun kendi değerleri başkadır; son iç
+    // hücresi üstteki hücreyle dikey birleşiktir (vMerge).
+    let inner = tbl(
+        "",
+        &[1000, 1000],
+        &[
+            tr(
+                r#"<w:trHeight w:val="400"/>"#,
+                &[
+                    tc(r#"<w:vAlign w:val="bottom"/>"#, &p("iç 1")),
+                    tc("", &p("iç 2")),
+                ],
+            ),
+            tr("", &[tc("", &p("iç 3")), tc("<w:vMerge/>", "<w:p/>")]),
+        ],
+    );
+    let outer = tbl(
+        "",
+        &[2000, 2000, 2000],
+        &[
+            tr(
+                r#"<w:tblHeader/><w:trHeight w:val="2000"/>"#,
+                &[
+                    tc(
+                        r#"<w:gridSpan w:val="2"/><w:vAlign w:val="center"/>"#,
+                        &format!("{}{inner}<w:p/>", p("Dış hücre: 2026/129 E.")),
+                    ),
+                    tc("", &p("Komşu")),
+                ],
+            ),
+            tr("", &[tc("", &p("a")), tc("", &p("b")), tc("", &p("c"))]),
+        ],
+    );
+    let (d, _) = read_docx(&docx_package(&outer));
+    let t = first_table(&d);
+    let row = &t.rows[0];
+    let outer_cell = &row.cells[0];
+    let mut wrong = Vec::new();
+    if !cell_text(outer_cell).contains("Dış hücre: 2026/129 E.") {
+        wrong.push(format!("dış hücre metni: {:?}", cell_text(outer_cell)));
+    }
+    if outer_cell.grid_span != 2 {
+        wrong.push(format!("gridSpan {}", outer_cell.grid_span));
+    }
+    if outer_cell.vertical_align != CellVAlign::Center {
+        wrong.push(format!("vAlign {:?}", outer_cell.vertical_align));
+    }
+    if !row.is_header {
+        wrong.push("tblHeader kayboldu".into());
+    }
+    if row.height_pt != Some(100.0) {
+        wrong.push(format!("trHeight {:?}", row.height_pt));
+    }
+    if row.grid_span_total() != 3 {
+        wrong.push(format!("satır {} sütun", row.grid_span_total()));
+    }
+    if wrong.is_empty() {
+        // İç tablo da kendi değerlerini korur.
+        let it = table_in(outer_cell);
+        assert_eq!(it.rows[0].height_pt, Some(20.0));
+        assert!(!it.rows[0].is_header);
+        assert_eq!(it.rows[0].cells[0].vertical_align, CellVAlign::Bottom);
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+#[test]
+fn an_invisible_layout_table_stays_borderless_when_a_cell_holds_a_table() {
+    // 3abd129'un tamamlanmamış yanı: dilekçe başlığının görünmez yerleşim
+    // tablosu (tablo "single", her hücre "nil"), bir hücresinde iç tablo
+    // varsa bütün kenarlıklarıyla çiziliyordu.
+    let inner = tbl("", &[1000], &[tr("", &[tc("", &p("iç"))])]);
+    let outer = tbl(
+        SINGLE_ALL,
+        &[2000, 4000],
+        &[
+            tr(
+                "",
+                &[
+                    tc(NONE_CELL, &p("DAVACI")),
+                    tc(NONE_CELL, &format!("{inner}<w:p/>")),
+                ],
+            ),
+            tr(
+                "",
+                &[tc(NONE_CELL, &p("VEKİLİ")), tc(NONE_CELL, &p("Av. Örnek"))],
+            ),
+        ],
+    );
+    let (d, warns) = read_docx(&docx_package(&outer));
+    assert_eq!(first_table(&d).border, TableBorder::None, "{warns:?}");
+    assert!(
+        !warns.contains(&WarningCode::TableBordersApproximated),
+        "{warns:?}"
+    );
 }
