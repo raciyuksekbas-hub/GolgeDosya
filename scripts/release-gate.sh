@@ -223,7 +223,13 @@ if [ "$FAIL" -gt 0 ]; then
   echo
   exit 1
 fi
-printf '\033[32m  SÜRÜM KAPISI GEÇTİ\033[0m\n\n'
+if [ "$SKIP" -gt 0 ]; then
+  # Atlanan kapı geçmiş sayılmaz (başlıktaki ilke): sonuç bunu söylemeli.
+  # Eskiden --fast koşusu da tam koşu gibi yalnız "GEÇTİ" diyordu.
+  printf '\033[33m  SÜRÜM KAPISI GEÇTİ — %d KAPI ATLANDI; DAĞITIM İÇİN KANIT DEĞİL\033[0m\n\n' "$SKIP"
+else
+  printf '\033[32m  SÜRÜM KAPISI GEÇTİ\033[0m\n\n'
+fi
 echo "  Elle kalan doğrulamalar:"
 echo "    1. Taşınan her modülün kendi kabul kayıtları"
 echo "    2. VoiceOver ile navigasyon ve modal odak akışı"

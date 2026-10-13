@@ -130,7 +130,13 @@ if [ "$ADHOC" != "1" ]; then
     echo "Yalnız linker-signed imza — bundle imzalanmamış." >&2; exit 1; }
 
   echo "==> .app notarization"
-  notarize "$APP"
+  # notarytool bir klasör kabul etmez (.zip, .pkg ya da .dmg ister). .app
+  # doğrudan verildiğinde "must be a zip archive" deyip 64 ile çıkıyor ve bu
+  # zincir hiçbir zaman notarize edemiyordu; tam sürüm kapısı da 8. kapıda
+  # hep düşüyordu. Apple'ın önerdiği paketleyici ditto'dur; damga yine
+  # .app'in kendisine vurulur.
+  ditto -c -k --sequesterRsrc --keepParent "$APP" "$WORK_DIR/app.zip"
+  notarize "$WORK_DIR/app.zip"
   xcrun stapler staple "$APP"
   xcrun stapler validate "$APP"
 fi
