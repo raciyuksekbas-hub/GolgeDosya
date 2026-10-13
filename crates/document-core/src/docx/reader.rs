@@ -509,6 +509,15 @@ pub fn read_docx(bytes: &[u8], warn: &mut WarningSink) -> Result<Document> {
 
     // Word may define default / first-page / even-page variants; UDF has one of each.
     let settings = parse_settings(b.pkg.settings.as_deref())?;
+    // Cilt payı Word'de metin sütununu kaydırır; UDF'de ayrı bir payı yoktur,
+    // kenar boşluğuna eklenir (eskiden sessizce düşüyordu).
+    if sect.gutter_pt > 0.0 {
+        if settings.gutter_at_top {
+            section.page.margin_top_pt += sect.gutter_pt;
+        } else {
+            section.page.margin_left_pt += sect.gutter_pt;
+        }
+    }
     section.header = b.header_footer(&sect.header_refs, sect.title_pg, &settings, true)?;
     section.footer = b.header_footer(&sect.footer_refs, sect.title_pg, &settings, false)?;
 
@@ -1619,6 +1628,8 @@ struct DocSettings {
     /// `w:evenAndOddHeaders`: çift sayfalar "even" üst/alt bilgisini gösterir.
     /// Kapalıyken "even" parçası hiçbir sayfada basılmaz.
     even_and_odd_headers: bool,
+    /// `w:gutterAtTop`: cilt payı sol yerine üst kenardadır.
+    gutter_at_top: bool,
 }
 
 fn parse_settings(xml: Option<&[u8]>) -> Result<DocSettings> {
@@ -1631,11 +1642,11 @@ fn parse_settings(xml: Option<&[u8]>) -> Result<DocSettings> {
         match rd.read_event() {
             Err(e) => return Err(ConvError::invalid_docx(format!("settings XML error: {e}"))),
             Ok(Event::Eof) => break,
-            Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                if e.local_name().as_ref() == b"evenAndOddHeaders" =>
-            {
-                s.even_and_odd_headers = toggle(&e);
-            }
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => match e.local_name().as_ref() {
+                b"evenAndOddHeaders" => s.even_and_odd_headers = toggle(&e),
+                b"gutterAtTop" => s.gutter_at_top = toggle(&e),
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -1668,6 +1679,8 @@ struct SectInfo {
     /// Son `w:sectPr`'nin `w:titlePg`'si: "ilk sayfa farklı". Kapalıyken "first"
     /// parçası hiçbir sayfada gösterilmez.
     title_pg: bool,
+    /// `w:pgMar/@w:gutter`: cilt payı; Word onu kenar boşluğuna ekler.
+    gutter_pt: f32,
 }
 
 struct BodyBuilder<'a> {
@@ -2049,8 +2062,15 @@ impl<'a> BodyBuilder<'a> {
                             if let Some(h) = af(e, "h") {
                                 sect.page.height_pt = twips_to_pt(h);
                             }
-                            if a(e, "orient").as_deref() == Some("landscape") {
-                                sect.page.orientation = Orientation::Landscape;
+                            // `w:orient` yazılmamışsa yön boyutlardan anlaşılır:
+                            // genişliği yüksekliğinden büyük sayfa yataydır. Eskiden
+                            // dikey sayılıyor, yatay A4 "842x595 pt → A4" diye
+                            // yanıltıcı bir boyut kaybı olarak bildiriliyordu.
+                            let wide = sect.page.width_pt > sect.page.height_pt;
+                            match a(e, "orient").as_deref() {
+                                Some("landscape") => sect.page.orientation = Orientation::Landscape,
+                                None if wide => sect.page.orientation = Orientation::Landscape,
+                                _ => {}
                             }
                         }
                         b"pgMar" if in_sect_pr => {
@@ -2072,6 +2092,7 @@ impl<'a> BodyBuilder<'a> {
                             if let Some(v) = af(e, "footer") {
                                 sect.page.footer_offset_pt = twips_to_pt(v);
                             }
+                            sect.gutter_pt = af(e, "gutter").map(twips_to_pt).unwrap_or(0.0);
                         }
                         b"headerReference" | b"footerReference" if in_sect_pr => {
                             if let Some(id) = a(e, "id") {

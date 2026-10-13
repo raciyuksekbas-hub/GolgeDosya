@@ -16,7 +16,9 @@
 //!   "1/1" metnine çeviriyordu;
 //! - paragraf içindeki sayfa sonu iki yanındaki sözcükleri birleştiriyordu
 //!   ("önce" + sayfa sonu + "sonra" → "öncesonra"); `w:pageBreakBefore` (22 gerçek
-//!   belge) hiçbir uyarı vermeden düşüyordu.
+//!   belge) hiçbir uyarı vermeden düşüyordu;
+//! - `w:orient` yazılmamış yatay A4 sayfa "842x595 pt → A4" diye yanıltıcı bir
+//!   boyut kaybı olarak bildiriliyor, cilt payı (`w:gutter`) sessizce düşüyordu.
 //!
 //! Bütün belgeler bu dosyada sentetik olarak kurulur; gerçek dava dosyası yok.
 
@@ -932,4 +934,71 @@ fn page_break_before_is_reported_whether_direct_or_from_the_style() {
         ..Default::default()
     }));
     assert!(!warns.contains(&WarningCode::PageBreakDropped), "{warns:?}");
+}
+
+// ------------------------------------------------ (e) sayfa yönü ve cilt payı
+
+/// `w:orient` yazılmamış ama genişliği yüksekliğinden büyük sayfa yataydır. Eskiden
+/// dikey A4'e çevriliyor ve "842x595 pt → A4" diye yanıltıcı bir boyut kaybı
+/// bildiriliyordu.
+#[test]
+fn a_wide_page_without_orient_is_landscape_a4_not_a_size_change() {
+    let bytes = build(&Docx {
+        body: p(&r("Gövde")),
+        sect: r#"<w:pgSz w:w="16838" w:h="11906"/>"#.into(),
+        ..Default::default()
+    });
+    let (doc, _) = read_docx(&bytes);
+    assert_eq!(doc.sections[0].page.orientation, Orientation::Landscape);
+    let (content, warns) = to_udf(&bytes);
+    assert!(!warns.contains(&WarningCode::PageSizeChanged), "{warns:?}");
+    assert!(
+        warns.contains(&WarningCode::PageOrientationUnverified),
+        "{warns:?}"
+    );
+    assert!(
+        content.contains("paperOrientation=\"0\""),
+        "yatay yazılmadı"
+    );
+}
+
+/// Cilt payı (`w:gutter`) Word'de sol kenar boşluğuna, `w:gutterAtTop` açıksa üst
+/// kenar boşluğuna eklenir; düşerse metin sütunu kayar.
+#[test]
+fn the_gutter_is_added_to_the_left_or_top_margin() {
+    let sect = r#"<w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" w:header="709" w:footer="709" w:gutter="567"/>"#;
+    let (doc, _) = read_docx(&build(&Docx {
+        body: p(&r("Gövde")),
+        sect: sect.into(),
+        ..Default::default()
+    }));
+    let page = &doc.sections[0].page;
+    assert!(
+        (page.margin_left_pt - (1418.0 + 567.0) / 20.0).abs() < 0.01,
+        "{page:?}"
+    );
+    assert!(
+        (page.margin_right_pt - 1418.0 / 20.0).abs() < 0.01,
+        "{page:?}"
+    );
+    assert!(
+        (page.margin_top_pt - 1418.0 / 20.0).abs() < 0.01,
+        "{page:?}"
+    );
+
+    let (doc, _) = read_docx(&build(&Docx {
+        body: p(&r("Gövde")),
+        sect: sect.into(),
+        settings: Some("<w:gutterAtTop/>".into()),
+        ..Default::default()
+    }));
+    let page = &doc.sections[0].page;
+    assert!(
+        (page.margin_top_pt - (1418.0 + 567.0) / 20.0).abs() < 0.01,
+        "{page:?}"
+    );
+    assert!(
+        (page.margin_left_pt - 1418.0 / 20.0).abs() < 0.01,
+        "{page:?}"
+    );
 }
