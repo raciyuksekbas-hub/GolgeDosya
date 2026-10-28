@@ -396,6 +396,24 @@
   font-variant-numeric: tabular-nums;
 }
 .pdf-root .tool-safe { margin: var(--space-4) 0 0; color: var(--text-muted); font-size: var(--text-meta); }
+/* Ayır: okunamayan aralık ifadesi. Kutu değil, kendi rengindeki tek satır. */
+.pdf-root .tool-error { margin: var(--space-3) 0 0; color: var(--danger); font-size: var(--text-meta); }
+/* Ayır planı: hangi aralık, kaç sayfa. Kaynak listesiyle aynı ritim. */
+.pdf-root .split-list {
+  padding: 0;
+  margin: 0 0 var(--space-3);
+  list-style: none;
+}
+.pdf-root .split-list li {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+  min-height: 22px;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
 .pdf-root .pdf-controls label {
   display: flex;
   flex-wrap: wrap;

@@ -413,7 +413,7 @@ describe("kabuğa bağlanma", () => {
   });
 
   /** Araçlar eşit ağırlıkta değil: gruplara ayrılmış ve nadir olanlar katlı. */
-  it("araç hiyerarşisi var, on bir araç düz bir yığın değil", () => {
+  it("araç hiyerarşisi var, araçlar düz bir yığın değil", () => {
     // Sayfa araçlarının TEK evi belgenin üstündeki şerit; panelde ikinci kez
     // çizilmez. Panelde belgenin bütününe ait işler ve katlı nadir işler kalır.
     expect(source).not.toMatch(/title: 'Sayfalar'/);
@@ -433,7 +433,7 @@ describe("kabuğa bağlanma", () => {
     expect(source).toContain("open={group.keys.includes(kind)}");
   });
 
-  /** On bir araç da taşındı; hiçbiri migration sırasında düşmedi. */
+  /** Taşınan araçların hepsi duruyor; hiçbiri migration sırasında düşmedi. */
   it("araç listesi eksiksiz", () => {
     for (const label of [
       "Birleştir",
@@ -447,6 +447,8 @@ describe("kabuğa bağlanma", () => {
       "Filigran",
       "Sayfa numarası",
       "PDF → PNG/JPG",
+      // 0.3.2 sonrası: bir belgeden birden çok PDF.
+      "Ayır",
     ])
       expect(source).toContain(label);
   });
@@ -517,5 +519,65 @@ describe("önizleme notu gerçeği söyler (0.3.2)", () => {
 
   it("bileşen notu seçili araca göre çizer", () => {
     expect(source).toContain('<p className="preview-note">{previewNote(kind)}</p>');
+  });
+});
+
+describe("Ayır — bir belgeden birden çok PDF", () => {
+  /**
+   * Ayır, Düzenle'nin tek-çıktı kalıbını kıran ilk PDF aracıdır: bir belgeden
+   * N dosya üretir. Bu yüzden sözleşmesi de ötekilerden farklı — kaydetme
+   * klasöre gider, her parça ayrı doğrulanır, yarım kalan iş gizlenmez.
+   *
+   * Belge açılmadan panel çizilmediği için bu iddialar kaynak üzerinden
+   * denetlenir (bkz. "durum sözleşmesi"); plan mantığının kendisi
+   * `splitPlan.test.ts` içinde doğrudan sürülür.
+   */
+  it("araç Belge grubunda ve kendi ayarını taşır", () => {
+    expect(source).toMatch(/split: \['Ayır',/);
+    expect(source).toMatch(/keys: \['merge', 'split', 'compress', 'raster'\]/);
+    // Seçili araç bloğu: nasıl ayrılacağı ve aralık ifadesi.
+    expect(source).toContain("Yazdığım sayfa aralıklarına göre");
+    expect(source).toContain("Her sayfa ayrı dosya");
+    expect(source).toMatch(/const settingField = kind === 'split'/);
+  });
+
+  it("plan yazılmadan önce gösterilir: kaç dosya, hangi sayfalar, ne dışarıda", () => {
+    expect(source).toMatch(/\{splitPlan\.parts\.length\} PDF oluşturulur/);
+    expect(source).toContain("Hiçbir dosyaya girmeyen sayfa:");
+    // Okunamayan ifade kaydetmeyi engeller ve nedenini söyler.
+    expect(source).toMatch(/className="tool-error" id="ayir-hata">\{splitPlan\.error\}/);
+    // Boş alan hata değildir; hata girdiye bağlıdır, her tuşta duyurulmaz.
+    expect(source).toContain("const splitUnwritten =");
+    expect(source).toMatch(/!splitUnwritten && \(splitPlan\.error/);
+    expect(source).toMatch(/aria-describedby=\{splitUnwritten \? 'ayir-ipucu' : 'ayir-ipucu ayir-hata'\}/);
+    // Çıktı sayacı plandan gelir; boş plan `outputCount` 0 yapar ve
+    // `cannotSave` kaydetmeyi kapatır.
+    expect(source).toMatch(/kind === 'split' \? splitPlan\.parts\.reduce/);
+    expect(source).toMatch(/outputCount === 0/);
+  });
+
+  it("çıktı klasöre gider, tek dosya penceresi açılmaz", () => {
+    expect(source).toMatch(/kind !== 'raster' && kind !== 'split' && <Button disabled=\{cannotSave\} onClick=\{\(\) => run\(true\)\}/);
+    expect(source).toContain("Ayrılan PDF’lerin kaydedileceği klasör");
+    // Parçalar tek damgayı paylaşır: aynı işten çıktıkları adından okunur.
+    expect(source).toMatch(/const stem = `GolgeDosya-ayir-\$\{fileStamp\(\)\}`/);
+  });
+
+  it("her parça var olan Seç işlemiyle yayımlanır; yeni komut yok", () => {
+    const branch = source.slice(source.indexOf("if (kind === 'split') {"), source.indexOf("if (kind === 'raster') {"));
+    expect(branch).toMatch(/operation: \{ kind: 'select', pages: partPages\(part\) \}/);
+    expect(branch).toContain("duzenek_run_pdf_tool");
+    // Yayımlanan her dosya yeniden açılır ve sayfa sayısı planla karşılaştırılır.
+    expect(branch).toContain("duzenek_scan_source_files");
+    expect(branch).toMatch(/page_count !== partPageCount\(part\)/);
+    // İmza onayı öteki araçlardaki yolu izler.
+    expect(branch).toContain("approved");
+  });
+
+  it("yarım kalan ayırma gizlenmez", () => {
+    expect(source).toMatch(/let written = 0;/);
+    expect(source).toMatch(/\$\{written\} PDF kaydedildi, sonrası tamamlanamadı\./);
+    // Yazılan dosyalar silinmez: kullanıcının diskindeki iş geri alınmaz.
+    expect(source).not.toMatch(/remove_file|unlink|deleteFile/);
   });
 });

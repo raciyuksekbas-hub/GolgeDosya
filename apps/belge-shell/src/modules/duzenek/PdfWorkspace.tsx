@@ -26,11 +26,13 @@ import { rotatePages, previewGeometry, previewStageSize, nextViewport, previewDp
 import { noBenefitStatus } from './noBenefitMessage';
 import { savedStatus } from './savedMessage';
 import { humanSize } from '../../shared-ui/sizeText';
-import { copyDestination } from './copyDestination';
+import { copyDestination, fileStamp } from './copyDestination';
+import { describePages, everyPage, parseRanges, partFileName, partPageCount, partPages, uncoveredPages, RANGE_HINT, RANGE_PLACEHOLDER, type SplitPart } from './splitPlan';
 import { SavedPlace, startFolder } from '../../shared-ui/savePlace';
 import { describeOpenFailure, describePreviewFailure, describeSaveFailure, logFailure, OPEN_FAILURE_FALLBACK, OPEN_FAILURE_TITLE } from '../../shared-ui/failure';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { join } from '@tauri-apps/api/path';
 import { invoke } from '@tauri-apps/api/core';
 import { ScanBatchResult, SourceFile } from './types';
 import { InspectorPanel, InspectorSection, ToolbarActions, ToolbarStatus, useRevealInspector } from '../../shell/chrome';
@@ -53,6 +55,7 @@ const tools = {
     watermark: ['Filigran', 'Yeni kopyaya bir metin işareti ekler.'],
     number: ['Sayfa numarası', 'Yeni kopyaya sıralı sayfa numarası ekler.'],
     raster: ['PDF → PNG/JPG', 'PDF sayfalarını ayrı görsel dosyalara dönüştürür.'],
+    split: ['Ayır', 'Belgeyi yazdığınız sayfa aralıklarından birden çok PDF’ye ayırır.'],
 };
 
 type Kind = keyof typeof tools;
@@ -61,7 +64,7 @@ type Kind = keyof typeof tools;
 const SHORT: Record<Kind, string> = {
     merge: 'Birleştir', select: 'Seç', reorder: 'Sırala', delete: 'Sil', rotate: 'Döndür',
     compress: 'Sıkıştır', images: 'Görseller', crop: 'Kırp', watermark: 'Filigran',
-    number: 'Numara', raster: 'Görsele',
+    number: 'Numara', raster: 'Görsele', split: 'Ayır',
 };
 
 /**
@@ -83,7 +86,7 @@ const SHORT: Record<Kind, string> = {
  * `kind` modeli, komut adları ve motor sözleşmesi DEĞİŞMEDİ — yalnız sunum.
  */
 const TOOL_GROUPS: { title: string; keys: Kind[]; collapsed?: boolean }[] = [
-    { title: 'Belge', keys: ['merge', 'compress', 'raster'] },
+    { title: 'Belge', keys: ['merge', 'split', 'compress', 'raster'] },
     { title: 'Ek Araçlar', keys: ['crop', 'watermark', 'number', 'images'], collapsed: true },
 ];
 
@@ -110,6 +113,7 @@ const TOOL_FACTS: Record<Kind, { affects: string; output: string }> = {
     watermark: { affects: 'Belgenin bütün sayfaları.', output: 'Metin işareti eklenmiş yeni PDF.' },
     number: { affects: 'Belgenin bütün sayfaları.', output: 'Numaralandırılmış yeni PDF.' },
     raster: { affects: 'Belgenin bütün sayfaları.', output: 'Seçtiğiniz klasöre sayfa başına bir görsel dosyası.' },
+    split: { affects: 'Belgenin tamamı; hangi sayfaların hangi dosyaya gideceğini siz yazarsınız.', output: 'Seçtiğiniz klasöre, her aralık için ayrı bir yeni PDF.' },
 };
 
 /**
@@ -414,6 +418,9 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const [docState, setDocState] = useState<DocumentState>(initialPaths?.length ? 'loading' : 'none');
     const [failure, setFailure] = useState('');
     const [statusTone, setStatusTone] = useState<'info' | 'busy' | 'success' | 'error'>('info');
+    // Ayır: tek satırlık aralık ifadesi ve "her sayfa ayrı" seçeneği.
+    const [splitMode, setSplitMode] = useState<'ranges' | 'pages'>('ranges');
+    const [ranges, setRanges] = useState('');
     const [margin, setMargin] = useState(10), [text, setText] = useState('KOPYA'), [imageFormat, setImageFormat] = useState('png'), [start, setStart] = useState(1), [level, setLevel] = useState('balanced_compression'), [approved, setApproved] = useState(false), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
     // Son kaydın yeri. Yalnız kendi durum metni ekrandayken gösterilir: durum
     // başka bir cümleye geçince (yeni araç, hata, yeni kayıt) satır da gider.
@@ -681,8 +688,27 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
     const toggle = (key: string) => { setSelected(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]); setAnchor(key); };
     const selectedPages = order.filter(p => selected.includes(p.key)).map(p => p.page);
     const active = order.find(p => p.key === current) || order[0];
-    const outputCount = kind === 'select' ? selected.length : kind === 'delete' ? order.length - selected.length : order.length;
+    /**
+     * Ayır planı. Hiçbir şey yazılmadan önce: kaç dosya, hangi sayfalar ve
+     * hangi sayfalar hiçbir dosyaya girmiyor. Panel bunu olduğu gibi gösterir.
+     */
+    const splitPlan = useMemo(() => {
+        if (kind !== 'split' || order.length === 0) return { parts: [] as SplitPart[], error: '' };
+        if (splitMode === 'pages') return { parts: everyPage(order.length), error: '' };
+        const parsed = parseRanges(ranges, order.length);
+        return parsed.ok ? { parts: parsed.parts, error: '' } : { parts: [] as SplitPart[], error: parsed.error };
+    }, [kind, splitMode, ranges, order.length]);
+    /** Aralık alanına henüz dokunulmadı: davet var, hata yok. */
+    const splitUnwritten = kind === 'split' && splitMode === 'ranges' && ranges.trim() === '';
+    const splitLeftOut = useMemo(
+        () => (kind === 'split' ? uncoveredPages(splitPlan.parts, order.length) : []),
+        [kind, splitPlan, order.length],
+    );
+    const outputCount = kind === 'select' ? selected.length : kind === 'delete' ? order.length - selected.length
+        : kind === 'split' ? splitPlan.parts.reduce((n, part) => n + partPageCount(part), 0) : order.length;
     const run = async (folderOnly = false) => {
+        // Ayırma yarıda kalırsa diske YAZILMIŞ dosyalar gizlenmez.
+        let written = 0;
         try {
             const operation: Record<string, unknown> = { kind };
             if (['select', 'delete'].includes(kind))
@@ -701,6 +727,33 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                 operation.text = text;
             if (kind === 'number')
                 operation.start = start;
+            if (kind === 'split') {
+                // Çıktı tek dosya değil: pencere klasör ister, adları plan verir.
+                const outputDir = await open({ directory: true, multiple: false, title: 'Ayrılan PDF’lerin kaydedileceği klasör', defaultPath: (await startFolder(sources[0]?.path)) ?? undefined });
+                if (typeof outputDir !== 'string')
+                    return;
+                setBusy(true);
+                // Bütün parçalar TEK damgayı paylaşır: aynı işten çıktıkları
+                // dosya adından okunur ve klasörde yan yana sıralanırlar.
+                const stem = `GolgeDosya-ayir-${fileStamp()}`;
+                const plan = splitPlan.parts;
+                for (const [index, part] of plan.entries()) {
+                    setStatus(`${plan.length} PDF’den ${index + 1}. hazırlanıyor…`); setStatusTone('busy');
+                    const outputPath = await join(outputDir, partFileName(stem, part, order.length));
+                    const outcome = await invoke<{ status: string; reason?: string }>('duzenek_run_pdf_tool', { paths: [sources[0].path], operation: { kind: 'select', pages: partPages(part) }, outputPath, approved });
+                    if (outcome.status === 'failed') throw new Error(outcome.reason);
+                    // Her parça yayımlandıktan sonra yeniden açılır: sayfa sayısı
+                    // plandakiyle birebir tutmazsa iş orada durur.
+                    const receipt = await invoke<ScanBatchResult>('duzenek_scan_source_files', { paths: [outputPath] });
+                    if (receipt.errors.length || receipt.sources.length !== 1 || receipt.sources[0].size_bytes === 0 || receipt.sources[0].page_count !== partPageCount(part))
+                        throw new Error('Kaydedilen PDF yeniden doğrulanamadı.');
+                    written++;
+                }
+                const done = `${written} PDF kaydedildi ve yeniden açılarak doğrulandı.`;
+                setStatus(done); setStatusTone('success');
+                setSaved({ text: done, path: outputDir, isFolder: true });
+                return;
+            }
             if (kind === 'raster') {
                 // Pencere belgenin klasöründe açılır (bkz. shared-ui/savePlace).
                 const outputDir = await open({ directory: true, multiple: false, title: 'Görsel paketinin kaydedileceği klasör', defaultPath: (await startFolder(sources[0]?.path)) ?? undefined });
@@ -754,7 +807,10 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             // denetimleri (bütünlük, sayfa sayımı, boyut sınırı) kategori olarak
             // korunur; sınıf adları ve dosya yolları çıkmaz.
             logFailure('duzenek save failure', e);
-            setStatus((kind === 'compress' ? 'Sıkıştırma tamamlanamadı. ' : 'İşlem tamamlanamadı. ') + describeSaveFailure(e));
+            const partial = kind === 'split' && written > 0
+                ? `${written} PDF kaydedildi, sonrası tamamlanamadı. `
+                : kind === 'compress' ? 'Sıkıştırma tamamlanamadı. ' : 'İşlem tamamlanamadı. ';
+            setStatus(partial + describeSaveFailure(e));
             setStatusTone('error');
         }
         finally {
@@ -822,7 +878,20 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
             void load(initialPaths, 'replace', message);
     };
     const PAGE_TOOLS: Kind[] = ['select', 'reorder', 'delete', 'rotate'];
-    const settingField = kind === 'compress'
+    /** Panelde tek tek sayılan parça sayısı; gerisi tek satırda toplanır. */
+    const SPLIT_PREVIEW = 6;
+    const settingField = kind === 'split'
+        ? <>
+            <label>Nasıl ayrılsın?<select value={splitMode} onChange={e => setSplitMode(e.target.value === 'pages' ? 'pages' : 'ranges')}>
+                <option value="ranges">Yazdığım sayfa aralıklarına göre</option>
+                <option value="pages">Her sayfa ayrı dosya</option>
+            </select></label>
+            {splitMode === 'ranges' && <>
+                <label>Sayfa aralıkları<input type="text" value={ranges} placeholder={RANGE_PLACEHOLDER} aria-describedby={splitUnwritten ? 'ayir-ipucu' : 'ayir-ipucu ayir-hata'} aria-invalid={splitPlan.error ? true : undefined} onChange={e => setRanges(e.target.value)}/></label>
+                <p className="tool-hint" id="ayir-ipucu">{RANGE_HINT}</p>
+            </>}
+        </>
+        : kind === 'compress'
         ? <label>Görsel kalitesi<select value={level} onChange={e => setLevel(e.target.value)}>{COMPRESSION_PRESETS.map(p => <option key={p.value} value={p.value} title={p.detail}>{p.label}</option>)}</select></label>
         : kind === 'crop'
         ? <label>Her kenardan kırpılacak mesafe (mm)<input type="number" min={0} value={margin} onChange={e => setMargin(Number(e.target.value))}/></label>
@@ -844,9 +913,9 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
         {surfaces.tools && <ToolbarActions>
             {needsApproval && !busy && <Button variant="quiet" className="save-reason" onClick={showApproval}>İmza Onayı Gerekli</Button>}
             {needMore && !busy && <Button variant="quiet" className="save-reason" title={needMore} onClick={showMergeAdd}>En Az İki Belge Gerekli</Button>}
-            {kind !== 'raster' && <Button disabled={cannotSave} onClick={() => run(true)}>Klasör Seçerek Kaydet</Button>}
+            {kind !== 'raster' && kind !== 'split' && <Button disabled={cannotSave} onClick={() => run(true)}>Klasör Seçerek Kaydet</Button>}
             <Button variant="primary" disabled={cannotSave} onClick={() => run()}>
-                {busy ? 'PDF hazırlanıyor…' : kind === 'raster' ? 'Görsel Paketi Kaydet' : 'Yeni PDF Kaydet'}
+                {busy ? (kind === 'split' ? 'Ayrılıyor…' : 'PDF hazırlanıyor…') : kind === 'raster' ? 'Görsel Paketi Kaydet' : kind === 'split' ? 'PDF’lere Ayır' : 'Yeni PDF Kaydet'}
             </Button>
         </ToolbarActions>}
 
@@ -875,6 +944,25 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                             {kind === 'merge' ? 'Birleştirilecek Belge Ekle' : 'Görsel Ekle'}
                         </Button>}
                     {needMore && <p className="tool-hint">{needMore}</p>}
+                    {/* Hiçbir şey yazılmadan önce ne oluşacağı yazılı durur:
+                        kaç dosya, hangi sayfalar, hangi sayfalar dışarıda. */}
+                    {/* Henüz yazılmamış alan bir hata değildir: ipucu zaten ne
+                        yazılacağını söylüyor, kırmızı satır eklenmez. */}
+                    {kind === 'split' && order.length > 0 && !splitUnwritten && (splitPlan.error
+                        ? <p className="tool-error" id="ayir-hata">{splitPlan.error}</p>
+                        : <>
+                            <p className="tool-count">{splitPlan.parts.length} PDF oluşturulur</p>
+                            <ol className="split-list">
+                                {splitPlan.parts.slice(0, SPLIT_PREVIEW).map(part => <li key={`${part.start}-${part.end}`}>
+                                    <span>Sayfa {describePages(partPages(part))}</span>
+                                    <span>{partPageCount(part)} sayfa</span>
+                                </li>)}
+                            </ol>
+                            {splitPlan.parts.length > SPLIT_PREVIEW &&
+                                <p className="tool-hint">…ve {splitPlan.parts.length - SPLIT_PREVIEW} dosya daha.</p>}
+                            {splitLeftOut.length > 0 &&
+                                <p className="tool-hint">Hiçbir dosyaya girmeyen sayfa: {describePages(splitLeftOut)}.</p>}
+                        </>)}
                     {sources.length > 0 && <ol className="source-list">{sources.map((s, i) => <li key={s.path}>
                         <span>{sourceLine(s)}</span>
                         {sources.length > 1 && <div className="source-actions">
@@ -924,7 +1012,9 @@ export const PdfWorkspace: React.FC<{ paths?: string[]; onOpenDocument?: (paths:
                     hata) HİÇ görünmüyordu ve belge açılamadığında seçici hatası
                     da kayboluyordu — kullanıcı düğmeye basıp hiçbir şey
                     olmadığını sanıyordu. */}
-                <Status tone={statusTone}>{status}</Status>
+                {/* Ayırma her parçada ilerleme yazar; bunu tek tek duyurmak
+                    ekran okuyucuyu boğar. Sonuç ve hata polite kalır. */}
+                <Status tone={statusTone} live={statusTone === 'busy' ? 'off' : 'polite'}>{status}</Status>
                 {saved && statusTone === 'success' && saved.text === status && <SavedPlace path={saved.path} isFolder={saved.isFolder}/>}
                 {surfaces.strip && kind !== 'images' ? <>
                 <div className="pdf-strip">

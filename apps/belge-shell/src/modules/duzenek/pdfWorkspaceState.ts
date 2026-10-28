@@ -88,7 +88,7 @@ export type DocumentState = 'none' | 'loading' | 'ready' | 'failed';
 /**
  * Hangi çalışma yüzeyleri çizilir?
  *
- * Belge açılamadıysa ya da henüz yoksa araç paneli çizilmez: on bir aracın
+ * Belge açılamadıysa ya da henüz yoksa araç paneli çizilmez: araçların
  * hiçbiri iş göremez, panel yalnız hata/boş durumdan yer çalar. Sayfa şeridi
  * bir adım daha dar koşula bağlıdır — gerçekten sayfa olmalı. Kullanıcı yeni
  * girdi bekleyen bir araca geçtiğinde (Görseller → PDF) oturum sürer, panel
