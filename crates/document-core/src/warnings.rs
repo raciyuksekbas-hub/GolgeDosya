@@ -164,9 +164,9 @@ impl WarningCode {
             MultiSectionFlattened => "Çoklu bölüm düzeni tek bölüme indirildi",
             PageOrientationUnverified => "Yatay sayfa yönü aktarıldı, UYAP'ta doğrulanmalı",
             PageNumberFieldDropped => "Sayfa numarası alanı aktarılamadı",
-            PageBreakDropped => {
-                "Sayfa sonu işaretleri UDF biçiminde karşılıksız olduğu için aktarılamadı"
-            }
+            // Metin eksiksiz aktarılır; yalnız sonraki bölüm yeni sayfadan
+            // başlamaz. 479 gerçek UDF'te sayfa sonunu taşıyan öğe yok.
+            PageBreakDropped => "Sayfa sonları UDF'te karşılıksız; metin aynı sayfadan sürer",
             SignatureDropped => "Belgedeki elektronik imza aktarılamadı",
             UdfFormFieldsDropped => "UYAP form alanları düz metne çevrildi",
             TrackedChangesFlattened => "Değişiklik izleme kayıtları düzleştirildi",
@@ -261,11 +261,13 @@ impl WarningCode {
             | RunFeatureDropped
             | TableVerticalMergeFlattened
             | PageNumberStartDropped
-            | TextRangeOverlap => Approximation,
+            | TextRangeOverlap
+            // Metin eksiksizdir; sayfa düzeni değişir. "İçerik kaybı" değildir:
+            // başlık öyle deyince kullanıcı dönüştürmeyi hata sandı (saha).
+            | PageBreakDropped => Approximation,
 
             // Something visible is gone.
             FormContentLost
-            | PageBreakDropped
             | PageNumberFieldDropped
             | ImageFormatUnsupported
             | CommentsDropped
@@ -439,11 +441,11 @@ mod tests {
         let mut s = WarningSink::new();
         s.warn(WarningCode::SignatureDropped); // INFO
         s.warn(WarningCode::TabAlignmentApproximated); // APPROXIMATION
-        s.warn(WarningCode::PageBreakDropped); // LOSS
+        s.warn(WarningCode::FootnotesDropped); // LOSS
         let v = s.into_vec();
         assert_eq!(
             v[0].code,
-            WarningCode::PageBreakDropped,
+            WarningCode::FootnotesDropped,
             "real loss must lead"
         );
         assert_eq!(v[0].severity, Severity::Loss);
@@ -476,7 +478,7 @@ mod tests {
         assert_eq!(s.max_severity(), Some(Severity::Info));
         s.warn(WarningCode::TabAlignmentApproximated);
         assert_eq!(s.max_severity(), Some(Severity::Approximation));
-        s.warn(WarningCode::PageBreakDropped);
+        s.warn(WarningCode::FootnotesDropped);
         assert_eq!(s.max_severity(), Some(Severity::Loss));
     }
 
@@ -485,5 +487,22 @@ mod tests {
         let mut s = WarningSink::new();
         s.push(Warning::new(WarningCode::TableNestedFlattened).at("Tablo 3"));
         assert_eq!(s.into_vec()[0].location.as_deref(), Some("Tablo 3"));
+    }
+}
+
+#[cfg(test)]
+mod page_break_tests {
+    use super::*;
+
+    /// Saha: bir dilekçede tek bir "önce sayfa sonu" ayarı başlığı
+    /// "Dönüştürme tamamlandı — içerik kaybı var" yapıyordu; kullanıcı bunu
+    /// hata sandı. Metin eksiksiz aktarılır, yalnız yerleşim değişir.
+    #[test]
+    fn a_dropped_page_break_is_a_layout_change_not_content_loss() {
+        assert_eq!(
+            WarningCode::PageBreakDropped.severity(),
+            Severity::Approximation
+        );
+        assert!(!WarningCode::PageBreakDropped.is_data_loss());
     }
 }
