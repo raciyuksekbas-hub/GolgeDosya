@@ -59,6 +59,7 @@ pub enum WarningCode {
     PageOrientationUnverified,
     PageNumberFieldDropped,
     PageBreakDropped,
+    LayoutTableFlattened,
     // --- document level ---
     SignatureDropped,
     UdfFormFieldsDropped,
@@ -106,6 +107,7 @@ impl WarningCode {
             PageOrientationUnverified => "PAGE_ORIENTATION_UNVERIFIED",
             PageNumberFieldDropped => "PAGE_NUMBER_FIELD_DROPPED",
             PageBreakDropped => "PAGE_BREAK_DROPPED",
+            LayoutTableFlattened => "LAYOUT_TABLE_FLATTENED",
             SignatureDropped => "SIGNATURE_DROPPED",
             UdfFormFieldsDropped => "UDF_FORM_FIELDS_DROPPED",
             TrackedChangesFlattened => "TRACKED_CHANGES_FLATTENED",
@@ -167,6 +169,9 @@ impl WarningCode {
             // Metin eksiksiz aktarılır; yalnız sonraki bölüm yeni sayfadan
             // başlamaz. 479 gerçek UDF'te sayfa sonunu taşıyan öğe yok.
             PageBreakDropped => "Sayfa sonları UDF'te karşılıksız; metin aynı sayfadan sürer",
+            LayoutTableFlattened => {
+                "Görünmez tablo (başlık bloğu) sekmeli satırlara çevrildi; UYAP'ta düz metin gibi düzenlenir"
+            }
             SignatureDropped => "Belgedeki elektronik imza aktarılamadı",
             UdfFormFieldsDropped => "UYAP form alanları düz metne çevrildi",
             TrackedChangesFlattened => "Değişiklik izleme kayıtları düzleştirildi",
@@ -240,7 +245,8 @@ impl WarningCode {
             | LineBreakConverted
             | UnknownFormatVersion
             | PageNumberFieldApproximated
-            | UdfPageNumberApproximated => Info,
+            | UdfPageNumberApproximated
+            | LayoutTableFlattened => Info,
 
             // Usable, but a formatting detail is only approximate.
             TabAlignmentApproximated
@@ -504,5 +510,6 @@ mod page_break_tests {
             Severity::Approximation
         );
         assert!(!WarningCode::PageBreakDropped.is_data_loss());
+        assert_eq!(WarningCode::LayoutTableFlattened.severity(), Severity::Info);
     }
 }

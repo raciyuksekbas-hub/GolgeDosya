@@ -10,7 +10,7 @@
 
 use std::io::{Read, Write};
 
-use tavzih_core::convert::{convert_bytes, Direction};
+use tavzih_core::convert::{convert_bytes_with, ConvertOptions, Direction, LayoutTables};
 use tavzih_core::docx;
 use tavzih_core::model::*;
 use tavzih_core::warnings::WarningSink;
@@ -40,7 +40,13 @@ fn read(bytes: &[u8]) -> Document {
 
 fn udf_content(docx: &[u8]) -> String {
     let mut w = WarningSink::new();
-    let udf = convert_bytes(docx, Direction::DocxToUdf, &mut w).expect("convert");
+    // Bu dosya UDF'teki TABLO yapısını sınar: kenarlıksız tablolar varsayılan
+    // olarak sekmeli satıra çevrilir (`layout_tables.rs`), burada tablo kalmalı.
+    let keep = ConvertOptions {
+        layout_tables: LayoutTables::Keep,
+        ..Default::default()
+    };
+    let udf = convert_bytes_with(docx, Direction::DocxToUdf, &keep, &mut w).expect("convert");
     let mut z = zip::ZipArchive::new(std::io::Cursor::new(udf)).unwrap();
     let mut s = String::new();
     z.by_name("content.xml")

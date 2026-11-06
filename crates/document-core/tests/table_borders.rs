@@ -15,7 +15,9 @@
 
 use std::io::{Read, Write};
 
-use tavzih_core::convert::{convert_bytes, Direction};
+use tavzih_core::convert::{
+    convert_bytes, convert_bytes_with, ConvertOptions, Direction, LayoutTables,
+};
 use tavzih_core::docx;
 use tavzih_core::model::*;
 use tavzih_core::warnings::{WarningCode, WarningSink};
@@ -81,8 +83,14 @@ fn tables(d: &Document) -> Vec<&Table> {
 }
 
 fn udf_content(docx: &[u8]) -> String {
+    // Bu dosya UDF'teki TABLO yapısını sınar: kenarlıksız tablolar varsayılan
+    // olarak sekmeli satıra çevrilir (`layout_tables.rs`), burada tablo kalmalı.
+    let keep = ConvertOptions {
+        layout_tables: LayoutTables::Keep,
+        ..Default::default()
+    };
     let mut w = WarningSink::new();
-    let udf = convert_bytes(docx, Direction::DocxToUdf, &mut w).expect("convert");
+    let udf = convert_bytes_with(docx, Direction::DocxToUdf, &keep, &mut w).expect("convert");
     let mut z = zip::ZipArchive::new(std::io::Cursor::new(udf)).unwrap();
     let mut s = String::new();
     z.by_name("content.xml")
@@ -135,6 +143,17 @@ fn a_petition_header_that_is_invisible_in_word_has_no_borders_in_udf() {
         "UDF tablosu kenarlıklı yazıldı"
     );
     assert!(!xml.contains(r#"border="borderCell""#));
+    // Varsayılan dönüştürmede bu başlık hiç tablo değildir: sekmeli satırlar
+    // (saha: "dilekçeler blok hâlinde oluyor"; ayrıntısı layout_tables.rs).
+    let mut w = WarningSink::new();
+    let udf = convert_bytes(&docx, Direction::DocxToUdf, &mut w).expect("convert");
+    let mut z = zip::ZipArchive::new(std::io::Cursor::new(udf)).unwrap();
+    let mut s = String::new();
+    z.by_name("content.xml")
+        .unwrap()
+        .read_to_string(&mut s)
+        .unwrap();
+    assert!(!s.contains("<table"), "başlık hâlâ tablo: {s}");
 }
 
 #[test]

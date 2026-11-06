@@ -29,7 +29,9 @@
 
 use std::io::{Read, Write};
 
-use tavzih_core::convert::{convert_bytes, Direction};
+use tavzih_core::convert::{
+    convert_bytes, convert_bytes_with, ConvertOptions, Direction, LayoutTables,
+};
 use tavzih_core::docx;
 use tavzih_core::model::*;
 use tavzih_core::udf;
@@ -160,8 +162,14 @@ fn read_udf(bytes: &[u8]) -> (Document, Vec<WarningCode>) {
 }
 
 fn convert(bytes: &[u8], direction: Direction) -> (Vec<u8>, Vec<WarningCode>) {
+    // Bu dosya UDF'teki TABLO yapısını sınar: kenarlıksız tablolar varsayılan
+    // olarak sekmeli satıra çevrilir (`layout_tables.rs`), burada tablo kalmalı.
+    let keep = ConvertOptions {
+        layout_tables: LayoutTables::Keep,
+        ..Default::default()
+    };
     let mut w = WarningSink::new();
-    let out = convert_bytes(bytes, direction, &mut w).expect("convert");
+    let out = convert_bytes_with(bytes, direction, &keep, &mut w).expect("convert");
     (out, w.into_vec().iter().map(|x| x.code).collect())
 }
 

@@ -77,7 +77,10 @@ fn to_udf(docx: &[u8], spacing: Option<UdfSpacing>) -> String {
         Some(udf_spacing) => convert_bytes_with(
             docx,
             Direction::DocxToUdf,
-            &ConvertOptions { udf_spacing },
+            &ConvertOptions {
+                udf_spacing,
+                ..Default::default()
+            },
             &mut w,
         ),
     }

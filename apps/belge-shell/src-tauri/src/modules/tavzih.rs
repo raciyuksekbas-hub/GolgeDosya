@@ -370,6 +370,7 @@ fn convert_options() -> convert::ConvertOptions {
         } else {
             convert::UdfSpacing::Source
         },
+        ..Default::default()
     }
 }
 

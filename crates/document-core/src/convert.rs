@@ -355,6 +355,18 @@ pub enum UdfSpacing {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ConvertOptions {
     pub udf_spacing: UdfSpacing,
+    pub layout_tables: LayoutTables,
+}
+
+/// Word'deki görünmez yerleşim tabloları (dilekçe başlığı) UDF'e nasıl yazılır.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LayoutTables {
+    /// Sekmeli satırlar: UYAP'ta yazılan dilekçenin biçimi. Saha: başlık bloğu
+    /// UDF'te tablo olunca UYAP onu blok gibi seçtiriyordu.
+    #[default]
+    Lines,
+    /// Tablo olarak bırak.
+    Keep,
 }
 
 /// UDF'teki `LineSpacing` satır yüksekliğine EKLENEN paydır: 0,5 = 1,5 satır.
@@ -401,6 +413,15 @@ pub fn convert_bytes_with(
     match direction {
         Direction::DocxToUdf => {
             let mut doc: Document = docx::reader::read_docx(input, warn)?;
+            // Önce yerleşim tabloları satıra çevrilir: oluşan paragraflar da
+            // gövde paragrafıdır ve dilekçe aralığını alır.
+            if options.layout_tables == LayoutTables::Lines {
+                for section in &mut doc.sections {
+                    let page = &section.page;
+                    let width = page.width_pt - page.margin_left_pt - page.margin_right_pt;
+                    crate::layout_tables::flatten_layout_tables(&mut section.blocks, width, warn);
+                }
+            }
             if options.udf_spacing == UdfSpacing::Petition {
                 for section in &mut doc.sections {
                     apply_petition_spacing(&mut section.blocks);
