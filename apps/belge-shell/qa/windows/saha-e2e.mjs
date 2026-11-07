@@ -39,7 +39,15 @@ const APPDATA = join(HOME, "AppData", "Roaming");
 const DOCS = join(HOME, "Documents");
 const WORK = join(HOME, "Masaüstü", "Müvekkil'in Dosyası");
 const SHOTS = join(OUT, "ekran");
-for (const d of [APPDATA, DOCS, WORK, SHOTS]) mkdirSync(d, { recursive: true });
+// Gerçek bir profilin bilinen klasörleri. Uygulama USERPROFILE=HOME ile
+// açılır ve Windows'un dosya penceresi gezinti bölmesindeki "Desktop"u
+// %USERPROFILE%\Desktop olarak çözer. Klasör yoksa her kaydet/aç penceresinin
+// önüne "Location is not available — …\Çağrı Şahin\Desktop is unavailable"
+// kutusu çıkıyor ve harness adı yazacağı kutuyu bulamıyordu (v0.3.2 koşusu
+// 42354161746, ekran 52/63). Pencere o koşuda da doğru klasörde açılmıştı;
+// eksik olan gerçek profilde her zaman bulunan bu klasörlerdi.
+const KNOWN = ["Desktop", "Downloads", "Music", "Pictures", "Videos"].map((n) => join(HOME, n));
+for (const d of [APPDATA, DOCS, WORK, SHOTS, ...KNOWN]) mkdirSync(d, { recursive: true });
 
 // ---------------------------------------------------------------- sonuçlar
 const results = [];
