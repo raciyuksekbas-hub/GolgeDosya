@@ -321,22 +321,35 @@ fn create_temp_in(dir: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
 }
 
 /// Yazma hatasını kullanıcının anlayacağı koda çevir: diskin ad sınırı
-/// (ENAMETOOLONG; Windows'ta ERROR_FILENAME_EXCED_RANGE) "klasör izinleri"
-/// değildir.
+/// "klasör izinleri" değildir.
 fn write_error(target: &Path, e: std::io::Error) -> ConvError {
-    let name_too_long = if cfg!(windows) {
-        206
-    } else if cfg!(any(target_os = "linux", target_os = "android")) {
-        36
-    } else {
-        63
-    };
-    let code = if e.raw_os_error() == Some(name_too_long) {
+    let code = if name_too_long(cfg!(windows), e.raw_os_error(), target.file_name()) {
         ErrorCode::OutputNameTooLong
     } else {
         ErrorCode::OutputWriteFailed
     };
     ConvError::new(code, format!("{}: {e}", target.display()))
+}
+
+/// İşletim sistemi hatası diskin ad sınırı mı?
+///
+/// macOS ve Linux bunu tek kodla söyler (ENAMETOOLONG: 63 / 36). Windows iki
+/// kodla söyler: ERROR_FILENAME_EXCED_RANGE (206) ve NTFS'in 255 UTF-16
+/// birimlik ad sınırı aşıldığında ERROR_INVALID_NAME (123). Saha: Windows
+/// runner'ında 258 karakterlik ad 123 ile reddedildi ve kullanıcıya "klasör
+/// izinlerini kontrol edin" dendi. 123 geçersiz karakter için de döner; bu
+/// yüzden ancak ad sınırı gerçekten aşıyorsa uzunluk sayılır.
+fn name_too_long(windows: bool, raw: Option<i32>, name: Option<&std::ffi::OsStr>) -> bool {
+    const NTFS_NAME_UNITS: usize = 255;
+    if windows {
+        let over_ntfs_limit =
+            name.is_some_and(|n| n.to_string_lossy().encode_utf16().count() > NTFS_NAME_UNITS);
+        raw == Some(206) || (raw == Some(123) && over_ntfs_limit)
+    } else if cfg!(any(target_os = "linux", target_os = "android")) {
+        raw == Some(36)
+    } else {
+        raw == Some(63)
+    }
 }
 
 /// Word → UDF dönüşümünde paragraf aralıkları.
@@ -894,6 +907,54 @@ fn build_batch_zip(
     }
     write_atomic(&zip_path, &buf)?;
     Ok(zip_path)
+}
+
+#[cfg(test)]
+mod name_limit_tests {
+    use super::name_too_long;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn windows_reports_an_over_long_name_as_invalid_name_and_it_is_still_too_long() {
+        // 250 + " (2)" + ".udf" = 258 UTF-16 birimi: NTFS'in 255 sınırının üstü.
+        let name = format!("{} (2).udf", "a".repeat(250));
+        assert!(name_too_long(true, Some(123), Some(OsStr::new(&name))));
+        // Türkçe harf UTF-16'da tek birimdir: 252 × "ş" + ".udf" = 256.
+        let turkish = format!("{}.udf", "ş".repeat(252));
+        assert!(name_too_long(true, Some(123), Some(OsStr::new(&turkish))));
+        assert!(name_too_long(true, Some(206), Some(OsStr::new("kısa.udf"))));
+    }
+
+    #[test]
+    fn an_invalid_but_short_windows_name_is_not_called_too_long() {
+        assert!(!name_too_long(
+            true,
+            Some(123),
+            Some(OsStr::new("dava?.udf"))
+        ));
+        let at_limit = format!("{}.udf", "a".repeat(251));
+        assert!(!name_too_long(true, Some(123), Some(OsStr::new(&at_limit))));
+        // Erişim reddi (5) ad sorunu değildir.
+        let long = "a".repeat(300);
+        assert!(!name_too_long(true, Some(5), Some(OsStr::new(&long))));
+        assert!(!name_too_long(true, None, Some(OsStr::new(&long))));
+    }
+
+    #[test]
+    fn unix_keeps_its_single_name_too_long_code() {
+        let code = if cfg!(any(target_os = "linux", target_os = "android")) {
+            36
+        } else {
+            63
+        };
+        assert!(name_too_long(false, Some(code), None));
+        assert!(!name_too_long(
+            false,
+            Some(123),
+            Some(OsStr::new(&"a".repeat(300)))
+        ));
+        assert!(!name_too_long(false, Some(13), None));
+    }
 }
 
 #[cfg(test)]
