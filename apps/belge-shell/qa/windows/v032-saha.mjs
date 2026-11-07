@@ -7,7 +7,7 @@
 // etkilemez: başta ve sonda temizlik yapılır.
 //
 // Yerel pencereler (Kaydet / Aç) gerçek ortak dosya penceresidir; native.ps1
-// `filedialog` onları UI Automation ile doldurup onaylar. Ekran ölçeği CDP
+// `filedialog` onları Win32 iletileriyle (WM_SETTEXT, IDOK) doldurup onaylar. Ekran ölçeği CDP
 // Emulation ile verilir (runner ekranı %100'dür).
 //
 // Saf yardımcılar (PDF ve DOCX yazıcıları, PDF kutu okuyucu, PNG çözücü)

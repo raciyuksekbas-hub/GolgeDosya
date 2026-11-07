@@ -87,7 +87,51 @@ public static class GdDlg {
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] static extern int GetDlgCtrlID(IntPtr h);
+  [DllImport("user32.dll")] static extern IntPtr GetParent(IntPtr h);
+  [DllImport("user32.dll")] static extern IntPtr GetDlgItem(IntPtr dlg, int id);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, string l);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, StringBuilder l);
   static string Class(IntPtr h) { var s = new StringBuilder(64); GetClassName(h, s, 64); return s.ToString(); }
+  // Ortak dosya penceresinin ad kutusu GERÇEK bir Win32 Edit'tir: Kaydet'te
+  // edt1 (1152) ya da 1001, Aç'ta cmb13 (1148) birleşik kutusunun içindeki
+  // Edit. Kendi kimliğine ya da ebeveyn ComboBox'unkine bakılır. UI Automation
+  // bu kutuda Windows Server 2025 runner'ında ValuePattern vermedi ("Unsupported
+  // Pattern", koşu 42358657246); WM_GETTEXT/WM_SETTEXT her sürümde aynıdır.
+  static readonly int[] NameIds = { 1001, 1148, 1152 };
+  public static IntPtr NameBox(IntPtr dlg) {
+    IntPtr hit = IntPtr.Zero;
+    EnumChildWindows(dlg, (h, l) => {
+      if (Class(h) != "Edit" || !IsWindowVisible(h)) return true;
+      if (Array.IndexOf(NameIds, GetDlgCtrlID(h)) >= 0 || Array.IndexOf(NameIds, GetDlgCtrlID(GetParent(h))) >= 0) { hit = h; return false; }
+      return true;
+    }, IntPtr.Zero);
+    return hit;
+  }
+  public static string GetText(IntPtr h) { var s = new StringBuilder(2048); SendMessage(h, 0x000D, (IntPtr)2048, s); return s.ToString(); }
+  public static void SetText(IntPtr h, string t) { SendMessage(h, 0x000C, IntPtr.Zero, t); }
+  /// Onay düğmesi (IDOK = 1: Kaydet / Aç / Klasör seç). WM_COMMAND kuyruğa
+  /// bırakılır: üzerine yazma onayı gibi bir kutu açılırsa harness beklemede kalmaz.
+  public static bool Confirm(IntPtr dlg) {
+    IntPtr ok = GetDlgItem(dlg, 1);
+    if (ok == IntPtr.Zero) return false;
+    return PostMessage(dlg, 0x0111, (IntPtr)1, ok);
+  }
+  /// Yedek yol: düğmenin kendisine BM_CLICK (yine kuyruğa).
+  public static bool Press(IntPtr dlg) {
+    IntPtr ok = GetDlgItem(dlg, 1);
+    return ok != IntPtr.Zero && PostMessage(ok, 0x00F5, IntPtr.Zero, IntPtr.Zero);
+  }
+  /// Teşhis: pencerenin görünür alt pencereleri, "sınıf#kimlik".
+  public static string[] Children(IntPtr dlg) {
+    var found = new List<string>();
+    EnumChildWindows(dlg, (h, l) => {
+      if (IsWindowVisible(h)) found.Add(Class(h) + "#" + GetDlgCtrlID(h));
+      return true;
+    }, IntPtr.Zero);
+    return found.ToArray();
+  }
   public static IntPtr[] Dialogs(uint pid) {
     var found = new List<IntPtr>();
     EnumWindows((h, l) => {
@@ -302,8 +346,9 @@ public static class GdDisp {
   'filedialog' {
     # Uygulamanın açtığı ortak dosya penceresi (Kaydet ya da Aç; #32770, kendi
     # sürecinde). -Path verilirse ad kutusuna yazılır; verilmezse pencerenin
-    # önerdiği ad ve klasör kalır. Onay düğmesi (AutomationId 1) UI Automation
-    # ile çağrılır: klavye odağı ve ön plan gerekmez. Pencere 20 sn beklenir.
+    # önerdiği ad ve klasör kalır. Ad kutusu ve onay düğmesi Win32 iletileriyle
+    # sürülür (bkz. GdDlg.NameBox): klavye odağı ve ön plan gerekmez, UI
+    # Automation desenlerine dayanılmaz. Pencere 20 sn beklenir.
     Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
     Add-DialogType
     $dlg = [IntPtr]::Zero
@@ -312,34 +357,45 @@ public static class GdDisp {
       if ($all.Length -gt 0) { $dlg = $all[0] } else { Start-Sleep -Milliseconds 250 }
     }
     if ($dlg -eq [IntPtr]::Zero) { Out-Json @{ found = $false; others = [GdDlg]::Describe() }; break }
-    Start-Sleep -Milliseconds 700
-    $A = [System.Windows.Automation.AutomationElement]
-    $Scope = [System.Windows.Automation.TreeScope]
-    $el = $A::FromHandle($dlg)
-    $edits = $el.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
-    $nameBox = $null
-    foreach ($e in $edits) { if (@('1001', '1148', '1152') -contains $e.Current.AutomationId) { $nameBox = $e; break } }
-    # Pencerenin açıldığı klasör: adres çubuğu "Address: C:\…" (Türkçe "Adres: …").
-    $folderShown = $null
-    foreach ($tb in $el.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::ToolBar)))) {
-      $n = $tb.Current.Name
-      if ($n -match '^[^:\\]{2,24}: (.+)$') { $folderShown = $Matches[1]; break }
+    # Ad kutusu pencere içeriği kurulunca görünür: 5 sn'ye kadar beklenir.
+    $nameBox = [IntPtr]::Zero
+    for ($i = 0; $i -lt 20 -and $nameBox -eq [IntPtr]::Zero; $i++) {
+      Start-Sleep -Milliseconds 250
+      $nameBox = [GdDlg]::NameBox($dlg)
     }
+    $title = $null
+    $folderShown = $null
+    try {
+      # Yalnız rapor için: başlık ve adres çubuğu ("Address: C:\…", Türkçe "Adres: …").
+      $A = [System.Windows.Automation.AutomationElement]
+      $Scope = [System.Windows.Automation.TreeScope]
+      $el = $A::FromHandle($dlg)
+      $title = $el.Current.Name
+      foreach ($tb in $el.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::ToolBar)))) {
+        $n = $tb.Current.Name
+        if ($n -match '^[^:\\]{2,24}: (.+)$') { $folderShown = $Matches[1]; break }
+      }
+    } catch { }
     $suggested = $null
-    if ($nameBox) { $suggested = $nameBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value }
+    if ($nameBox -ne [IntPtr]::Zero) { $suggested = [GdDlg]::GetText($nameBox) }
     $typed = $false
     if ($Path) {
-      if (-not $nameBox) { Out-Json @{ found = $true; title = $el.Current.Name; error = 'ad kutusu bulunamadı'; folder = $folderShown }; break }
-      $nameBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($Path)
-      $typed = $true
+      if ($nameBox -eq [IntPtr]::Zero) { Out-Json @{ found = $true; title = $title; error = 'ad kutusu bulunamadı'; folder = $folderShown; children = [GdDlg]::Children($dlg) }; break }
+      [GdDlg]::SetText($nameBox, $Path)
       Start-Sleep -Milliseconds 300
+      $typed = ([GdDlg]::GetText($nameBox) -eq $Path)
+      if (-not $typed) { Out-Json @{ found = $true; title = $title; error = 'ad kutusuna yazılamadı'; folder = $folderShown; okunan = [GdDlg]::GetText($nameBox) }; break }
     }
-    $ok = $el.FindFirst($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::AutomationIdProperty, '1')))
-    if (-not $ok) { Out-Json @{ found = $true; title = $el.Current.Name; error = 'onay düğmesi bulunamadı'; folder = $folderShown }; break }
-    $ok.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    if (-not [GdDlg]::Confirm($dlg)) { Out-Json @{ found = $true; title = $title; error = 'onay düğmesi bulunamadı'; folder = $folderShown; children = [GdDlg]::Children($dlg) }; break }
     $closed = $false
-    for ($i = 0; $i -lt 40 -and -not $closed; $i++) { Start-Sleep -Milliseconds 250; $closed = -not [GdDlg]::IsWindowVisible($dlg) }
-    Out-Json @{ found = $true; title = $el.Current.Name; folder = $folderShown; suggested = $suggested; typed = $typed; closed = $closed; others = [GdDlg]::Describe() }
+    $pressed = $false
+    for ($i = 0; $i -lt 40 -and -not $closed; $i++) {
+      Start-Sleep -Milliseconds 250
+      $closed = -not [GdDlg]::IsWindowVisible($dlg)
+      # WM_COMMAND IDOK 3 sn'de pencereyi kapatmadıysa düğmeye bir kez BM_CLICK.
+      if (-not $closed -and -not $pressed -and $i -eq 12) { $pressed = [GdDlg]::Press($dlg) }
+    }
+    Out-Json @{ found = $true; title = $title; folder = $folderShown; suggested = $suggested; typed = $typed; closed = $closed; pressed = $pressed; others = [GdDlg]::Describe() }
   }
   'dialog-close' {
     # Açık kalmış ortak pencereleri (ve uygulamanın başka #32770 kutularını)
