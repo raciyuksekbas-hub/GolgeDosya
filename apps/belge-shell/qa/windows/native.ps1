@@ -110,7 +110,15 @@ public static class GdDlg {
     return hit;
   }
   public static string GetText(IntPtr h) { var s = new StringBuilder(2048); SendMessage(h, 0x000D, (IntPtr)2048, s); return s.ToString(); }
-  public static void SetText(IntPtr h, string t) { SendMessage(h, 0x000C, IntPtr.Zero, t); }
+  [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  /// Kullanıcı yazıyormuş gibi: tümünü seç (EM_SETSEL), sonra her karakter
+  /// WM_CHAR olarak kuyruğa. Kaydet penceresi adı kendi durumunda tutar ve
+  /// WM_SETTEXT'i görmez: koşu 42362846786'da yazılan yol kutuda göründü ama
+  /// dosya önerilen adla kaydedildi. Aç penceresi WM_SETTEXT'i kabul etmişti.
+  public static void Type(IntPtr h, string t) {
+    SendMessage(h, 0x00B1, IntPtr.Zero, new IntPtr(-1));
+    foreach (char c in t) PostMessage(h, 0x0102, new IntPtr((int)c), new IntPtr(1));
+  }
   /// Onay düğmesi (IDOK = 1: Kaydet / Aç / Klasör seç). WM_COMMAND kuyruğa
   /// bırakılır: üzerine yazma onayı gibi bir kutu açılırsa harness beklemede kalmaz.
   public static bool Confirm(IntPtr dlg) {
@@ -347,7 +355,7 @@ public static class GdDisp {
     # Uygulamanın açtığı ortak dosya penceresi (Kaydet ya da Aç; #32770, kendi
     # sürecinde). -Path verilirse ad kutusuna yazılır; verilmezse pencerenin
     # önerdiği ad ve klasör kalır. Ad kutusu ve onay düğmesi Win32 iletileriyle
-    # sürülür (bkz. GdDlg.NameBox): klavye odağı ve ön plan gerekmez, UI
+    # sürülür (bkz. GdDlg.NameBox, GdDlg.Type): klavye odağı ve ön plan gerekmez, UI
     # Automation desenlerine dayanılmaz. Pencere 20 sn beklenir.
     Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
     Add-DialogType
@@ -381,9 +389,12 @@ public static class GdDisp {
     $typed = $false
     if ($Path) {
       if ($nameBox -eq [IntPtr]::Zero) { Out-Json @{ found = $true; title = $title; error = 'ad kutusu bulunamadı'; folder = $folderShown; children = [GdDlg]::Children($dlg) }; break }
-      [GdDlg]::SetText($nameBox, $Path)
+      [GdDlg]::Type($nameBox, $Path)
+      for ($i = 0; $i -lt 30 -and -not $typed; $i++) {
+        Start-Sleep -Milliseconds 100
+        $typed = ([GdDlg]::GetText($nameBox) -eq $Path)
+      }
       Start-Sleep -Milliseconds 300
-      $typed = ([GdDlg]::GetText($nameBox) -eq $Path)
       if (-not $typed) { Out-Json @{ found = $true; title = $title; error = 'ad kutusuna yazılamadı'; folder = $folderShown; okunan = [GdDlg]::GetText($nameBox) }; break }
     }
     if (-not [GdDlg]::Confirm($dlg)) { Out-Json @{ found = $true; title = $title; error = 'onay düğmesi bulunamadı'; folder = $folderShown; children = [GdDlg]::Children($dlg) }; break }
