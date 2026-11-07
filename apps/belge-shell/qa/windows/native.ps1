@@ -117,8 +117,12 @@ public static class GdDlg {
   /// dosya önerilen adla kaydedildi. Aç penceresi WM_SETTEXT'i kabul etmişti.
   public static void Type(IntPtr h, string t) {
     SendMessage(h, 0x00B1, IntPtr.Zero, new IntPtr(-1));
-    foreach (char c in t) PostMessage(h, 0x0102, new IntPtr((int)c), new IntPtr(1));
+    foreach (char c in t) PostMessageW(h, 0x0102, new IntPtr((int)c), new IntPtr(1));
   }
+  // WM_CHAR'ın Unicode biçimi ŞART: CharSet'siz PostMessage, PostMessageA'dır
+  // ve karakterin yalnız alt baytını taşır. Koşu 42366455870'te kutuya
+  // "Ça\x1fr1 ^ahin" düştü (ğ->0x1F, ı->'1', Ş->'^', ş->'_'); Latin-1 harfler sağlamdı.
+  [DllImport("user32.dll", EntryPoint = "PostMessageW")] static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
   /// Onay düğmesi (IDOK = 1: Kaydet / Aç / Klasör seç). WM_COMMAND kuyruğa
   /// bırakılır: üzerine yazma onayı gibi bir kutu açılırsa harness beklemede kalmaz.
   public static bool Confirm(IntPtr dlg) {
