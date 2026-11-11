@@ -16,6 +16,8 @@ pub mod modules {
     #[cfg(feature = "feature_duzenek")]
     pub mod duzenek;
     #[cfg(feature = "feature_duzenek")]
+    pub mod duzenek_preview;
+    #[cfg(feature = "feature_duzenek")]
     pub mod ekler;
     #[cfg(feature = "feature_ikincigoz")]
     pub mod ikincigoz;
@@ -291,6 +293,7 @@ pub fn run() {
         modules::degisikis::degisikis_save_report,
         modules::degisikis::degisikis_open_report,
         modules::duzenek::duzenek_preview_pdf_page,
+        modules::duzenek_preview::duzenek_preview_page_bytes,
         modules::duzenek::duzenek_renderer_status,
         modules::duzenek::duzenek_select_renderer,
         modules::duzenek::duzenek_prepare_export_plan,
@@ -381,6 +384,7 @@ pub fn run() {
     ))]
     let builder = builder.invoke_handler(shell_commands![
         modules::duzenek::duzenek_preview_pdf_page,
+        modules::duzenek_preview::duzenek_preview_page_bytes,
         modules::duzenek::duzenek_renderer_status,
         modules::duzenek::duzenek_select_renderer,
         modules::duzenek::duzenek_prepare_export_plan,

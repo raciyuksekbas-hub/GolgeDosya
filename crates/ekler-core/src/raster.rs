@@ -586,9 +586,7 @@ pub fn preview_page(source: &Path, page: usize, dpi: u32, rotation: i32) -> Resu
     }
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        let before = calculate_sha256(source).map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
-        let raw = std::fs::read(source).map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
-        let doc = load_pdf_tolerant(&raw, "önizleme.pdf")?.document;
+        let (doc, opened_as) = preview_cache::document(source)?;
         let mut selected = crate::pdf::extract_page_range(&doc, page, page)?;
         // Dışa aktarmayla AYNI açıklama geçişi; önizleme ile çıktı aynı şeyi
         // gösterir. Önizleme açıklama yüzünden düşmez: görünümü kurulamayan
@@ -619,11 +617,128 @@ pub fn preview_page(source: &Path, page: usize, dpi: u32, rotation: i32) -> Resu
         let mut bytes = std::io::Cursor::new(Vec::new());
         img.write_to(&mut bytes, ::image::ImageFormat::Png)
             .map_err(|e| EklerError::InvalidImage(e.to_string()))?;
-        if before != calculate_sha256(source).map_err(|e| EklerError::InvalidPdf(e.to_string()))? {
+        if preview_cache::stamp(source)? != opened_as {
             return Err(EklerError::SourceIntegrityCompromised {
                 path: source.into(),
             });
         }
         Ok(bytes.into_inner())
+    }
+}
+
+/// Önizlenen belgelerin ayrıştırılmış hâli.
+///
+/// Her sayfa önizlemesi dosyayı baştan okuyup özetliyor ve ayrıştırıyordu: 40
+/// sayfalık 96 MB'lık taramada küçük resimler dakikalar sürüyordu. Belge artık
+/// bir kez açılır. Dosyanın boyutu ya da değişiklik zamanı değişirse kayıt
+/// geçersizdir ve belge yeniden okunur; ekranda eski içerik gösterilmez.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod preview_cache {
+    use super::{calculate_sha256, load_pdf_tolerant, EklerError, Result};
+    use lopdf::Document as LopdfDoc;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+    use std::time::{Duration, Instant, SystemTime};
+
+    /// Bellekte tutulan belgelerin toplam dosya boyutu. Daha büyük dosya her
+    /// önizlemede yeniden açılır: yavaştır ama çalışır.
+    const MAX_BYTES: u64 = 512 * 1024 * 1024;
+    /// Kullanılmayan belge bu süre sonunda bellekten çıkar.
+    const IDLE_LIMIT: Duration = Duration::from_secs(120);
+    const JANITOR_PERIOD: Duration = Duration::from_secs(30);
+
+    #[derive(Clone, Copy, PartialEq, Debug)]
+    pub(super) struct Stamp {
+        len: u64,
+        modified: SystemTime,
+    }
+
+    struct Entry {
+        path: PathBuf,
+        stamp: Stamp,
+        doc: Arc<LopdfDoc>,
+        used: Instant,
+    }
+
+    static ENTRIES: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
+    /// Küçük resim ve büyük önizleme aynı anda ilk kez isteyince belge iki kez
+    /// ayrıştırılmasın.
+    static LOADING: Mutex<()> = Mutex::new(());
+    static JANITOR_RUNNING: AtomicBool = AtomicBool::new(false);
+
+    fn entries() -> MutexGuard<'static, Vec<Entry>> {
+        ENTRIES.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(super) fn stamp(path: &Path) -> Result<Stamp> {
+        let meta = std::fs::metadata(path).map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
+        Ok(Stamp {
+            len: meta.len(),
+            modified: meta
+                .modified()
+                .map_err(|e| EklerError::InvalidPdf(e.to_string()))?,
+        })
+    }
+
+    fn cached(path: &Path, current: Stamp) -> Option<Arc<LopdfDoc>> {
+        let mut all = entries();
+        let at = all.iter().position(|e| e.path == path)?;
+        if all[at].stamp != current {
+            all.remove(at);
+            return None;
+        }
+        all[at].used = Instant::now();
+        Some(all[at].doc.clone())
+    }
+
+    fn remember(path: &Path, stamp: Stamp, doc: Arc<LopdfDoc>) {
+        if stamp.len > MAX_BYTES {
+            return;
+        }
+        let mut all = entries();
+        all.retain(|e| e.path != path);
+        all.push(Entry {
+            path: path.to_path_buf(),
+            stamp,
+            doc,
+            used: Instant::now(),
+        });
+        while all.iter().map(|e| e.stamp.len).sum::<u64>() > MAX_BYTES {
+            all.remove(0);
+        }
+        if !JANITOR_RUNNING.swap(true, Ordering::SeqCst) {
+            std::thread::spawn(|| loop {
+                std::thread::sleep(JANITOR_PERIOD);
+                let mut all = entries();
+                all.retain(|e| e.used.elapsed() < IDLE_LIMIT);
+                if all.is_empty() {
+                    JANITOR_RUNNING.store(false, Ordering::SeqCst);
+                    break;
+                }
+            });
+        }
+    }
+
+    /// Belge ve açıldığı andaki damgası. Damga her önizlemenin sonunda yeniden
+    /// karşılaştırılır: kaynak işlem sırasında değişirse sonuç gösterilmez.
+    pub(super) fn document(path: &Path) -> Result<(Arc<LopdfDoc>, Stamp)> {
+        let before = stamp(path)?;
+        if let Some(doc) = cached(path, before) {
+            return Ok((doc, before));
+        }
+        let _one_at_a_time = LOADING.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(doc) = cached(path, before) {
+            return Ok((doc, before));
+        }
+        let hash = calculate_sha256(path).map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
+        let raw = std::fs::read(path).map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
+        let doc = Arc::new(load_pdf_tolerant(&raw, "önizleme.pdf")?.document);
+        drop(raw);
+        if hash != calculate_sha256(path).map_err(|e| EklerError::InvalidPdf(e.to_string()))? {
+            return Err(EklerError::SourceIntegrityCompromised { path: path.into() });
+        }
+        remember(path, before, doc.clone());
+        Ok((doc, before))
     }
 }

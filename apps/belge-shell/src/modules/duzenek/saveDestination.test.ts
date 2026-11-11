@@ -43,7 +43,7 @@ describe("silme aracı", () => {
 
 describe("kipin kapısı", () => {
   it("Düzenle yalnız PDF kabul eder: çalışma alanı ham yol üzerinde çalışır", () => {
-    // Önizleme (`duzenek_preview_pdf_page`) ve her araç (`duzenek_run_pdf_tool`)
+    // Önizleme (`duzenek_preview_page_bytes`) ve her araç (`duzenek_run_pdf_tool`)
     // kaynağın yolunu doğrudan motora verir; motor PDF olmayan yolu reddeder.
     // Kabukta ofis dönüşümü çağrılmadığı sürece kapı PDF'den geniş olamaz —
     // aksi hâlde son belgeler listesi açılamayan satırlar gösterir.

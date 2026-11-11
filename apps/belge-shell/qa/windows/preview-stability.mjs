@@ -56,7 +56,7 @@ export const CORPUS = [
 // her başarılı render yeni bir adres üretir.
 const SAMPLE = `(() => {
   performance.setResourceTimingBufferSize(1000000);
-  window.__previewCalls = () => performance.getEntriesByType('resource').filter((e) => e.name.includes('duzenek_preview_pdf_page')).length;
+  window.__previewCalls = () => performance.getEntriesByType('resource').filter((e) => e.name.includes('duzenek_preview_page_bytes')).length;
   window.__probe = async (ms) => {
     const vp = document.querySelector('.pdf-page-viewport');
     if (!vp) return { error: 'önizleme kutusu yok' };

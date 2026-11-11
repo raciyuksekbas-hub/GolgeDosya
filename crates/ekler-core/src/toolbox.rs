@@ -3,6 +3,7 @@ use crate::image::image_file_to_pdf;
 use crate::pdf::stamp::BrandedPdf;
 use crate::pdf::{extract_pages, load_pdf_tolerant, merge_documents};
 use lopdf::{Document as LopdfDoc, Object};
+use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 
 fn load_single_pdf_approved(p: &Path) -> Result<LopdfDoc> {
@@ -315,13 +316,12 @@ fn run_tool_inner(
         if matches!(operation, ToolOperation::Images) {
             docs.push(image_file_to_pdf(path)?);
         } else {
-            let info = crate::pdf::inspect_pdf(path)?;
-            if info.is_signed && !approved {
+            let mut doc = load_single_pdf_approved(path)?;
+            if crate::pdf::detect_signature(&doc) && !approved {
                 return Err(EklerError::ValidationFailed(
                     "İmzalı PDF için türetilmiş kopya onayı gerekli".into(),
                 ));
             }
-            let mut doc = load_single_pdf_approved(path)?;
             // Her araç belgeyi yeniden yazar; imza artık doğrulanamaz. Çıktı
             // imzalıymış gibi davranmasın diye imza verisi taşınmaz.
             crate::pdf::strip_signatures(&mut doc);
@@ -432,15 +432,19 @@ fn run_tool_inner(
         }
         ToolOperation::Compress { level } => {
             use crate::OptimizationLevel::*;
+            // En sert ön ayardan başlanır; kalite kapısını geçen ilk aday çıktıdır.
+            // Daha hafif ön ayar yalnız bu kapıdan dönülürse denenir: her ön ayar
+            // bütün görselleri yeniden işliyordu ve daha hafif bir adayın daha
+            // küçük çıkması beklenmez (bir görsel yalnız küçülüyorsa değiştirilir).
             let levels: &[crate::OptimizationLevel] = match level {
                 LowRiskCleanup => &[LowRiskCleanup],
-                GentleCompression => &[LowRiskCleanup, GentleCompression],
-                BalancedCompression => &[LowRiskCleanup, GentleCompression, BalancedCompression],
+                GentleCompression => &[GentleCompression, LowRiskCleanup],
+                BalancedCompression => &[BalancedCompression, GentleCompression, LowRiskCleanup],
                 AggressiveCompression => &[
-                    LowRiskCleanup,
-                    GentleCompression,
-                    BalancedCompression,
                     AggressiveCompression,
+                    BalancedCompression,
+                    GentleCompression,
+                    LowRiskCleanup,
                 ],
             };
             let mut best = None;
@@ -463,13 +467,9 @@ fn run_tool_inner(
                 // Adaylar kullanıcıya GİDECEK baytla yarışır: işaretli, yeniden
                 // açılıp doğrulanmış çıktı. "Kazanç yok" eşiği de onun üzerinden
                 // hesaplanır; işaretin maliyeti küçülmeyi gizleyemez, şişiremez.
-                let branded = crate::pdf::stamp::finalize_pdf_output(&mut candidate)?;
-                if best
-                    .as_ref()
-                    .is_none_or(|(kept, _, _): &(BrandedPdf, _, _)| branded.len() < kept.len())
-                {
-                    best = Some((branded, stats, body));
-                }
+                let branded: BrandedPdf = crate::pdf::stamp::finalize_pdf_output(&mut candidate)?;
+                best = Some((branded, stats, body));
+                break;
             }
             let (branded, stats, body) = best.ok_or_else(|| {
                 quality_errors.dedup();
@@ -616,19 +616,23 @@ fn validate_compression_quality(
             "Sıkıştırma adayı kalite kontrolünü geçemedi; çıktı oluşturulmadı.".into(),
         )
     };
-    if source.get_pages().len() != candidate.get_pages().len() {
+    let candidate_pages = candidate.get_pages();
+    let source_pages = source.get_pages();
+    if source_pages.len() != candidate_pages.len() {
         return Err(fail());
     }
-    for (n, id) in source.get_pages() {
-        let other = candidate.get_pages()[&n];
+    for (n, id) in source_pages {
+        let other = candidate_pages[&n];
         if source.get_page_content(id).map_err(|_| fail())?
             != candidate.get_page_content(other).map_err(|_| fail())?
         {
             return Err(fail());
         }
     }
-    for (id, obj) in &candidate.objects {
-        let Ok(after) = obj.as_stream() else { continue };
+    let check_image = |id: &lopdf::ObjectId, obj: &Object| -> Result<()> {
+        let Ok(after) = obj.as_stream() else {
+            return Ok(());
+        };
         if after
             .dict
             .get(b"Subtype")
@@ -636,18 +640,18 @@ fn validate_compression_quality(
             .and_then(|v| v.as_name().ok())
             != Some(b"Image")
         {
-            continue;
+            return Ok(());
         }
         let before = source
             .get_object(*id)
             .and_then(|v| v.as_stream())
             .map_err(|_| fail())?;
         if before.content == after.content {
-            continue;
+            return Ok(());
         }
         if let (Ok(a), Ok(b)) = (before.decompressed_content(), after.decompressed_content()) {
             if a == b {
-                continue;
+                return Ok(());
             }
         }
         if level == crate::OptimizationLevel::LowRiskCleanup {
@@ -705,6 +709,12 @@ fn validate_compression_quality(
         if sum as f64 / b.as_raw().len() as f64 > limit {
             return Err(fail());
         }
-    }
-    Ok(())
+        Ok(())
+    };
+    crate::optimizer::with_image_workers(candidate, || {
+        candidate
+            .objects
+            .par_iter()
+            .try_for_each(|(id, obj)| check_image(id, obj))
+    })
 }

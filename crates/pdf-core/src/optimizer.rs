@@ -1,5 +1,6 @@
 use crate::error::{EklerError, Result};
-use lopdf::{Document as LopdfDoc, Object};
+use lopdf::{Document as LopdfDoc, Object, ObjectId};
+use rayon::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -21,6 +22,123 @@ pub struct OptimizationResult {
     pub images_found: usize,
     pub images_supported: usize,
     pub images_recompressed_count: usize,
+}
+
+/// Aynı anda işlenen görsellerin tutabileceği toplam bellek.
+const IMAGE_MEMORY_BUDGET: u64 = 2 * 1024 * 1024 * 1024;
+/// İşlenen bir görselin piksel başına tuttuğu bellek: çözülmüş örnekler,
+/// küçültülmüş kopya ve kodlama kopyası, her biri 3 bayt.
+const IN_FLIGHT_BYTES_PER_PIXEL: u64 = 9;
+
+fn is_image(stream: &lopdf::Stream) -> bool {
+    stream
+        .dict
+        .get(b"Subtype")
+        .ok()
+        .and_then(|v| v.as_name().ok())
+        == Some(b"Image")
+}
+
+fn image_pixels(doc: &LopdfDoc, stream: &lopdf::Stream) -> u64 {
+    let side = |key: &[u8]| {
+        stream
+            .dict
+            .get(key)
+            .ok()
+            .and_then(|v| doc.dereference(v).ok())
+            .and_then(|(_, v)| v.as_i64().ok())
+            .and_then(|n| u64::try_from(n).ok())
+            .unwrap_or(0)
+    };
+    side(b"Width").saturating_mul(side(b"Height"))
+}
+
+/// Görsel işini iş parçacıklarına yayar. Sayı belgenin en büyük görseline göre
+/// sınırlanır: 8 MP'lik taramada bütün çekirdekler, 100 MP'lik görselde iki
+/// iş parçacığı. Bir çekirdek arayüze kalır.
+pub fn with_image_workers<R: Send>(doc: &LopdfDoc, work: impl FnOnce() -> R + Send) -> R {
+    let largest = doc
+        .objects
+        .values()
+        .filter_map(|o| o.as_stream().ok())
+        .filter(|s| is_image(s))
+        .map(|s| image_pixels(doc, s))
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+    match rayon::ThreadPoolBuilder::new()
+        .num_threads(image_worker_count(largest, cores))
+        .build()
+    {
+        Ok(pool) => pool.install(work),
+        Err(_) => work(),
+    }
+}
+
+fn image_worker_count(largest_pixels: u64, cores: usize) -> usize {
+    let by_memory = IMAGE_MEMORY_BUDGET
+        / largest_pixels
+            .max(1)
+            .saturating_mul(IN_FLIGHT_BYTES_PER_PIXEL);
+    (by_memory as usize).clamp(1, cores.saturating_sub(1).max(1))
+}
+
+/// Bir görselin yeniden kodlama sonucu.
+enum Recoded {
+    /// Kapsam dışı: dokunulmaz, `images_supported` sayısına girmez.
+    Unsupported,
+    /// Çözüldü ama yeni JPEG küçülmedi.
+    Kept,
+    Replaced {
+        id: ObjectId,
+        width: u32,
+        height: u32,
+        jpeg: Vec<u8>,
+    },
+}
+
+fn recode_image(
+    id: ObjectId,
+    stream: &lopdf::Stream,
+    quality: u8,
+    max_dimension: u32,
+) -> Result<Recoded> {
+    let Some(img) = decode_image(stream)? else {
+        return Ok(Recoded::Unsupported);
+    };
+    let resized = if img.width() > max_dimension || img.height() > max_dimension {
+        img.resize(
+            max_dimension,
+            max_dimension,
+            image::imageops::FilterType::Lanczos3,
+        )
+    } else {
+        img
+    };
+    let gray = stream
+        .dict
+        .get(b"ColorSpace")
+        .ok()
+        .and_then(|v| v.as_name().ok())
+        == Some(b"DeviceGray");
+    let mut jpeg = Vec::new();
+    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, quality);
+    let encoded = if gray {
+        encoder.encode_image(&resized.to_luma8())
+    } else {
+        encoder.encode_image(&resized.to_rgb8())
+    };
+    encoded.map_err(|e| EklerError::InvalidPdf(format!("JPEG kodlanamadı: {e}")))?;
+    if jpeg.len() >= stream.content.len() {
+        return Ok(Recoded::Kept);
+    }
+    Ok(Recoded::Replaced {
+        id,
+        width: resized.width(),
+        height: resized.height(),
+        jpeg,
+    })
 }
 
 /// Decode only color spaces and filters whose sample interpretation we can preserve.
@@ -239,8 +357,7 @@ pub fn optimize_pdf(doc: &mut LopdfDoc, level: OptimizationLevel) -> Result<Opti
         OptimizationLevel::AggressiveCompression => (65, 1600),
     };
     let mut found = 0;
-    let mut supported = 0;
-    let mut recompressed = 0;
+    let mut jobs = Vec::new();
     // Resolve indirect colors/filter dictionaries before decoding without altering source samples.
     let mask_ids: std::collections::HashSet<_> = doc
         .objects
@@ -257,13 +374,7 @@ pub fn optimize_pdf(doc: &mut LopdfDoc, level: OptimizationLevel) -> Result<Opti
         let Ok(Object::Stream(original)) = doc.get_object(id) else {
             continue;
         };
-        if original
-            .dict
-            .get(b"Subtype")
-            .ok()
-            .and_then(|v| v.as_name().ok())
-            != Some(b"Image")
-        {
+        if !is_image(original) {
             continue;
         }
         found += 1;
@@ -304,41 +415,37 @@ pub fn optimize_pdf(doc: &mut LopdfDoc, level: OptimizationLevel) -> Result<Opti
             continue;
         };
         stream.dict.set("ColorSpace", space);
-        let Some(img) = decode_image(&stream)? else {
-            continue;
+        jobs.push((id, stream));
+    }
+    let results = with_image_workers(doc, || {
+        jobs.par_iter()
+            .map(|(id, stream)| recode_image(*id, stream, quality, max_dimension))
+            .collect::<Result<Vec<_>>>()
+    })?;
+    drop(jobs);
+    let mut supported = 0;
+    let mut recompressed = 0;
+    for result in results {
+        let (id, width, height, jpeg) = match result {
+            Recoded::Unsupported => continue,
+            Recoded::Kept => {
+                supported += 1;
+                continue;
+            }
+            Recoded::Replaced {
+                id,
+                width,
+                height,
+                jpeg,
+            } => (id, width, height, jpeg),
         };
         supported += 1;
-        let resized = if img.width() > max_dimension || img.height() > max_dimension {
-            img.resize(
-                max_dimension,
-                max_dimension,
-                image::imageops::FilterType::Lanczos3,
-            )
-        } else {
-            img
-        };
-        let gray = stream
-            .dict
-            .get(b"ColorSpace")
-            .ok()
-            .and_then(|v| v.as_name().ok())
-            == Some(b"DeviceGray");
-        let mut jpeg = Vec::new();
-        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, quality);
-        let encoded = if gray {
-            encoder.encode_image(&resized.to_luma8())
-        } else {
-            encoder.encode_image(&resized.to_rgb8())
-        };
-        encoded.map_err(|e| EklerError::InvalidPdf(format!("JPEG kodlanamadı: {e}")))?;
-        if jpeg.len() < original.content.len() {
-            let mut out = original.clone();
-            out.dict.set("Width", resized.width() as i64);
-            out.dict.set("Height", resized.height() as i64);
+        if let Some(Object::Stream(out)) = doc.objects.get_mut(&id) {
+            out.dict.set("Width", width as i64);
+            out.dict.set("Height", height as i64);
             out.dict.set("Filter", "DCTDecode");
             out.dict.remove(b"DecodeParms");
             out.set_content(jpeg);
-            doc.objects.insert(id, Object::Stream(out));
             recompressed += 1;
         }
     }
@@ -347,9 +454,7 @@ pub fn optimize_pdf(doc: &mut LopdfDoc, level: OptimizationLevel) -> Result<Opti
     // "bayt bayt aynı" kaçışını bozuyor ve temizlik adayını düşürüyordu.
     for obj in doc.objects.values_mut() {
         if let Object::Stream(s) = obj {
-            let is_image =
-                s.dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) == Some(b"Image");
-            if !is_image && !s.dict.has(b"Filter") {
+            if !is_image(s) && !s.dict.has(b"Filter") {
                 let _ = s.compress();
             }
         }
@@ -364,4 +469,21 @@ pub fn optimize_pdf(doc: &mut LopdfDoc, level: OptimizationLevel) -> Result<Opti
         images_supported: supported,
         images_recompressed_count: recompressed,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::image_worker_count;
+
+    #[test]
+    fn workers_leave_a_core_free_and_shrink_for_huge_images() {
+        // A4, 300 dpi: bellek sınır değil, çekirdekler sınır.
+        assert_eq!(image_worker_count(8_700_000, 10), 9);
+        // 100 MP: işlenen her görsel ~900 MB tutar.
+        assert_eq!(image_worker_count(100_000_000, 10), 2);
+        // Bütçeyi tek başına aşan görsel yine işlenir, tek tek.
+        assert_eq!(image_worker_count(u64::MAX, 10), 1);
+        assert_eq!(image_worker_count(8_700_000, 1), 1);
+        assert_eq!(image_worker_count(0, 4), 3);
+    }
 }

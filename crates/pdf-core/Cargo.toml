@@ -11,6 +11,7 @@ description = "PDF alanı: okuma, doğrulama, toleranslı yükleme, damga ve opt
 lopdf.workspace = true
 image.workspace = true
 flate2.workspace = true
+rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 # `ekler-core` ile aynı sürüm: hata tipi bu crate'e taşındı ve `ekler-core`

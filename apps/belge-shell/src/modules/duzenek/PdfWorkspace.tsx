@@ -205,7 +205,7 @@ function Preview({ item, large = false, rotation = 0, mode = 'fit-page' }: {
                 if (!alive) return;
                 try {
                     // Rotation is visual and immediate; both views share the same unrotated bitmap geometry.
-                    const bytes = await invoke<number[]>('duzenek_preview_pdf_page', {path: item.source.path, page: item.page, dpi: at, rotation: 0});
+                    const bytes = await invoke<ArrayBuffer>('duzenek_preview_page_bytes', {path: item.source.path, page: item.page, dpi: at, rotation: 0});
                     if (!alive) return;
                     const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], {type: 'image/png'}));
                     urls.push(url);

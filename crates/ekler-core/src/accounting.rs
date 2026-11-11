@@ -1,5 +1,6 @@
 use crate::error::{EklerError, Result};
 use crate::model::{NormalizedPage, PhysicalOutput, SourceFile};
+#[cfg(not(target_os = "macos"))]
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{Read, Result as IoResult};
@@ -8,7 +9,7 @@ use std::path::Path;
 /// Dosyanın SHA-256 özetini (hex string) hesaplar.
 pub fn calculate_sha256(path: &Path) -> IoResult<String> {
     let mut file = File::open(path)?;
-    let mut hasher = Sha256::new();
+    let mut hasher = FileHasher::new();
     let mut buffer = [0u8; 64 * 1024];
     loop {
         let n = file.read(&mut buffer)?;
@@ -17,7 +18,70 @@ pub fn calculate_sha256(path: &Path) -> IoResult<String> {
         }
         hasher.update(&buffer[..n]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hasher.finish_hex())
+}
+
+#[cfg(not(target_os = "macos"))]
+struct FileHasher(Sha256);
+
+#[cfg(not(target_os = "macos"))]
+impl FileHasher {
+    fn new() -> Self {
+        Self(Sha256::new())
+    }
+    fn update(&mut self, data: &[u8]) {
+        self.0.update(data);
+    }
+    fn finish_hex(self) -> String {
+        format!("{:x}", self.0.finalize())
+    }
+}
+
+/// macOS'ta CommonCrypto: işlemcinin SHA komutlarını kullanır. `sha2` aarch64'te
+/// yalnız ayrı bir crate (`sha2-asm`) ile donanıma iner; onsuz yazılımla hesaplar
+/// ve her araç kaynağı iki kez özetlediği için büyük dosyada asıl bekleme buydu.
+/// Yeni bir bağımlılık değil: işlev libSystem'in içinde.
+#[cfg(target_os = "macos")]
+struct FileHasher(CcSha256Ctx);
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct CcSha256Ctx {
+    count: [u32; 2],
+    hash: [u32; 8],
+    wbuf: [u32; 16],
+}
+
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn CC_SHA256_Init(c: *mut CcSha256Ctx) -> i32;
+    fn CC_SHA256_Update(c: *mut CcSha256Ctx, data: *const u8, len: u32) -> i32;
+    fn CC_SHA256_Final(md: *mut u8, c: *mut CcSha256Ctx) -> i32;
+}
+
+#[cfg(target_os = "macos")]
+impl FileHasher {
+    fn new() -> Self {
+        let mut ctx = CcSha256Ctx {
+            count: [0; 2],
+            hash: [0; 8],
+            wbuf: [0; 16],
+        };
+        // SAFETY: `ctx`, CommonDigest.h'deki CC_SHA256_CTX ile aynı düzende.
+        unsafe { CC_SHA256_Init(&mut ctx) };
+        Self(ctx)
+    }
+    fn update(&mut self, data: &[u8]) {
+        // Tek çağrıdaki uzunluk u32'dir; dilim her zaman okuma tamponundan küçük.
+        // SAFETY: işaretçi ve uzunluk aynı dilimden geliyor.
+        unsafe { CC_SHA256_Update(&mut self.0, data.as_ptr(), data.len() as u32) };
+    }
+    fn finish_hex(mut self) -> String {
+        let mut digest = [0u8; 32];
+        // SAFETY: `digest` CC_SHA256_DIGEST_LENGTH (32) bayttır.
+        unsafe { CC_SHA256_Final(digest.as_mut_ptr(), &mut self.0) };
+        digest.iter().map(|b| format!("{b:02x}")).collect()
+    }
 }
 
 /// Kaynak dosyanın mutasyona uğramadığını doğrular:

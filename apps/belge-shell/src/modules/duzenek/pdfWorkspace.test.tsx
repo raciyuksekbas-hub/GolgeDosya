@@ -368,7 +368,7 @@ describe("kabuğa bağlanma", () => {
     for (const name of calls) expect(name).toMatch(/^duzenek_/);
     expect(new Set(calls)).toEqual(
       new Set([
-        "duzenek_preview_pdf_page",
+        "duzenek_preview_page_bytes",
         "duzenek_scan_source_files",
         "duzenek_pdf_to_images",
         "duzenek_run_pdf_tool",
