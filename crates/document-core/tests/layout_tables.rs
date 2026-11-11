@@ -72,6 +72,16 @@ fn row(label: &str, value_paragraphs: &[String]) -> String {
     )
 }
 
+/// `row` gibi, başka bir ızgarayla.
+fn row3(grid: &[u32; 3], label: &str, value_paragraphs: &[String]) -> String {
+    format!(
+        "<w:tr>{}{}{}</w:tr>",
+        tc(grid[0], "", &p("", &b(label))),
+        tc(grid[1], "", &p("", &b(":"))),
+        tc(grid[2], "", &value_paragraphs.concat())
+    )
+}
+
 /// `borders`: tablo düzeyi kenarlık bildirimi (boş: Word'ün kenarlıksız tablosu).
 fn table(borders: &str, rows: &[String], grid: &[u32]) -> String {
     let g: String = grid
@@ -317,6 +327,131 @@ fn a_centred_signature_block_stays_centred_in_its_column() {
     assert_eq!(l[1].1, "Av. Örnek Avukat");
 }
 
+// ------------------------------------------------------------------ uzun etiket
+
+/// Saha: "İSTİNAF EDEN DAVACI (ALACAKLI)" etiketi sütununa sığmadığı için bütün
+/// başlık tablo kalıyordu; kullanıcı "Böyle bloklu istemiyorum" dedi. Etiket
+/// Word'deki gibi kendi sütununda alt satıra iner.
+#[test]
+fn a_label_too_long_for_its_column_wraps_inside_it() {
+    let grid = [3300, 300, 5471];
+    let body = table(
+        "",
+        &[
+            row3(&grid, "DOSYA NO", &[p("", &r("2026/0001 E., 2026/0002 K."))]),
+            row3(&grid, "İSTİNAF EDEN DAVACI (ALACAKLI)", &[p("", &r("Örnek Kişi"))]),
+            row3(
+                &grid,
+                "KONU",
+                &[p(
+                    r#"<w:jc w:val="both"/>"#,
+                    &r("Örnek mahkemenin 02.10.2026 tarihli kararına karşı istinaf başvurumuzun sunulmasıdır; bu satır sütuna sığmaz."),
+                )],
+            ),
+        ],
+        &grid,
+    );
+    let udf = to_udf(&package(&body, None), &ConvertOptions::default());
+    assert!(!udf.xml.contains("<table"), "{}", udf.xml);
+    let l = lines(&udf.xml);
+    let texts: Vec<&str> = l.iter().map(|(_, t)| t.as_str()).collect();
+    assert_eq!(
+        texts,
+        [
+            "DOSYA NO⇥:⇥2026/0001 E., 2026/0002 K.",
+            "İSTİNAF EDEN DAVACI⇥:⇥Örnek Kişi",
+            "(ALACAKLI)",
+            "KONU⇥:⇥Örnek mahkemenin 02.10.2026 tarihli kararına karşı istinaf başvurumuzun sunulmasıdır; bu satır sütuna sığmaz.",
+        ]
+    );
+    // Etiketin devamı etiket sütununda kalır, kalınlığını korur.
+    assert_eq!(attr(&l[2].0, "LeftIndent"), None);
+    let right: f32 = attr(&l[2].0, "RightIndent").unwrap().parse().unwrap();
+    assert!((right - 288.5).abs() < 0.01, "{right}");
+    assert_eq!(
+        attr(&l[1].0, "TabSet").as_deref(),
+        Some("165.0:0:0,180.0:0:0")
+    );
+    assert!(udf.xml.matches(r#"bold="true""#).count() >= 4);
+}
+
+#[test]
+fn a_label_and_value_that_both_wrap_start_the_value_on_the_labels_last_line() {
+    let grid = [2600, 300, 6170];
+    let long = "Örnek mahkemenin örnek tarihli ve örnek sayılı kararı ile buna dayanan bütün işlemler; bu değer de kendi sütununa sığmaz.";
+    let body = table(
+        "",
+        &[row3(
+            &grid,
+            "İTİRAZA KONU KARAR",
+            &[p(r#"<w:jc w:val="both"/>"#, &r(long))],
+        )],
+        &grid,
+    );
+    let udf = to_udf(&package(&body, None), &ConvertOptions::default());
+    assert!(!udf.xml.contains("<table"));
+    let l = lines(&udf.xml);
+    assert_eq!(l[0].1, "İTİRAZA KONU");
+    assert_eq!(l[1].1, format!("KARAR⇥:⇥{long}"));
+    // Değer tek paragraf: alt satırları değer sütununun hizasından sürer.
+    assert_eq!(attr(&l[1].0, "Hanging").as_deref(), Some("145.0"));
+    assert_eq!(
+        attr(&l[1].0, "TabSet").as_deref(),
+        Some("130.0:0:0,145.0:0:0")
+    );
+    assert_eq!(l.len(), 2);
+}
+
+#[test]
+fn a_single_word_wider_than_its_column_breaks_inside_the_word() {
+    let word = "TEBLİĞTARİHİVEDİĞERBİLGİLER";
+    let body = table("", &[row(word, &[p("", &r("01.01.2026"))])], &GRID);
+    let udf = to_udf(&package(&body, None), &ConvertOptions::default());
+    assert!(!udf.xml.contains("<table"));
+    let l = lines(&udf.xml);
+    let (first, rest) = l[0].1.split_once("⇥:⇥").expect("ilk satır etiket ve değer");
+    assert_eq!(rest, "01.01.2026");
+    let joined: String = std::iter::once(first)
+        .chain(l[1..].iter().map(|(_, t)| t.as_str()))
+        .collect();
+    assert_eq!(joined, word);
+    assert!(l.len() >= 2);
+}
+
+/// Dikey ortalanmış etiket ilk satırında durur: blok tablodan iyidir.
+#[test]
+fn a_vertically_centred_label_next_to_two_values_still_becomes_lines() {
+    let body = table(
+        "",
+        &[format!(
+            "<w:tr>{}{}{}</w:tr>",
+            tc(
+                GRID[0],
+                r#"<w:vAlign w:val="center"/>"#,
+                &p("", &b("VEKİLLERİ"))
+            ),
+            tc(GRID[1], r#"<w:vAlign w:val="center"/>"#, &p("", &b(":"))),
+            tc(
+                GRID[2],
+                "",
+                &[
+                    p("", &r("Av. Birinci Avukat")),
+                    p("", &r("Av. İkinci Avukat"))
+                ]
+                .concat()
+            )
+        )],
+        &GRID,
+    );
+    let udf = to_udf(&package(&body, None), &ConvertOptions::default());
+    assert!(!udf.xml.contains("<table"));
+    let texts: Vec<String> = lines(&udf.xml).into_iter().map(|(_, t)| t).collect();
+    assert_eq!(
+        texts,
+        ["VEKİLLERİ⇥:⇥Av. Birinci Avukat", "Av. İkinci Avukat"]
+    );
+}
+
 // ------------------------------------------------------------------ tablo kalanlar
 
 #[test]
@@ -336,40 +471,7 @@ fn a_bordered_table_stays_a_table() {
 }
 
 #[test]
-fn a_label_too_long_for_its_column_keeps_the_table() {
-    // Sekmeli satırda uzun etiket ":" sütununu aşar ve hizayı bozardı.
-    let body = table(
-        "",
-        &[row(
-            "DAVALI İDARE VE KATILAN VEKİLİ",
-            &[p("", &r("Av. Örnek"))],
-        )],
-        &GRID,
-    );
-    let udf = to_udf(&package(&body, None), &ConvertOptions::default());
-    assert!(udf.xml.contains("<table"), "taşan etiket satıra çevrildi");
-}
-
-#[test]
-fn merged_cells_and_wide_text_columns_keep_the_table() {
-    // Birleşik hücre.
-    let merged = table(
-        "",
-        &[
-            format!(
-                "<w:tr>{}{}</w:tr>",
-                tc(
-                    GRID[0] + GRID[1],
-                    r#"<w:gridSpan w:val="2"/>"#,
-                    &p("", &r("A"))
-                ),
-                tc(GRID[2], "", &p("", &r("B")))
-            ),
-            row("C", &[p("", &r("D"))]),
-        ],
-        &GRID,
-    );
-    // Yan yana iki uzun metin sütunu.
+fn side_by_side_text_columns_keep_the_table() {
     let long = "Birinci sütunda birden çok satıra sarılan uzun bir açıklama metni yer alır.";
     let parallel = table(
         "",
@@ -380,10 +482,48 @@ fn merged_cells_and_wide_text_columns_keep_the_table() {
         )],
         &[4535, 4535],
     );
-    for body in [merged, parallel] {
-        let udf = to_udf(&package(&body, None), &ConvertOptions::default());
-        assert!(udf.xml.contains("<table"), "satıra çevrilmemeliydi");
-    }
+    let udf = to_udf(&package(&parallel, None), &ConvertOptions::default());
+    assert!(udf.xml.contains("<table"), "satıra çevrilmemeliydi");
+}
+
+/// Birleşik hücre kapladığı sütunların genişliğini alır: tabloyu kaplayan
+/// başlık satırı tablonun ortasında, iki sütunluk hücrenin yanındaki değer
+/// kendi sütununda.
+#[test]
+fn merged_cells_take_the_width_of_the_columns_they_span() {
+    let centred = |t: &str| p(r#"<w:jc w:val="center"/>"#, &b(t));
+    let body = table(
+        "",
+        &[
+            format!(
+                "<w:tr>{}</w:tr>",
+                tc(
+                    GRID[0] + GRID[1] + GRID[2],
+                    r#"<w:gridSpan w:val="3"/>"#,
+                    &centred("TEBLİGAT BİLGİLERİ")
+                )
+            ),
+            format!(
+                "<w:tr>{}{}</w:tr>",
+                tc(
+                    GRID[0] + GRID[1],
+                    r#"<w:gridSpan w:val="2"/>"#,
+                    &p("", &b("A"))
+                ),
+                tc(GRID[2], "", &p("", &r("B")))
+            ),
+            row("C", &[p("", &r("D"))]),
+        ],
+        &GRID,
+    );
+    let udf = to_udf(&package(&body, None), &ConvertOptions::default());
+    assert!(!udf.xml.contains("<table"), "{}", udf.xml);
+    let l = lines(&udf.xml);
+    let texts: Vec<&str> = l.iter().map(|(_, t)| t.as_str()).collect();
+    assert_eq!(texts, ["TEBLİGAT BİLGİLERİ", "A⇥B", "C⇥:⇥D"]);
+    assert_eq!(attr(&l[0].0, "Alignment").as_deref(), Some("1"));
+    assert_eq!(attr(&l[0].0, "LeftIndent"), None);
+    assert_eq!(attr(&l[1].0, "TabSet").as_deref(), Some("136.05:0:0"));
 }
 
 #[test]

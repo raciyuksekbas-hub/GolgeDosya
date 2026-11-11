@@ -16,6 +16,7 @@
 pub mod convert;
 pub mod docx;
 pub mod error;
+mod font_metrics;
 mod layout_tables;
 pub mod model;
 pub mod security;

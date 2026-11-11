@@ -8,21 +8,32 @@
 //! sütununda asılı girinti ve kenar boşluğundan ölçülen sekme durakları
 //! (`tests/corpus.rs` c50, UYAP kabulüne hazırlanan biçim).
 //!
-//! Yalnız böyle yazıldığında Word'deki görünüşü koruyan tablolar çevrilir:
-//! kenarlıksız, en çok 4 sütunlu, birleşik hücresi olmayan, hücrelerinde yalnız
-//! paragraf bulunan ve son sütun dışındaki her hücre satırı tek satıra sığan
-//! tablolar. Uzun metinli sütunlar, resim, iç içe tablo ya da liste öğesinin
-//! etiketle aynı satıra düştüğü durumlar tabloyu olduğu gibi bırakır: o zaman
+//! Çevrilen tablolar: kenarlıksız, en çok 4 sütunlu ve hücrelerinde yalnız
+//! paragraf bulunan tablolar. Birleşik hücre kapladığı sütunların genişliğini alır.
+//!
+//! Sütununa sığmayan etiket Word'deki gibi kendi sütununda alt satıra iner. Saha:
+//! "İSTİNAF EDEN DAVACI (ALACAKLI)" etiketi sütununa sığmadığı için bütün başlık
+//! tablo kalıyordu; kullanıcının dilekçelerindeki kenarlıksız tabloların dörtte
+//! biri bu yüzden blok oluyordu. Etiket de değer de sarıyorsa değer etiketin son
+//! satırından başlar: değer tek paragraf kalır, UYAP'ta düzenlenince akar. Dikey
+//! hizalama yok sayılır, etiket ilk satırında durur: blok tablodan iyidir.
+//!
+//! Tablo olarak kalanlar: kenarlıklı tablo, resim, iç içe tablo, sekme içeren
+//! ya da liste öğesi olan etiket ve yan yana iki metin sütunu
+//! (etiket sütunu değer sütunundan dar değilken ikisi de sarıyorsa). Bunlarda
 //! sekmeli satır Word'deki görünüşü bozardı.
 
+use crate::font_metrics::{char_width, text_width};
 use crate::model::*;
 use crate::warnings::{Warning, WarningCode, WarningSink};
 
 /// Başlık blokları 2 (etiket, değer) ya da 3 (etiket, ":", değer) sütunludur;
 /// tek sütunlu kenarlıksız tablo yalnız bir paragraf kutusudur.
 const MAX_COLUMNS: usize = 4;
-/// Yazı boyutu bilinmeyen metin için (UDF varsayılanı).
-const DEFAULT_SIZE_PT: f32 = 12.0;
+/// Bir etiketin sarılabileceği en çok satır. Daha uzunu etiket değil metindir.
+const MAX_LABEL_LINES: usize = 8;
+/// Sekmenin bir sonraki durağa gitmesi için metin durağın biraz önünde bitmeli.
+pub(crate) const TAB_CLEARANCE_PT: f32 = 2.0;
 
 /// Gövdedeki çevrilebilir görünmez tabloları sekmeli paragraflara çevirir.
 /// `text_width_pt`: sayfanın yazı alanı genişliği.
@@ -87,10 +98,22 @@ fn flatten(t: &Table, text_width: f32) -> Option<Vec<Paragraph>> {
 
     let mut out = Vec::new();
     for row in &t.rows {
-        if row.cells.len() != cols || row.cells.iter().any(|c| c.grid_span != 1) {
+        // Her hücrenin yatay sınırları; birleşik hücre kapladığı sütunların
+        // tamamıdır (başlık satırı bütün tabloyu kaplayabilir).
+        let mut bounds = Vec::with_capacity(row.cells.len());
+        let mut grid = 0;
+        for cell in &row.cells {
+            let span = cell.grid_span.max(1);
+            if grid + span > cols {
+                return None;
+            }
+            bounds.push((edges[grid], edges[grid + span]));
+            grid += span;
+        }
+        if bounds.is_empty() {
             return None;
         }
-        let mut cells: Vec<Vec<Paragraph>> = Vec::with_capacity(cols);
+        let mut cells: Vec<Vec<Paragraph>> = Vec::with_capacity(row.cells.len());
         for cell in &row.cells {
             let mut ps = Vec::with_capacity(cell.blocks.len());
             for b in &cell.blocks {
@@ -103,36 +126,185 @@ fn flatten(t: &Table, text_width: f32) -> Option<Vec<Paragraph>> {
             }
             cells.push(ps);
         }
+        wrap_labels(&mut cells, &bounds)?;
         let lines = cells.iter().map(Vec::len).max().unwrap_or(0).max(1);
-        // Dikey ortalanmış bir etiket, çok satırlı bir değerin yanında
-        // ortada durur; sekmeli satırda ilk satıra çıkardı.
-        if lines > 1
-            && row
-                .cells
-                .iter()
-                .any(|c| c.vertical_align != CellVAlign::Top)
-        {
-            return None;
-        }
         for i in 0..lines {
-            let segments: Vec<(usize, &Paragraph)> = (0..cols)
+            let segments: Vec<(usize, &Paragraph)> = (0..cells.len())
                 .filter_map(|k| cells[k].get(i).filter(|p| has_ink(p)).map(|p| (k, p)))
                 .collect();
-            let blank = (0..cols).find_map(|k| cells[k].get(i));
-            out.push(line(&segments, blank, &edges, text_width)?);
+            let blank = (0..cells.len()).find_map(|k| cells[k].get(i));
+            out.push(line(&segments, blank, &bounds, edges[0], text_width)?);
         }
     }
     Some(out)
 }
 
+/// Satırın son dolu hücresinden önceki hücrelerde sütununa sığmayan paragraf,
+/// Word'deki gibi sütunun içinde alt satırlara bölünür. `None`: bölünemiyor ya da
+/// satır sekmeli satırla gösterilemiyor, tablo kalmalı.
+fn wrap_labels(cells: &mut [Vec<Paragraph>], bounds: &[(f32, f32)]) -> Option<()> {
+    let Some(last) = cells.iter().rposition(|ps| ps.iter().any(has_ink)) else {
+        return Some(());
+    };
+    let column = |k: usize| bounds[k].1 - bounds[k].0;
+    let mut wrapped = Vec::new();
+    for k in 0..last {
+        // Etiketin sonundaki boşluklar Word'de hücrenin içinde görünmez; sekmeli
+        // satırda ise sekmeyi bir sonraki durağa itiyordu ("Tel No       ").
+        cells[k].iter_mut().for_each(trim_trailing_spaces);
+        // Yalnız yanında başka hücrenin metni olan satır bölünür; yanı boş
+        // satır kendi sütununda tek paragraf olarak sarar.
+        let partners = cells[k + 1..=last].iter().map(Vec::len).max().unwrap_or(0);
+        let mut lines = Vec::with_capacity(cells[k].len() + 1);
+        let mut did = false;
+        for p in std::mem::take(&mut cells[k]) {
+            if !has_ink(&p)
+                || lines.len() >= partners
+                || fits(&p, column(k) - first_line_offset(&p).max(0.0))
+            {
+                lines.push(p);
+            } else {
+                let indent = first_line_offset(&p).max(p.props.left_indent_pt).max(0.0);
+                lines.extend(wrap(&p, column(k) - indent - TAB_CLEARANCE_PT)?);
+                did = true;
+            }
+        }
+        cells[k] = lines;
+        if did {
+            wrapped.push(k);
+        }
+    }
+    let value_wraps = cells[last].iter().any(|p| {
+        has_ink(p)
+            && !fits(
+                p,
+                column(last) - first_line_offset(p).max(0.0) - p.props.right_indent_pt,
+            )
+    });
+    if wrapped.is_empty() || !value_wraps {
+        return Some(());
+    }
+    // Yan yana iki metin sütunu sekmeli satırla gösterilemez.
+    if wrapped.iter().any(|&k| column(k) >= column(last)) {
+        return None;
+    }
+    // Değer tek paragraf kalsın diye etiketin son satırından başlar; önceki
+    // hücreler (etiket, ":") son satırlarına hizalanır.
+    let head = cells[..last].iter().map(Vec::len).max().unwrap_or(1);
+    for (k, cell) in cells.iter_mut().enumerate().take(last + 1) {
+        let pad = if k == last {
+            head - 1
+        } else {
+            head - cell.len()
+        };
+        cell.splice(0..0, std::iter::repeat(Paragraph::default()).take(pad));
+    }
+    Some(())
+}
+
+fn trim_trailing_spaces(p: &mut Paragraph) {
+    while let Some(Run::Text { text, .. }) = p.runs.last_mut() {
+        let kept = text.trim_end_matches([' ', '\u{a0}']).len();
+        text.truncate(kept);
+        if !text.is_empty() {
+            break;
+        }
+        p.runs.pop();
+    }
+}
+
+/// Paragrafı, her satırı `limit` genişliğe sığan satırlara böler: sözcük
+/// sınırında, tek başına sığmayan sözcükte harf sınırında (Word hücrede böyle
+/// sarar). Sekme ya da görsel taşıyan paragraf bölünmez.
+fn wrap(p: &Paragraph, limit: f32) -> Option<Vec<Paragraph>> {
+    let mut chars: Vec<(usize, char)> = Vec::new();
+    for (i, r) in p.runs.iter().enumerate() {
+        let Run::Text { text, .. } = r else {
+            return None;
+        };
+        chars.extend(text.chars().map(|c| (i, c)));
+    }
+    let props_of = |i: usize| match &p.runs[i] {
+        Run::Text { props, .. } => props,
+        _ => unreachable!("yalnız metin parçaları"),
+    };
+    let n = chars.len();
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    while start < n {
+        let (mut width, mut i, mut space) = (0.0, start, None);
+        while i < n {
+            let (run, c) = chars[i];
+            let w = char_width(c, props_of(run));
+            if c == ' ' {
+                space = Some(i);
+            } else if width + w > limit && i > start {
+                break;
+            }
+            width += w;
+            i += 1;
+        }
+        if i == n {
+            ranges.push(start..n);
+            break;
+        }
+        let end = match space {
+            Some(s) if s > start => s,
+            _ => i,
+        };
+        ranges.push(start..end);
+        start = end;
+        while start < n && chars[start].1 == ' ' {
+            start += 1;
+        }
+    }
+    if ranges.len() > MAX_LABEL_LINES {
+        return None;
+    }
+    let count = ranges.len();
+    Some(
+        ranges
+            .into_iter()
+            .enumerate()
+            .map(|(line, range)| {
+                let mut runs: Vec<Run> = Vec::new();
+                let mut current = usize::MAX;
+                for &(run, c) in &chars[range] {
+                    match runs.last_mut() {
+                        Some(Run::Text { text, .. }) if run == current => text.push(c),
+                        _ => runs.push(Run::Text {
+                            text: c.to_string(),
+                            props: props_of(run).clone(),
+                        }),
+                    }
+                    current = run;
+                }
+                let mut props = p.props.clone();
+                if line > 0 {
+                    props.first_line_indent_pt = 0.0;
+                    props.hanging_pt = 0.0;
+                    props.space_before_pt = 0.0;
+                    props.list = None;
+                }
+                if line + 1 < count {
+                    props.space_after_pt = 0.0;
+                }
+                Paragraph { props, runs }
+            })
+            .collect(),
+    )
+}
+
 /// Tablonun bir satırının (hücrelerin i. paragraflarının) tek paragrafı.
+/// `bounds`: satırın hücrelerinin kenar boşluğundan ölçülen sol ve sağ kenarı;
+/// `line_start`: tablonun sol kenarı.
 fn line(
     segments: &[(usize, &Paragraph)],
     blank: Option<&Paragraph>,
-    edges: &[f32],
+    bounds: &[(f32, f32)],
+    line_start: f32,
     text_width: f32,
 ) -> Option<Paragraph> {
-    let line_start = edges[0];
     let Some(&(last_col, last)) = segments.last() else {
         // Hiçbir hücrede bu satırda metin yok: boş satır, aralığıyla.
         let mut props = blank.map(|p| p.props.clone()).unwrap_or_default();
@@ -147,13 +319,13 @@ fn line(
             runs: vec![],
         });
     };
-    let right_of = |k: usize| (text_width - edges[k + 1]).max(0.0);
+    let right_of = |k: usize| (text_width - bounds[k].1).max(0.0);
 
     // Yalnız bir hücrede metin var ve içinde sekme yok: paragraf olduğu gibi,
     // girintileri sütununa kaydırılarak (ortalanmış imza bloğu da böyle kalır).
     if segments.len() == 1 && !has_tab(last) {
         let mut props = last.props.clone();
-        props.left_indent_pt += edges[last_col];
+        props.left_indent_pt += bounds[last_col].0;
         props.right_indent_pt += right_of(last_col);
         return Some(Paragraph {
             props,
@@ -177,20 +349,20 @@ fn line(
         if !wraps
             && !fits(
                 p,
-                edges[col + 1] - edges[col] - first_line_offset(p).max(0.0),
+                bounds[col].1 - bounds[col].0 - first_line_offset(p).max(0.0),
             )
         {
             return None; // sütununa sığmayan parça bir sonraki durağı aşardı
         }
         let (stop, align) = match p.props.alignment {
             Alignment::Left | Alignment::Justify => {
-                (edges[col] + first_line_offset(p), TabAlign::Left)
+                (bounds[col].0 + first_line_offset(p), TabAlign::Left)
             }
             Alignment::Center => (
-                round2((edges[col] + edges[col + 1]) / 2.0),
+                round2((bounds[col].0 + bounds[col].1) / 2.0),
                 TabAlign::Center,
             ),
-            Alignment::Right => (edges[col + 1] - p.props.right_indent_pt, TabAlign::Right),
+            Alignment::Right => (bounds[col].1 - p.props.right_indent_pt, TabAlign::Right),
         };
         if n == 0 && col == 0 && align == TabAlign::Left {
             first_line_at = stop; // ilk parça satırın başında, sekmesiz
@@ -212,13 +384,13 @@ fn line(
     props.hanging_pt = 0.0;
     if matches!(last.props.alignment, Alignment::Left | Alignment::Justify) {
         // Değer uzunsa alt satırlar değer sütununun hizasından devam eder.
-        props.left_indent_pt = edges[last_col] + last.props.left_indent_pt;
+        props.left_indent_pt = bounds[last_col].0 + last.props.left_indent_pt;
         props.right_indent_pt = right_of(last_col) + last.props.right_indent_pt;
         // Değerin kendi duraklarıyla Word'ün asılı girintideki örtük durağı
         // (madde etiketinden sonraki sekme buraya gider).
         for s in &last.props.tab_stops {
             stops.push(TabStop {
-                pos_pt: edges[last_col] + s.pos_pt,
+                pos_pt: bounds[last_col].0 + s.pos_pt,
                 align: s.align,
             });
         }
@@ -322,31 +494,10 @@ fn fits(p: &Paragraph, available: f32) -> bool {
     let mut width = 0.0;
     for r in &p.runs {
         match r {
-            Run::Text { text, props } => {
-                let size = props.font_size_pt.unwrap_or(DEFAULT_SIZE_PT);
-                let bold = if props.bold { 1.05 } else { 1.0 };
-                width += text.chars().map(char_em).sum::<f32>() * size * bold;
-            }
+            Run::Text { text, props } => width += text_width(text, props),
             // Sekme ya da satır sonu taşıyan parça bir satıra indirgenemez.
             Run::Tab { .. } | Run::LineBreak { .. } | Run::Image(_) => return false,
         }
     }
-    // Sekmenin bir sonraki durağa gitmesi için parça durağın biraz önünde bitmeli.
-    width <= available - 2.0
-}
-
-/// Bir karakterin yaklaşık genişliği (em), Times New Roman'a göre ve biraz
-/// cömert: büyük harf ~0,67, küçük harf ~0,44, rakam 0,5, boşluk 0,25.
-fn char_em(c: char) -> f32 {
-    if c == ' ' {
-        0.25
-    } else if c.is_uppercase() {
-        0.7
-    } else if c.is_ascii_digit() {
-        0.5
-    } else if c.is_alphabetic() {
-        0.47
-    } else {
-        0.33
-    }
+    width <= available - TAB_CLEARANCE_PT
 }
