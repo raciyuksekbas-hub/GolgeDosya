@@ -20,6 +20,7 @@ mod font_metrics;
 mod layout_tables;
 pub mod model;
 pub mod security;
+mod typed_labels;
 pub mod udf;
 pub mod units;
 pub mod warnings;

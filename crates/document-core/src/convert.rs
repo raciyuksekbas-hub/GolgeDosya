@@ -426,6 +426,9 @@ pub fn convert_bytes_with(
     match direction {
         Direction::DocxToUdf => {
             let mut doc: Document = docx::reader::read_docx(input, warn)?;
+            for section in &mut doc.sections {
+                crate::typed_labels::align_typed_labels(&mut section.blocks);
+            }
             // Önce yerleşim tabloları satıra çevrilir: oluşan paragraflar da
             // gövde paragrafıdır ve dilekçe aralığını alır.
             if options.layout_tables == LayoutTables::Lines {
