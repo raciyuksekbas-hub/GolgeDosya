@@ -104,7 +104,7 @@ pub fn reopen_strict(path: &Path) -> Result<Document, String> {
 /// Sayfadaki `(Mk N)` işareti: corpus'un her sayfasına kimliği yazılır. Filigran
 /// ve numara ayrı içerik akışı olarak eklendiğinden işaret korunur.
 pub fn page_marker(doc: &Document, page: ObjectId) -> Option<u32> {
-    let content = doc.get_page_content(page).ok()?;
+    let content = doc.get_page_content(page);
     let text = String::from_utf8_lossy(&content);
     let after = text.split("(Mk ").nth(1)?;
     after.split(')').next()?.trim().parse().ok()

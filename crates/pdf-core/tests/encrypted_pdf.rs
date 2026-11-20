@@ -180,7 +180,7 @@ fn decrypted_content_is_really_readable() {
     let bytes = owner_protected_pdf(1);
     let loaded = pdf_core::pdf::load_pdf_tolerant(&bytes, "findeks.pdf").expect("açılmalı");
     let page = *loaded.document.get_pages().values().next().unwrap();
-    let content = loaded.document.get_page_content(page).expect("içerik");
+    let content = loaded.document.get_page_content(page);
     assert!(
         String::from_utf8_lossy(&content).contains("Sentetik sayfa 1"),
         "içerik çözülmemiş: şifreli baytlar okunuyor"

@@ -1,31 +1,64 @@
-//! Ayrıştırma öncesi yapısal güvenlik taraması.
+//! Yapısal güvenlik taraması ve lopdf'in tek giriş kapısı: ayrıştırmadan önce
+//! ham baytlar, yüklerken nesne akışları, çizimden önce içerik akışları.
 //!
-//! lopdf 0.34 ayrıştırıcısı iç içe dizileri/sözlükleri ve dolaylı `/Length`
-//! başvurularını ÖZYİNELEMELİ çözer. Yeterince derin bir girdi, komutları
-//! taşıyan iş parçacığının yığınını taşırır; Rust yığın taşmasını `abort` ile
-//! karşılar — yakalanamaz, süreç ölür. `load_pdf_tolerant`'ın çağırdığı
-//! `LopdfDoc::load_mem` bu özyinelemeye açıktır.
+//! lopdf 0.42'den önceki ayrıştırıcı iç içe dizileri/sözlükleri SINIRSIZ
+//! özyinelemeyle çözüyordu (RUSTSEC-2026-0187). Yeterince derin bir girdi,
+//! komutları taşıyan iş parçacığının yığınını taşırıyor; Rust yığın taşmasını
+//! `abort` ile karşılar — yakalanamaz, süreç ölür. lopdf 0.42'den beri her
+//! ayrıştırma yolu (dolaylı nesne, nesne akışı üyesi, içerik akışı işleneni)
+//! derinliği kendisi sınırlar (`reader.rs`, `MAX_NESTING_DEPTH` = 100) ve aşan
+//! nesneyi hata sayar. Yuvalanmadan gelen çökme artık lopdf içinde önlenir.
 //!
-//! Bu tarama, ayrıştırıcı çağrılmadan ÖNCE bir kez baytların üzerinden geçer ve
-//! iki patolojik derinliği üst sınırla reddeder. Sınırlar gerçek belgelerin çok
-//! üstünde (gerçekte iç içelik ~30, `/Length` zinciri 1), yığın taşması
-//! eşiğinin çok altındadır (2 MiB iş parçacığında derinlik ~700, zincir ~200'de
-//! taşar). Kurtarma değil, çökmeyi önlemedir: karar deterministiktir.
+//! Bu modül derinlemesine savunma olarak kalır ve kararı lopdf'in SESSİZ
+//! davranışına bırakmaz: lopdf sınırı aşan nesne akışı üyesini atlayıp belgeyi
+//! eksik nesneyle açar; burada ise patolojik derinlik taşıyan belge BÜTÜNÜYLE ve
+//! açık bir sebeple reddedilir. Kurtarma değil, rettir: karar deterministiktir
+//! ve lopdf sürümüne bağlı değildir. Sınırlar gerçek belgelerin çok üstündedir
+//! (gerçekte iç içelik ~30, `/Length` zinciri 1).
 //!
-//! Ham bayt taraması akış gövdelerini atlar; oysa lopdf yüklerken her
-//! `/Type/ObjStm` akışını açıp İÇİNDEKİ nesneleri aynı özyinelemeli
-//! ayrıştırıcıyla okur (ve bilinmeyen bir süzgeçte akışı açmadan ham hâliyle
-//! okur). 71 baytlık sıkıştırılmış bir nesne akışı 20 000 derinlikte bir dizi
-//! taşıyabilir ve ham taramadan geçip süreci düşürüyordu. Bu yüzden belge
-//! yalnız [`load_mem_guarded`] ile açılır: lopdf'in yükleme kancası her nesne
-//! akışını lopdf'in OKUYACAĞI biçimde (açılmış ya da ham) görür ve derinliği
-//! ölçer. Sayfa içerik akışları yüklemede ayrıştırılmaz; onları çözen kod
-//! önce [`exceeds_nesting`] sorar.
+//! Dört denetim:
+//!
+//! 1. [`check_structure`] ayrıştırıcı çağrılmadan ÖNCE baytların üzerinden bir
+//!    kez geçer: yuvalanma derinliği ve dolaylı `/Length` başvuru zinciri.
+//!    Zincir denetiminin lopdf'te karşılığı YOKTUR: lopdf 0.47 de `/Length M G R`
+//!    başvurusunu özyinelemeli çözer ve yalnız döngüyü yakalar, zincirin
+//!    uzunluğunu sınırlamaz (parser `stream` → `Reader::get_object`). 2 MiB'lık
+//!    bir iş parçacığı ~200 halkada taşar; buradaki sınır 50'dir.
+//! 2. Ham tarama akış gövdelerini atlar; nesne akışlarının (`/Type/ObjStm`)
+//!    içini [`load_mem_guarded`]'ın yükleme kancası ölçer. 71 baytlık
+//!    sıkıştırılmış bir nesne akışı 20 000 derinlikte bir dizi taşıyabilir ve
+//!    lopdf 0.34'te ham taramadan geçip süreci düşürüyordu.
+//! 3. Sayfa içerik akışları yüklemede ayrıştırılmaz; onları çözen kod önce
+//!    [`exceeds_nesting`] sorar.
+//! 4. Kabul sınırı: [`load_mem_guarded`] lopdf'i KATI kipte çağırır. Aşağıda.
+//!
+//! ## Kabul sınırı (lopdf 0.47 katı kip)
+//!
+//! lopdf 0.47'nin varsayılan (hoşgörülü) kipi hasarlı dosyayı SESSİZCE onarır:
+//! bozuk xref'i nesne tarayarak yeniden kurar, kaymış `startxref`/`/Prev`
+//! ofsetini yakındaki xref'e düzeltir, yanlış `/Length`'i `endstream`
+//! konumundan yeniden hesaplar, 19 baytlık xref girişlerini kabul eder,
+//! `%PDF-` öncesindeki çöpü atlar. Toleranslı yükleyicinin ilkesi bunun tersidir
+//! (bkz. `tolerant.rs`): bilinmeyen hasar reddedilir, nesne taramalı onarım
+//! kasten kapalıdır, bilinen iki onarım (xref satır sonu, `startxref`) ayrı
+//! katmanda yapılır ve kullanıcıya not olarak söylenir. `/Length` onarımı
+//! yüklemeden sonra görülemez bile: lopdf akış sözlüğüne yeni uzunluğu yazar.
+//!
+//! Bu yüzden lopdf katı kipte çağrılır. Katı kip 0.34'ün ayrıştırma kurallarıyla
+//! aynıdır (xref girişi yalnız `SP CR`/`SP LF`/`CR LF` ile biter, `/Length`
+//! onarılmaz, ofset düzeltilmez, xref yeniden kurulmaz) ve `%PDF-`'in ilk baytta
+//! olması şartı 0.34'teki gibi burada ayrıca aranır. Tek fark: 0.34 tek tek
+//! ayrıştırılamayan nesneleri ATLARDI (sayfa grafiği dışındaysa belge "sarkan
+//! başvuru" notuyla açılırdı); katı kip böyle bir belgeyi bütünüyle reddeder.
 
 use crate::error::{EklerError, Result};
-use lopdf::{Document as LopdfDoc, Object, ObjectId};
+use lopdf::{
+    Document as LopdfDoc, LoadOptions, Object, ObjectId, ParseError, DEFAULT_MAX_DECOMPRESSED_SIZE,
+};
 
-/// İç içe dizi/sözlük derinliği üst sınırı.
+/// İç içe dizi/sözlük derinliği üst sınırı. lopdf'in kendi sınırıyla
+/// (`MAX_NESTING_DEPTH`) aynı büyüklükte: lopdf'in okuyabildiği hiçbir belge
+/// burada derinlik yüzünden reddedilmez.
 const MAX_NESTING: usize = 100;
 /// Dolaylı `/Length` başvuru zincirinin derinlik üst sınırı.
 const MAX_LENGTH_CHAIN: usize = 50;
@@ -34,22 +67,27 @@ const MAX_LENGTH_CHAIN: usize = 50;
 /// aranır ve belge reddedilir.
 const REJECTED_OBJECT_STREAM: &[u8] = b"GolgeDosyaReddedilenNesneAkisi";
 
-/// Ham tarama + nesne akışı taramasıyla lopdf yüklemesi.
+/// Ham tarama + nesne akışı taramasıyla, katı kipte lopdf yüklemesi.
 ///
 /// Dış `Result` güvenlik reddidir (belge açılmaz, onarım da denenmez); iç
 /// `Result` lopdf'in ayrıştırma sonucudur (çağıran onarım katmanına geçebilir).
+/// Kabul sınırı için modül belgesine bakın.
 pub fn load_mem_guarded(bytes: &[u8]) -> Result<std::result::Result<LopdfDoc, lopdf::Error>> {
     check_structure(bytes)?;
-    let parsed = lopdf::Reader {
-        buffer: bytes,
-        document: LopdfDoc::new(),
+    // lopdf 0.47 başlıktan önceki çöpü katı kipte de atlar; 0.34 atlamazdı.
+    if !bytes.starts_with(b"%PDF-") {
+        return Ok(Err(ParseError::InvalidFileHeader.into()));
     }
-    .read(Some(neutralize_deep_object_stream));
+    let options = LoadOptions {
+        strict: true,
+        ..LoadOptions::with_filter(flag_deep_object_stream)
+    };
+    let parsed = LopdfDoc::load_mem_with_options(bytes, options);
     if let Ok(doc) = &parsed {
         let rejected = doc
             .objects
             .values()
-            .any(|o| matches!(o, Object::Stream(s) if s.dict.type_is(REJECTED_OBJECT_STREAM)));
+            .any(|o| matches!(o, Object::Stream(s) if s.dict.has_type(REJECTED_OBJECT_STREAM)));
         if rejected {
             return Err(EklerError::InvalidPdf(format!(
                 "PDF nesne akışındaki yuvalanma güvenli sınırı aşıyor (> {MAX_NESTING}); belge açılmadı"
@@ -64,22 +102,40 @@ pub fn exceeds_nesting(bytes: &[u8]) -> bool {
     max_nesting_depth(bytes) > MAX_NESTING
 }
 
-/// lopdf 0.34 yükleme kancası (`FilterFunc`).
+/// Yükleme kancası (`lopdf::FilterFunc`): derin nesne akışını işaretler.
 ///
-/// lopdf kancayı iki yerde çağırır: (1) xref'teki her nesne için — dönüş
-/// değerinden yalnız `None` olup olmadığına bakar, kullandığı `&mut` nesnedir;
-/// (2) nesne akışından çıkan her nesne için — burada DÖNÜŞ değerini kullanır.
-/// Nesne akışının üyeleri akış olamaz (PDF 7.5.7), dolayısıyla akış olmayan her
-/// nesne aynen döndürülür; akışlar yalnız (1)'de gelir ve orada dönüş değeri
-/// atıldığı için büyük akış gövdesi kopyalanmaz.
-fn neutralize_deep_object_stream(id: ObjectId, object: &mut Object) -> Option<(ObjectId, Object)> {
+/// lopdf 0.34'te kanca, akışı lopdf açmadan BOŞALTMAK zorundaydı; yoksa
+/// özyinelemeli ayrıştırıcı yığını taşırırdı. 0.47 derinliği kendisi sınırladığı
+/// için kancanın tek işi artık akışı işaretlemektir: tür değişince lopdf onu
+/// nesne akışı saymaz, içini açmaz ve akış belgede kalır; [`load_mem_guarded`]
+/// onu bulup reddeder. (Kanca `Result` döndüremez, `fn` işaretçisi olduğu için
+/// durum da taşıyamaz; ret kararını belgenin kendisi taşır.)
+///
+/// lopdf kancayı iki yerde çağırır (`reader.rs`, `load_objects_raw`): (1) xref'teki
+/// her nesne için — dönüş değerinden yalnız `None` olup olmadığına bakar,
+/// kullandığı `&mut` nesnedir; (2) nesne akışından çıkan her üye için — burada
+/// DÖNÜŞ değerini kullanır. Nesne akışının üyeleri akış olamaz (PDF 7.5.7),
+/// dolayısıyla akış olmayan her nesne aynen döndürülür; akışlar yalnız (1)'de
+/// gelir ve orada dönüş değeri atıldığı için büyük akış gövdesi kopyalanmaz.
+/// lopdf bu sözleşmeyi değiştirirse `object_stream_members_survive_the_guarded_load`
+/// düşer. Şifreli belgelerde lopdf 0.47 kancayı hiç çağırmaz: onların nesne
+/// akışlarını, çözdükten sonra, yalnız lopdf'in kendi derinlik sınırı korur.
+/// Kancalı yüklemenin bir yan etkisi de lopdf'in "sayfa ağacı yüklenmedi"
+/// durumunda xref'i yeniden kurmamasıdır; katı kip bunu zaten kapatır.
+///
+/// Akış, lopdf'in yüklemede uyguladığı açma sınırıyla
+/// (`DEFAULT_MAX_DECOMPRESSED_SIZE`) açılır; sınırsız açma, lopdf'in
+/// sıkıştırma bombasına karşı koyduğu sınırı kancada delerdi. Sınırı aşan akışı
+/// lopdf zaten reddeder ve yükleme başarısız olur. Süzgeci çözülemeyen akış ham
+/// içeriğiyle ölçülür: lopdf 0.34 böyle bir nesne akışını ham hâliyle
+/// ayrıştırırdı, 0.47 onu hiç açmadan atar. İkisinde de ham içerik ölçülür:
+/// fazla ret güvenli yöndür ve karar lopdf sürümüne bağlı kalmaz.
+fn flag_deep_object_stream(id: ObjectId, object: &mut Object) -> Option<(ObjectId, Object)> {
     let Object::Stream(stream) = object else {
         return Some((id, object.clone()));
     };
-    if stream.dict.type_is(b"ObjStm") {
-        // `ObjectStream::new` ile aynı karar: süzgeç çözülebiliyorsa açılmış
-        // içerik, çözülemiyorsa ham içerik ayrıştırılır.
-        let deep = match stream.decompressed_content() {
+    if stream.dict.has_type(b"ObjStm") {
+        let deep = match stream.decompressed_content_with_limit(DEFAULT_MAX_DECOMPRESSED_SIZE) {
             Ok(content) => exceeds_nesting(&content),
             Err(_) => exceeds_nesting(&stream.content),
         };
@@ -87,7 +143,6 @@ fn neutralize_deep_object_stream(id: ObjectId, object: &mut Object) -> Option<(O
             stream
                 .dict
                 .set("Type", Object::Name(REJECTED_OBJECT_STREAM.to_vec()));
-            stream.set_content(Vec::new());
         }
     }
     Some((id, Object::Null))
@@ -463,7 +518,9 @@ mod tests {
     #[test]
     fn deep_nesting_inside_compressed_object_stream_is_rejected_before_parsing() {
         // 20 000 derinlik 2 MiB'lık bir rayon iş parçacığını kesin taşırır:
-        // koruma çalışmazsa bu test süreci `abort` ile düşürür.
+        // lopdf 0.34'te koruma çalışmazsa bu test süreci `abort` ile
+        // düşürürdü. 0.47 derinliği kendisi sınırlar ve üyeyi sessizce atar;
+        // test artık belgenin eksik üyeyle açılmayıp REDDEDİLDİĞİNİ ölçer.
         let pdf = pdf_with_object_stream(&nested(20_000), Some("FlateDecode"), true);
         assert!(
             check_structure(&pdf).is_ok(),
@@ -474,7 +531,8 @@ mod tests {
 
     #[test]
     fn deep_nesting_in_object_stream_with_unknown_or_no_filter_is_rejected() {
-        // Süzgeç çözülemezse lopdf akışı ham hâliyle ayrıştırır.
+        // Süzgeç çözülemezse lopdf 0.34 akışı ham hâliyle ayrıştırırdı (0.47
+        // akışı atar); koruma iki durumda da ham içeriği ölçüp reddeder.
         let unknown = pdf_with_object_stream(&nested(20_000), Some("Bilinmeyen"), false);
         assert!(load_mem_guarded(&unknown).is_err());
         let plain = pdf_with_object_stream(&nested(20_000), None, false);

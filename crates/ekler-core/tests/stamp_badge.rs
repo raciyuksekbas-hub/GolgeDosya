@@ -50,7 +50,7 @@ fn gaps(exhibit: usize, page: usize) -> (f32, f32) {
     let config = ekler_core::StampConfig::default();
     ekler_core::pdf::stamp::apply_stamp_to_document(&mut d, exhibit, page, &config).unwrap();
     let page_id = *d.get_pages().values().next().unwrap();
-    let ops = Content::decode(&d.get_page_content(page_id).unwrap())
+    let ops = Content::decode(&d.get_page_content(page_id))
         .unwrap()
         .operations;
     // Rozet: doldurulan dikdörtgen ("re" hemen ardından "f"). İlk "re" sayfa

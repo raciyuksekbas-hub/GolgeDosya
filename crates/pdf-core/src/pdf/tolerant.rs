@@ -19,7 +19,8 @@ pub enum RepairStrategy {
 }
 
 /// Çok katmanlı toleranslı PDF yükleyici:
-/// Tier 1: Standart katı parse (lopdf::Document::load_mem)
+/// Tier 1: Standart katı parse (`guard::load_mem_guarded`: lopdf katı kipte;
+///   lopdf 0.42+'nın varsayılan kipindeki sessiz onarımlar burada kapalıdır)
 /// Tier 2: Bellek içi normalizasyon ve yapısal onarım:
 ///   - Xref satır sonu normalizasyonu (19-baytlık veya boşluksuz `f\n` / `n\n` girişleri 20-bayt standardına getirme)
 ///   - Dosya sonu (%%EOF) sonrasındaki artık/çöp baytların temizlenmesi

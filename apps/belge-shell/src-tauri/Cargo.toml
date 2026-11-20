@@ -43,7 +43,7 @@ ikincigoz-core = { workspace = true, optional = true }
 # dondurulmuş baseline (duzenek-premerge-2026-09-07) parity kaynağıdır.
 # GEÇİCİ kardeş-dizin yolu; DüzenEk emekliye ayrılınca kalkar.
 ekler-core = { workspace = true, optional = true }
-lopdf = { version = "0.34", optional = true }
+lopdf = { workspace = true, optional = true }
 
 # Windows: WebView2'nin tarayıcı kısayollarını (F5, Ctrl+R, Ctrl+S) süzmek için
 # (bkz. src/browser_surface.rs). İkisi de Tauri'nin kendi bağımlılık ağacında

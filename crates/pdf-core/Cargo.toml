@@ -21,4 +21,4 @@ thiserror = "2"
 [dev-dependencies]
 # Sentetik ŞİFRELİ PDF fixture üretmek için (standart güvenlik handler'ı).
 # lopdf zaten aynı sürümü kullanıyor; yeni bir üçüncü taraf ağaç girmiyor.
-md-5 = "0.10"
+md-5 = "0.11"
