@@ -271,7 +271,7 @@ fn reopen(path: &Path) -> Document {
 fn markers(doc: &Document) -> Vec<String> {
     let mut out = Vec::new();
     for (_, id) in doc.get_pages() {
-        let content = doc.get_page_content(id).unwrap();
+        let content = doc.get_page_content(id);
         let text = String::from_utf8_lossy(&content);
         let m = text
             .split("(Sayfa ")
@@ -1364,9 +1364,8 @@ fn images_to_pdf_png_jpeg_portrait_landscape_fit_a4() {
         );
     }
     // Çizim matrisi: dik görsel yüksekliği, yatay görsel genişliği doldurur.
-    let content = |n: u32| {
-        String::from_utf8_lossy(&d.get_page_content(d.get_pages()[&n]).unwrap()).into_owned()
-    };
+    let content =
+        |n: u32| String::from_utf8_lossy(&d.get_page_content(d.get_pages()[&n])).into_owned();
     let avail_w = 595.28 - 72.0;
     let avail_h = 841.89 - 72.0;
     assert!(
@@ -1419,8 +1418,7 @@ fn chain_d_watermark_then_rotate_keeps_both() {
     let d = reopen(&r);
     assert_eq!([rotation(&d, 1), rotation(&d, 2)], [90, 90]);
     for n in 1..=2 {
-        let c =
-            String::from_utf8_lossy(&d.get_page_content(d.get_pages()[&n]).unwrap()).into_owned();
+        let c = String::from_utf8_lossy(&d.get_page_content(d.get_pages()[&n])).into_owned();
         assert!(
             c.contains("(KOPYA)"),
             "filigran döndürmeden sonra kaybolmamalı (sayfa {n})"
@@ -1499,7 +1497,7 @@ fn crop_number_and_rotate_all_publish_reopenable_output() {
         false,
     );
     let d = reopen(&n);
-    let c2 = String::from_utf8_lossy(&d.get_page_content(d.get_pages()[&2]).unwrap()).into_owned();
+    let c2 = String::from_utf8_lossy(&d.get_page_content(d.get_pages()[&2])).into_owned();
     assert!(
         c2.contains("(8)"),
         "ikinci sayfa 8 numarasını taşımalı: {c2}"
@@ -4818,10 +4816,8 @@ fn assert_signature_free_copy(name: &str, source: &Document, out: &Path, in_plac
     for (index, marker) in markers(&d).iter().enumerate() {
         let out_page = index as u32 + 1;
         let src_page = source_markers.iter().position(|m| m == marker).unwrap() as u32 + 1;
-        let original = source
-            .get_page_content(source.get_pages()[&src_page])
-            .unwrap();
-        let copied = d.get_page_content(d.get_pages()[&out_page]).unwrap();
+        let original = source.get_page_content(source.get_pages()[&src_page]);
+        let copied = d.get_page_content(d.get_pages()[&out_page]);
         assert!(
             copied
                 .windows(original.len())
@@ -5039,7 +5035,7 @@ fn signature_cleanup_keeps_objects_still_used_through_reference_chains() {
 
 /// Sayfanın içeriğinde marka formunu çizen `Do` sayısı.
 fn brand_draws(doc: &Document, page: u32) -> usize {
-    let content = doc.get_page_content(doc.get_pages()[&page]).unwrap();
+    let content = doc.get_page_content(doc.get_pages()[&page]);
     let text = String::from_utf8_lossy(&content);
     text.matches("/GolgeDosyaBrand").count()
 }

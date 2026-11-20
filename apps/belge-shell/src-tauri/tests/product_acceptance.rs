@@ -243,7 +243,7 @@ fn duzenle_reorder_actually_reverses_the_visible_page_order() {
     let pages = doc.get_pages();
     // İlk sayfanın içeriği "Sayfa 4" olmalı.
     let first = *pages.get(&1).unwrap();
-    let text = String::from_utf8_lossy(&doc.get_page_content(first).expect("içerik")).to_string();
+    let text = String::from_utf8_lossy(&doc.get_page_content(first)).to_string();
     assert!(
         text.contains("Sayfa 4"),
         "sırala sayfa sırasını değiştirmedi; ilk sayfa: {text}"

@@ -114,7 +114,7 @@ fn stamp_resolves_inheritance_isolates_graphics_and_uses_rotated_crop() {
     let text = d.extract_text(&[1]).unwrap();
     assert!(text.contains("INHERITED FONT"));
     assert!(text.contains("Ek-2 / 19. Sayfa"));
-    let bytes = d.get_page_content(page).unwrap();
+    let bytes = d.get_page_content(page);
     let content = lopdf::content::Content::decode(&bytes).unwrap();
     assert_eq!(content.operations[0].operator, "q");
     assert!(content.operations.iter().any(|op| op.operator == "cm"

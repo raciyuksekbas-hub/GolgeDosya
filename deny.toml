@@ -19,7 +19,6 @@ all-features = true
 unmaintained = "workspace"
 yanked = "warn"
 ignore = [
-    { id = "RUSTSEC-2026-0187", reason = "lopdf 0.34 derin yuvalama: pdf-core/src/pdf/guard.rs ham baytları ve her nesne akışını lopdf'in okuyacağı biçimde tarar (load_mem_guarded); içerik akışı çözülmeden önce exceeds_nesting sorulur. lopdf >= 0.42'ye yükseltilince kaldırılacak." },
     { id = "RUSTSEC-2026-0194", reason = "quick-xml 0.36 yinelenen öznitelik denetimi karesel: bütün öznitelik okumaları with_checks(false) ile doğrusal (document-core/tests/hostile_attributes.rs)." },
     { id = "RUSTSEC-2026-0195", reason = "NsReader kullanılmıyor; yalnız ad alanı çözmeyen Reader (check-advisories.sh denetler)." },
     { id = "RUSTSEC-2026-0367", reason = "zip: ZipArchive::extract / ZipStreamReader çağrılmıyor; arşivler yalnız by_index/by_name ile belleğe okunur (check-advisories.sh denetler)." },

@@ -145,7 +145,7 @@ fn compression_output_must_not_be_larger_than_source_when_reported_success() {
     // A pre-compressed ~810 KB content stream must not be published just because it is valid.
     let mut d = fixture(1);
     let mut state = 7u32;
-    let mut content = d.get_page_content(d.get_pages()[&1]).unwrap();
+    let mut content = d.get_page_content(d.get_pages()[&1]);
     for _ in 0..21600 {
         content.extend_from_slice(b"\n%");
         for _ in 0..64 {

@@ -1,6 +1,22 @@
 use ekler_core::load_pdf_tolerant;
 use lopdf::content::{Content, Operation};
-use lopdf::{dictionary, Document as LopdfDoc, Stream};
+use lopdf::{dictionary, Document as LopdfDoc, LoadOptions, Stream};
+
+/// lopdf'in KATI kipi: 0.34'ün `load_mem`'i ile aynı ayrıştırma kuralları ve
+/// toleranslı yükleyicinin 1. katmanının kullandığı kip (bkz. pdf-core
+/// `guard.rs`). lopdf 0.42'den beri varsayılan `load_mem` hoşgörülüdür: bozuk
+/// xref'i nesne tarayarak yeniden kurar, 19 baytlık xref girişini kabul eder.
+/// Aşağıdaki "standart parser reddeder" önkoşulları bu yüzden katı kiple
+/// ölçülür; aksi hâlde önkoşul ürünün değil, lopdf'in onarımını ölçerdi.
+fn load_strict(bytes: &[u8]) -> lopdf::Result<LopdfDoc> {
+    LopdfDoc::load_mem_with_options(
+        bytes,
+        LoadOptions {
+            strict: true,
+            ..LoadOptions::default()
+        },
+    )
+}
 
 fn create_clean_sample_pdf(pages_cnt: usize) -> Vec<u8> {
     let mut doc = LopdfDoc::with_version("1.4");
@@ -47,7 +63,7 @@ fn test_synthetic_reproduction_of_irregular_xref_eol() {
     // 1. Düzgün bir 2 sayfalık sentetik PDF üret
     let clean_bytes = create_clean_sample_pdf(2);
     assert!(
-        lopdf::Document::load_mem(&clean_bytes).is_ok(),
+        load_strict(&clean_bytes).is_ok(),
         "Temiz PDF lopdf tarafından açılabilmeli"
     );
 
@@ -72,8 +88,8 @@ fn test_synthetic_reproduction_of_irregular_xref_eol() {
     let mut synthetic_corrupt = clean_bytes[..xref_pos].to_vec();
     synthetic_corrupt.extend_from_slice(irregular_xref.as_bytes());
 
-    // Doğrulama: Standart lopdf load_mem bu sentetik dosyayı Err(Trailer) ile reddetmelidir!
-    let strict_result = lopdf::Document::load_mem(&synthetic_corrupt);
+    // Doğrulama: Standart (katı) lopdf bu sentetik dosyayı reddetmelidir!
+    let strict_result = load_strict(&synthetic_corrupt);
     assert!(
         strict_result.is_err(),
         "Standart lopdf parser bu sentetik 19-baytlık xref'i reddetmelidir"
@@ -133,8 +149,8 @@ fn test_missing_xref_is_rejected() {
     let mut no_xref_bytes = clean_bytes[..xref_pos].to_vec();
     no_xref_bytes.extend_from_slice(b"\n%%EOF\n");
 
-    // Standart parser kesinlikle açamaz
-    assert!(lopdf::Document::load_mem(&no_xref_bytes).is_err());
+    // Standart (katı) parser kesinlikle açamaz
+    assert!(load_strict(&no_xref_bytes).is_err());
 
     assert!(
         load_pdf_tolerant(&no_xref_bytes, "eksik_xref.pdf").is_err(),

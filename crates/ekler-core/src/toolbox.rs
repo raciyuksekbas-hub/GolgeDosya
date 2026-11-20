@@ -623,9 +623,7 @@ fn validate_compression_quality(
     }
     for (n, id) in source_pages {
         let other = candidate_pages[&n];
-        if source.get_page_content(id).map_err(|_| fail())?
-            != candidate.get_page_content(other).map_err(|_| fail())?
-        {
+        if source.get_page_content(id) != candidate.get_page_content(other) {
             return Err(fail());
         }
     }

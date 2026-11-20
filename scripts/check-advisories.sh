@@ -3,6 +3,9 @@
 #
 # 1. deny.toml'daki "bu API çağrılmıyor" gerekçeleri kaynakta denetlenir
 #    (fail-closed): biri o API'yi kullanmaya başlarsa gerekçe çöker ve kapı düşer.
+#    Aynı taramada lopdf'in yalnız korumalı yükleyiciyle çağrıldığı da
+#    denetlenir; bu bir istisna gerekçesi değil, lopdf'in kendisinin
+#    kapatmadığı açığın (dolaylı `/Length` zinciri) korumasıdır.
 # 2. `cargo deny check advisories` RustSec veritabanına karşı koşar. Gerekçesi
 #    yazılmamış her yeni açık kapıyı düşürür.
 #
@@ -42,13 +45,19 @@ if [ -n "$attr_hits" ]; then
   echo "$attr_hits" | sed 's/^/    /'
   fail=1
 fi
-# lopdf yalnız korumalı yükleyiciyle ayrıştırılmalı (RUSTSEC-2026-0187). Kendi
+# lopdf yalnız korumalı yükleyiciyle ayrıştırılmalı. lopdf 0.42'den beri iç içe
+# yuvalanmayı kendisi sınırlar (RUSTSEC-2026-0187 kapandı); ama dolaylı
+# `/Length` başvuru zincirini hâlâ sınırsız özyinelemeyle çözer ve sınırı aşan
+# nesneyi sessizce atlar. pdf::guard::load_mem_guarded ikisini de reddeder.
+# Desen lopdf 0.47'nin bütün giriş noktalarını yakalar: load, load_mem,
+# load_from, *_with_options, *_with_password, load_filtered, load_metadata* ve
+# IncrementalDocument::load*. `Reader` 0.47'de dışarıdan kurulamaz. Kendi
 # ürettiğimiz çıktıyı yeniden açan yerler ve dağıtılmayan araç istisnadır.
-lopdf_hits="$(grep -rnE --include='*.rs' '(LopdfDoc|lopdf::Document|Document)::load(_mem|_from|_filtered)?\(' crates apps 2>/dev/null \
+lopdf_hits="$(grep -rnE --include='*.rs' '(LopdfDoc|Document)::load[a-z_]*\(' crates apps 2>/dev/null \
   | grep -v '/target/' | grep -v '/tests/' \
   | grep -vE 'pdf-core/src/pdf/(guard|stamp)\.rs|ekler-core/src/(toolbox|pipeline|raster)\.rs' || true)"
 if [ -n "$lopdf_hits" ]; then
-  echo "✗ lopdf korumasız yükleniyor: RUSTSEC-2026-0187 gerekçesi geçersiz (pdf::guard::load_mem_guarded kullanın)"
+  echo "✗ lopdf korumasız yükleniyor: /Length zinciri ve derin nesne akışı reddi atlanıyor (pdf::guard::load_mem_guarded kullanın)"
   echo "$lopdf_hits" | sed 's/^/    /'
   fail=1
 fi
