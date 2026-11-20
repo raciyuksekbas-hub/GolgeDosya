@@ -686,6 +686,68 @@ pub fn structural() -> Vec<Fixture> {
         ));
     }
 
+    // Aynı derin dizi sıkıştırılmış bir NESNE AKIŞININ içinde: ham tarama akış
+    // gövdesini görmez, lopdf ise yüklerken akışı açıp içini özyinelemeli
+    // ayrıştırır. 20 000 derinlik eskiden süreci `abort` ile düşürüyordu.
+    for depth in [50usize, 20_000] {
+        let mut pdf = RawPdf::new("1.7");
+        raw_base(&mut pdf, 1, 0);
+        pdf.object(1, b"<</Type/Catalog/Pages 2 0 R/PieceInfo 41 0 R>>");
+        let nested = format!("{}{}", "[".repeat(depth), "]".repeat(depth));
+        pdf.object_stream(40, &[(41, format!("<</Derin {nested}>>"))]);
+        pdf.finish_classic("/Root 1 0 R");
+        out.push(Fixture::new(
+            &format!("yapi/nesne-akisinda-derin-dizi-{depth}"),
+            pdf.bytes,
+            if depth <= 100 {
+                opens(1)
+            } else {
+                Expect::Rejects
+            },
+        ));
+    }
+
+    // İç içe Flate zinciri: `[/FlateDecode /FlateDecode]`. Eskiden yalnız tek
+    // Flate'li akış sınanıyordu; birkaç yüz baytlık bir akış 200 MiB'a açılıp
+    // iyileştiricide ya da içerik çözülürken sınırsız bellek istiyordu.
+    for (name, inflated, expect) in [
+        ("yapi/ic-ice-flate-gecerli", 4096usize, opens(1)),
+        (
+            "yapi/ic-ice-flate-bombasi-200mib",
+            200 << 20,
+            Expect::Rejects,
+        ),
+    ] {
+        let mut pdf = RawPdf::new("1.7");
+        raw_base(&mut pdf, 1, 0);
+        pdf.object(
+            1,
+            b"<</Type/Catalog/Pages 2 0 R/PieceInfo<</Veri 50 0 R>>>>",
+        );
+        let twice = zlib(&zlib(&vec![0u8; inflated]));
+        pdf.stream(50, "/Filter[/FlateDecode/FlateDecode]", &twice);
+        pdf.finish_classic("/Root 1 0 R");
+        out.push(Fixture::new(name, pdf.bytes, expect));
+    }
+
+    // Sayfa İÇERİK akışında derin işlenen dizisi: yüklemede ayrıştırılmaz, belge
+    // açılır; ama marka denetimi içeriği çözerken yığını taşırırdı. Araçlar
+    // çalışmalı, akış "ayrıştırılamayan akış" gibi atlanmalı.
+    let mut pdf = RawPdf::new("1.7");
+    raw_base(&mut pdf, 1, 0);
+    let nested = format!("{}{}", "[".repeat(20_000), "]".repeat(20_000));
+    pdf.stream(
+        11,
+        "",
+        format!("BT /F1 18 Tf 72 72 Td {nested} TJ ET").as_bytes(),
+    );
+    pdf.finish_classic("/Root 1 0 R");
+    out.push(Fixture::new(
+        "yapi/icerik-akisinda-derin-dizi-20000",
+        pdf.bytes,
+        opens(1),
+    ));
+
     // Dolaylı /Length başvuru zinciri: her akışın uzunluğu bir sonraki akışa
     // gider; lopdf bunu özyinelemeli çözerdi.
     let mut pdf = RawPdf::new("1.7");

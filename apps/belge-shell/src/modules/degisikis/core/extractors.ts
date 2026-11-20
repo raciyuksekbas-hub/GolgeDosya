@@ -267,11 +267,11 @@ export function legacyDocErrorMessage(code: string): string {
 
 export async function convertLegacyDocLocally(buffer: ArrayBuffer): Promise<ArrayBuffer> {
   try {
-    // Komut adı birleşik kabukta modül önekli; imza ve davranış aynı.
-    const converted = await invoke<number[]>("degisikis_convert_legacy_doc", {
-      contents: Array.from(new Uint8Array(buffer)),
-    });
-    return exactArrayBuffer(Uint8Array.from(converted));
+    // Komut adı birleşik kabukta modül önekli. Baytlar iki yönde de HAM geçer:
+    // istek gövdesi `Uint8Array`, yanıt `ArrayBuffer` (eskiden iki yönde de
+    // JSON sayı dizisiydi).
+    const converted = await invoke<ArrayBuffer>("degisikis_convert_legacy_doc", new Uint8Array(buffer));
+    return exactArrayBuffer(new Uint8Array(converted));
   } catch (error) {
     const code = typeof error === "string" ? error : error instanceof Error ? error.message : "";
     throw new ExtractionError(legacyDocErrorMessage(code));

@@ -223,6 +223,9 @@ export interface ReportOutcome {
 }
 
 export type ReportSaver = (fileName: string, contents: Uint8Array, format: ReportFormat) => Promise<SaveResult>;
+
+/** Rapor adını taşıyan IPC başlığı; Rust'taki `REPORT_NAME_HEADER` ile aynı. */
+export const REPORT_NAME_HEADER = "x-degisikis-report-name";
 export type ReportOpener = (path: string) => Promise<void>;
 
 /**
@@ -238,8 +241,13 @@ export async function saveReport(
 ): Promise<SaveResult> {
   const invokeSave = invoker ?? (async (name: string, body: Uint8Array) => {
     const { invoke } = await import("@tauri-apps/api/core");
-    // Komut adı birleşik kabukta modül önekli; imza ve davranış aynı.
-    return invoke<string>("degisikis_save_report", { fileName: name, contents: Array.from(body) });
+    // Komut adı birleşik kabukta modül önekli. İçerik istek gövdesinde HAM
+    // gider (eskiden `Array.from(body)` ile JSON sayı dizisiydi); ad başlıkta
+    // yüzde-kodludur, çünkü başlık yalnız ASCII taşır. Ad Rust'ta çözülüp
+    // aynı süzgeçten geçer.
+    return invoke<string>("degisikis_save_report", body, {
+      headers: { [REPORT_NAME_HEADER]: encodeURIComponent(name) },
+    });
   });
   try {
     const path = await invokeSave(fileName, contents);

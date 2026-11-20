@@ -1,11 +1,7 @@
-import { comparisonForm, displayLocation, looseMatchForm } from "./normalize";
+import { comparisonForm, displayLocation, looseMatchForm, looseMatchFromComparison } from "./normalize";
 import { splitStructuralPrefix, type StructuralText } from "./structure";
 import type { ComparisonResult, ComparisonRow, DocumentBlock, DocumentChange, DiffFragment } from "./types";
 import { sourceTokens, tokenize, wordDiff, type WordDiffHunk } from "./wordDiff";
-
-function tokenSet(text: string): Set<string> {
-  return new Set(tokenize(looseMatchForm(splitStructuralPrefix(text).body)));
-}
 
 const ARTICLE_TITLE_ALIASES = new Map([
   ["cezai şartlar", "cezai şart"],
@@ -17,14 +13,6 @@ function canonicalArticleTitle(text: string): string {
   if (structural.prefix?.kind !== "article") return "";
   const normalized = looseMatchForm(structural.body.replace(/^[-–—.:)\s]+|[-–—.:)\s]+$/gu, ""));
   return ARTICLE_TITLE_ALIASES.get(normalized) ?? normalized;
-}
-
-interface PairSignals {
-  jaccard: number;
-  shorterCoverage: number;
-  lengthRatio: number;
-  longestRun: number;
-  shorterLength: number;
 }
 
 interface LabelValue {
@@ -41,9 +29,85 @@ function labelValue(text: string): LabelValue | undefined {
   return { label, value: comparisonForm(parts.slice(1).join(" | ")), hasSeparator };
 }
 
-function sharesLabelValueStructure(a: DocumentBlock, b: DocumentBlock): boolean {
-  const left = labelValue(a.text);
-  const right = labelValue(b.text);
+/**
+ * Hizalama çağrısına özel sözcük sözlüğü.
+ *
+ * Sözcükler tamsayıya çevrilir: DP hücresindeki küme kesişimi ve ortak dizi
+ * taraması dizge yerine sayı karşılaştırır. Sözlük `align` çağrısıyla birlikte
+ * atılır; modül düzeyinde büyüyen bir önbellek yoktur.
+ */
+class TokenIds {
+  private readonly ids = new Map<string, number>();
+
+  of(tokens: string[]): Int32Array {
+    const result = new Int32Array(tokens.length);
+    tokens.forEach((token, index) => {
+      let id = this.ids.get(token);
+      if (id === undefined) {
+        id = this.ids.size;
+        this.ids.set(token, id);
+      }
+      result[index] = id;
+    });
+    return result;
+  }
+}
+
+/**
+ * Hizalamanın tek bir bloktan okuduğu her şey, blok başına BİR KEZ.
+ *
+ * Eskiden DP'nin her hücresi `similarity`, `highConfidencePair` ve beş
+ * birleşik grup denetimi için aynı blok metnini yeniden normalize ediyordu
+ * (`comparisonForm`: yedi düzenli ifade geçişi + NFC; ardından
+ * `looseMatchForm`, `tokenize`, `splitStructuralPrefix`). Profilde sürenin
+ * ~%90'ı buydu: her paragrafı düzenlenmiş 200 bloklu bir belge 30–45 saniye
+ * sürüyor, arayüz o süre boyunca donuyordu. Biçimler artık `align` çağrısı
+ * başına bir kez hesaplanır. Karar kuralları ve eşikler AYNIDIR; satırlar,
+ * kartlar ve eşleştirme kararları bayt bayt aynı kalır
+ * (`alignmentPerformance.test.ts` eski motorun çıktısıyla karşılaştırır).
+ */
+interface BlockForms {
+  block: DocumentBlock;
+  /** `comparisonForm(text)` */
+  comparison: string;
+  /** Öneki atılmış gövdenin gevşek sözcükleri (sıralı, tekrarlı). */
+  bodyTokens: Int32Array;
+  /** Aynı sözcüklerin kümesi: Jaccard ve kapsama bunun üzerinden. */
+  bodySet: Set<number>;
+  articleTitle: string;
+  labelValue: LabelValue | undefined;
+  /** Ham metindeki sözcük sayısı: kısa blok kuralı buna bakar. */
+  rawTokenCount: number;
+  /** Yapısal kapsama denetiminin sözcükleri; yalnız gerekince hesaplanır. */
+  containmentTokens?: string[];
+}
+
+function blockForms(block: DocumentBlock, ids: TokenIds): BlockForms {
+  const comparison = comparisonForm(block.text);
+  const structural = splitStructuralPrefix(block.text);
+  // Öneki olmayan blokta gövde metnin kendisidir: gevşek biçim, elde olan
+  // karşılaştırma biçiminden türetilir.
+  const body = structural.prefix ? looseMatchForm(structural.body) : looseMatchFromComparison(comparison);
+  const bodyTokens = ids.of(tokenize(body));
+  return {
+    block,
+    comparison,
+    bodyTokens,
+    bodySet: new Set(bodyTokens),
+    articleTitle: canonicalArticleTitle(block.text),
+    labelValue: labelValue(block.text),
+    rawTokenCount: tokenize(block.text).length,
+  };
+}
+
+function containmentTokens(forms: BlockForms): string[] {
+  forms.containmentTokens ??= tokenize(comparisonForm(splitStructuralPrefix(forms.block.text).body));
+  return forms.containmentTokens;
+}
+
+function sharesLabelValueStructure(a: BlockForms, b: BlockForms): boolean {
+  const left = a.labelValue;
+  const right = b.labelValue;
   return Boolean(
     left && right
     && (left.hasSeparator || right.hasSeparator)
@@ -52,85 +116,107 @@ function sharesLabelValueStructure(a: DocumentBlock, b: DocumentBlock): boolean 
   );
 }
 
-function pairSignals(a: DocumentBlock, b: DocumentBlock): PairSignals {
-  const leftTokens = tokenize(looseMatchForm(splitStructuralPrefix(a.text).body));
-  const rightTokens = tokenize(looseMatchForm(splitStructuralPrefix(b.text).body));
-  const left = new Set(leftTokens);
-  const right = new Set(rightTokens);
-  let intersection = 0;
-  for (const token of left) if (right.has(token)) intersection++;
-  const shorterLength = Math.min(leftTokens.length, rightTokens.length);
-  return {
-    jaccard: intersection / Math.max(1, left.size + right.size - intersection),
-    shorterCoverage: intersection / Math.max(1, Math.min(left.size, right.size)),
-    lengthRatio: shorterLength / Math.max(1, Math.max(leftTokens.length, rightTokens.length)),
-    longestRun: longestCommonRun(leftTokens, rightTokens),
-    shorterLength,
-  };
-}
-
-function exactStructuralContainment(a: DocumentBlock, b: DocumentBlock): boolean {
-  if (!a.location || a.location !== b.location) return false;
-  const sameClause = Boolean(a.sourceClauseNumber && a.sourceClauseNumber === b.sourceClauseNumber);
-  const sameListItem = Boolean(a.sourceListOrdinal && a.sourceListOrdinal === b.sourceListOrdinal);
+function exactStructuralContainment(a: BlockForms, b: BlockForms): boolean {
+  if (!a.block.location || a.block.location !== b.block.location) return false;
+  const sameClause = Boolean(a.block.sourceClauseNumber && a.block.sourceClauseNumber === b.block.sourceClauseNumber);
+  const sameListItem = Boolean(a.block.sourceListOrdinal && a.block.sourceListOrdinal === b.block.sourceListOrdinal);
   if (!sameClause && !sameListItem) return false;
-  const left = tokenize(comparisonForm(splitStructuralPrefix(a.text).body));
-  const right = tokenize(comparisonForm(splitStructuralPrefix(b.text).body));
+  const left = containmentTokens(a);
+  const right = containmentTokens(b);
   const shorter = left.length <= right.length ? left : right;
   const longer = left.length <= right.length ? right : left;
   if (shorter.length < 6 || longer.length <= shorter.length) return false;
   return shorter.every((token, index) => token === longer[index]);
 }
 
-function highConfidencePair(a: DocumentBlock, b: DocumentBlock, trustedSection = false): boolean {
-  if (comparisonForm(a.text) === comparisonForm(b.text)) return true;
-  if (exactStructuralContainment(a, b)) return true;
-  if (a.kind === b.kind && sharesLabelValueStructure(a, b)) return true;
-  const signals = pairSignals(a, b);
-  if (a.kind === "article" || b.kind === "article") {
-    if (a.kind !== "article" || b.kind !== "article") return false;
-    const leftTitle = canonicalArticleTitle(a.text);
-    const rightTitle = canonicalArticleTitle(b.text);
-    if (leftTitle && leftTitle === rightTitle) return true;
-    return Boolean(a.label && a.label === b.label && signals.jaccard >= 0.16 && signals.shorterCoverage >= 0.28);
-  }
-  if (a.kind !== b.kind && (a.kind === "heading" || b.kind === "heading")) return false;
-  if (signals.shorterLength <= 2) {
-    if (Math.max(tokenize(a.text).length, tokenize(b.text).length) >= 8) return false;
-    return signals.jaccard >= 0.3 && signals.lengthRatio >= 0.34;
-  }
-  if (
-    signals.shorterLength <= 12
-    && a.kind === b.kind
-    && signals.jaccard >= 0.12
-    && signals.shorterCoverage >= 0.2
-    && signals.lengthRatio >= 0.45
-    && signals.longestRun >= 1
-  ) return true;
-  if (trustedSection) {
-    return (signals.jaccard >= 0.18 && signals.shorterCoverage >= 0.4 && signals.lengthRatio >= 0.18)
-      || (signals.shorterCoverage >= 0.62 && signals.longestRun >= 2 && signals.lengthRatio >= 0.12);
-  }
-  return (signals.jaccard >= 0.2 && signals.shorterCoverage >= 0.34 && signals.lengthRatio >= 0.2)
-    || (signals.shorterCoverage >= 0.62 && signals.longestRun >= 2 && signals.lengthRatio >= 0.15);
+/**
+ * `similarity` ile `highConfidencePair`'in ortak kesin dalları: aynı metin,
+ * aynı fıkrada sözcük sözcük kapsama, aynı etiketli "etiket | değer" satırı.
+ * Biri tutarsa skor sabittir ve çift her iki ölçüte göre de güvenilirdir.
+ */
+function decisivePairScore(a: BlockForms, b: BlockForms): number | undefined {
+  if (a.comparison === b.comparison) return 1;
+  if (exactStructuralContainment(a, b)) return 0.96;
+  if (a.block.kind === b.block.kind && sharesLabelValueStructure(a, b)) return 0.94;
+  return undefined;
 }
 
-function similarity(a: DocumentBlock, b: DocumentBlock): number {
-  if (comparisonForm(a.text) === comparisonForm(b.text)) return 1;
-  if (exactStructuralContainment(a, b)) return 0.96;
-  if (a.kind === b.kind && sharesLabelValueStructure(a, b)) return 0.94;
-  const left = tokenSet(a.text);
-  const right = tokenSet(b.text);
+/** Gövde sözcük kümelerinin kesişimi; benzerlik de güven ölçütü de bu sayıyı kullanır. */
+function sharedBodyTokens(a: BlockForms, b: BlockForms): number {
   let intersection = 0;
-  for (const token of left) if (right.has(token)) intersection++;
-  const union = left.size + right.size - intersection;
+  for (const token of a.bodySet) if (b.bodySet.has(token)) intersection++;
+  return intersection;
+}
+
+/**
+ * En az `minimum` uzunlukta ortak ardışık sözcük dizisi var mı?
+ *
+ * `longestCommonRun(left, right) >= minimum` ile aynı yanıtı verir (aynı
+ * tablo, aynı taşma davranışı); motor en uzun diziyi hiçbir yerde değer olarak
+ * kullanmaz, yalnız eşikle karşılaştırır. Tarama eşik bulunduğu anda durur.
+ */
+function hasCommonRun(left: Int32Array, right: Int32Array, minimum: number): boolean {
+  if (minimum <= 0) return true;
+  const previous = new Uint16Array(right.length + 1);
+  for (let i = 1; i <= left.length; i++) {
+    let diagonal = 0;
+    for (let j = 1; j <= right.length; j++) {
+      const above = previous[j];
+      previous[j] = left[i - 1] === right[j - 1] ? diagonal + 1 : 0;
+      if (previous[j] >= minimum) return true;
+      diagonal = above;
+    }
+  }
+  return false;
+}
+
+/**
+ * Kesin dallar (`decisivePairScore`) tutmadığında çiftin güvenilir olup
+ * olmadığı. `intersection`, `sharedBodyTokens(a, b)`'dir. En uzun ortak dizi
+ * ≥ 1 koşulu "en az bir ortak sözcük" demektir; ≥ 2 koşulu yalnız gerekince
+ * taranır.
+ */
+function highConfidencePair(a: BlockForms, b: BlockForms, intersection: number, trustedSection: boolean): boolean {
+  const left = a.block;
+  const right = b.block;
+  const shorterLength = Math.min(a.bodyTokens.length, b.bodyTokens.length);
+  const jaccard = intersection / Math.max(1, a.bodySet.size + b.bodySet.size - intersection);
+  const shorterCoverage = intersection / Math.max(1, Math.min(a.bodySet.size, b.bodySet.size));
+  const lengthRatio = shorterLength / Math.max(1, Math.max(a.bodyTokens.length, b.bodyTokens.length));
+  if (left.kind === "article" || right.kind === "article") {
+    if (left.kind !== "article" || right.kind !== "article") return false;
+    if (a.articleTitle && a.articleTitle === b.articleTitle) return true;
+    return Boolean(left.label && left.label === right.label && jaccard >= 0.16 && shorterCoverage >= 0.28);
+  }
+  if (left.kind !== right.kind && (left.kind === "heading" || right.kind === "heading")) return false;
+  if (shorterLength <= 2) {
+    if (Math.max(a.rawTokenCount, b.rawTokenCount) >= 8) return false;
+    return jaccard >= 0.3 && lengthRatio >= 0.34;
+  }
+  if (
+    shorterLength <= 12
+    && left.kind === right.kind
+    && jaccard >= 0.12
+    && shorterCoverage >= 0.2
+    && lengthRatio >= 0.45
+    && intersection >= 1
+  ) return true;
+  if (trustedSection) {
+    return (jaccard >= 0.18 && shorterCoverage >= 0.4 && lengthRatio >= 0.18)
+      || (shorterCoverage >= 0.62 && lengthRatio >= 0.12 && hasCommonRun(a.bodyTokens, b.bodyTokens, 2));
+  }
+  return (jaccard >= 0.2 && shorterCoverage >= 0.34 && lengthRatio >= 0.2)
+    || (shorterCoverage >= 0.62 && lengthRatio >= 0.15 && hasCommonRun(a.bodyTokens, b.bodyTokens, 2));
+}
+
+/** Kesin dallar tutmadığında hücre benzerliği; `intersection`, `sharedBodyTokens(a, b)`'dir. */
+function similarity(a: BlockForms, b: BlockForms, intersection: number): number {
+  const union = a.bodySet.size + b.bodySet.size - intersection;
   let score = union ? intersection / union : 0;
-  const leftTitle = canonicalArticleTitle(a.text);
-  const rightTitle = canonicalArticleTitle(b.text);
-  if (leftTitle && leftTitle === rightTitle) score = Math.max(score, 0.92);
-  if (a.label && b.label && a.label === b.label) score = Math.max(score, 0.78);
-  if (a.kind === b.kind) score += 0.06;
-  else if (a.kind === "article" || b.kind === "article") score -= 0.25;
+  if (a.articleTitle && a.articleTitle === b.articleTitle) score = Math.max(score, 0.92);
+  if (a.block.label && b.block.label && a.block.label === b.block.label) score = Math.max(score, 0.78);
+  if (a.block.kind === b.block.kind) score += 0.06;
+  else if (a.block.kind === "article" || b.block.kind === "article") score -= 0.25;
   return Math.max(0, Math.min(1, score));
 }
 
@@ -187,24 +273,41 @@ function segmentationText(blocks: DocumentBlock[]): string {
     .join(" ");
 }
 
-function exactAdjacentSegmentation(base: DocumentBlock[], revised: DocumentBlock[]): boolean {
-  if (base.length === 1 && revised.length === 1) return false;
-  const supported = (blocks: DocumentBlock[]) => blocks.every((block, index) => (
-    ["paragraph", "list"].includes(block.kind)
-    && (index === 0 || blocks[index - 1].order + 1 === block.order)
-  ));
-  if (!supported(base) || !supported(revised)) return false;
-  const baseContexts = new Set(base.map(articleContext).filter(Boolean));
-  const revisedContexts = new Set(revised.map(articleContext).filter(Boolean));
-  if (baseContexts.size > 1 || revisedContexts.size > 1) return false;
-  const baseContext = [...baseContexts][0];
-  const revisedContext = [...revisedContexts][0];
-  if (baseContext && revisedContext && baseContext !== revisedContext) return false;
-  return segmentationText(base) === segmentationText(revised);
+/** Bölümleme denetiminin ardışık bir blok grubundan okuduğu her şey. */
+interface SegmentationForms {
+  size: number;
+  /** Yalnız paragraf/liste ve kaynakta ardışık. */
+  supported: boolean;
+  contextCount: number;
+  context: string | undefined;
+  text: string;
 }
 
-function normalizedTokens(blocks: DocumentBlock[]): string[] {
-  return tokenize(looseMatchForm(blocks.map((block) => block.text).join(" ")));
+function segmentationForms(blocks: DocumentBlock[], text = segmentationText(blocks)): SegmentationForms {
+  const contexts = new Set(blocks.map(articleContext).filter(Boolean));
+  return {
+    size: blocks.length,
+    supported: blocks.every((block, index) => (
+      ["paragraph", "list"].includes(block.kind)
+      && (index === 0 || blocks[index - 1].order + 1 === block.order)
+    )),
+    contextCount: contexts.size,
+    context: [...contexts][0],
+    text,
+  };
+}
+
+function sameSegmentation(base: SegmentationForms, revised: SegmentationForms): boolean {
+  if (base.size === 1 && revised.size === 1) return false;
+  if (!base.supported || !revised.supported) return false;
+  if (base.contextCount > 1 || revised.contextCount > 1) return false;
+  if (base.context && revised.context && base.context !== revised.context) return false;
+  return base.text === revised.text;
+}
+
+function exactAdjacentSegmentation(base: DocumentBlock[], revised: DocumentBlock[]): boolean {
+  if (base.length === 1 && revised.length === 1) return false;
+  return sameSegmentation(segmentationForms(base), segmentationForms(revised));
 }
 
 function longestCommonRun(left: string[], right: string[]): number {
@@ -222,34 +325,75 @@ function longestCommonRun(left: string[], right: string[]): number {
   return longest;
 }
 
-function compositeSimilarity(base: DocumentBlock[], revised: DocumentBlock[], trustedSection = false): number | undefined {
-  if (exactAdjacentSegmentation(base, revised)) return 1;
-  if (Math.max(base.length, revised.length) > 2) return undefined;
-  if ((base.length > 1 && !canJoin(base)) || (revised.length > 1 && !canJoin(revised))) return undefined;
-  const baseContext = articleContext(base[0]);
-  const revisedContext = articleContext(revised[0]);
+/**
+ * Birleşik aday grubun (1–3 ardışık blok) birleştirilmiş metninden
+ * türetilenler, grup başına bir kez. Birleşik metin blok biçimlerinden parça
+ * parça kurulmaz: normalizasyon blok sınırını aşabilir (ör. iki bloğa yayılan
+ * form boşluğu noktaları), bu yüzden eski kodun yaptığı gibi metin
+ * birleştirilip normalize edilir.
+ */
+interface GroupForms extends SegmentationForms {
+  joinable: boolean;
+  firstContext: string | undefined;
+  /** `comparisonForm(birleşik metin)` */
+  comparison: string;
+  /** `tokenize(looseMatchForm(birleşik metin))` */
+  words: string[];
+  /** Sözlükteki sayılarıyla sözcükler ve tekrar sayıları; yalnız gerekince. */
+  joined?: { tokens: Int32Array; counts: Map<number, number> };
+}
+
+/** `segmentationText`'in sildiği madde imlerinden biri metinde geçiyor mu? */
+const SEGMENTATION_MARK = /[●•▪◦-]/u;
+
+function groupForms(
+  blocks: DocumentBlock[],
+  comparison = comparisonForm(blocks.map((block) => block.text).join(" ")),
+): GroupForms {
+  const words = tokenize(looseMatchFromComparison(comparison));
+  // İm yoksa `segmentationText` aynı sözcüklerden "ve" atılarak elde edilir;
+  // varsa (tire dahil) eski yoldan hesaplanır.
+  const segmentation = blocks.some((block) => SEGMENTATION_MARK.test(block.text))
+    ? segmentationText(blocks)
+    : words.filter((token) => token !== "ve").join(" ");
+  return {
+    ...segmentationForms(blocks, segmentation),
+    joinable: canJoin(blocks),
+    firstContext: articleContext(blocks[0]),
+    comparison,
+    words,
+  };
+}
+
+function joinedTokens(group: GroupForms, ids: TokenIds): { tokens: Int32Array; counts: Map<number, number> } {
+  if (!group.joined) {
+    const tokens = ids.of(group.words);
+    const counts = new Map<number, number>();
+    for (const token of tokens) counts.set(token, (counts.get(token) ?? 0) + 1);
+    group.joined = { tokens, counts };
+  }
+  return group.joined;
+}
+
+function compositeSimilarity(base: GroupForms, revised: GroupForms, trustedSection: boolean, ids: TokenIds): number | undefined {
+  if (sameSegmentation(base, revised)) return 1;
+  if (Math.max(base.size, revised.size) > 2) return undefined;
+  if ((base.size > 1 && !base.joinable) || (revised.size > 1 && !revised.joinable)) return undefined;
+  const baseContext = base.firstContext;
+  const revisedContext = revised.firstContext;
   if (!trustedSection && baseContext && revisedContext && baseContext !== revisedContext) return undefined;
-  const leftText = comparisonForm(base.map((block) => block.text).join(" "));
-  const rightText = comparisonForm(revised.map((block) => block.text).join(" "));
-  if (leftText === rightText) return 1;
-  const left = normalizedTokens(base);
-  const right = normalizedTokens(revised);
-  const shorter = Math.min(left.length, right.length);
+  if (base.comparison === revised.comparison) return 1;
+  const shorter = Math.min(base.words.length, revised.words.length);
   if (shorter < 3) return undefined;
-  const counts = new Map<string, number>();
-  left.forEach((token) => counts.set(token, (counts.get(token) ?? 0) + 1));
+  const left = joinedTokens(base, ids);
+  const right = joinedTokens(revised, ids);
+  // Çok kümeli kesişim: her sözcük iki yandaki tekrar sayısının küçüğü kadar sayılır.
   let shared = 0;
-  right.forEach((token) => {
-    const count = counts.get(token) ?? 0;
-    if (count > 0) {
-      shared++;
-      counts.set(token, count - 1);
-    }
-  });
+  for (const [token, count] of right.counts) shared += Math.min(count, left.counts.get(token) ?? 0);
   const shorterCoverage = shared / shorter;
-  const longerCoverage = shared / Math.max(left.length, right.length);
+  const longerCoverage = shared / Math.max(base.words.length, revised.words.length);
   const requiredRun = Math.min(8, Math.max(2, Math.floor(shorter * 0.2)));
-  if (shorterCoverage < 0.72 || longerCoverage < 0.4 || longestCommonRun(left, right) < requiredRun) return undefined;
+  if (shorterCoverage < 0.72 || longerCoverage < 0.4 || !hasCommonRun(left.tokens, right.tokens, requiredRun)) return undefined;
   return shorterCoverage * 0.55 + longerCoverage * 0.45;
 }
 
@@ -262,45 +406,219 @@ function compositeSimilarity(base: DocumentBlock[], revised: DocumentBlock[], tr
  * it would also carry unchanged text into somebody else's replacement.
  */
 function borrowsExactNeighbour(
-  base: DocumentBlock[],
-  revised: DocumentBlock[],
+  base: BlockForms[],
+  revised: BlockForms[],
   i: number,
   j: number,
   baseCount: number,
   revisedCount: number,
 ): boolean {
-  const sameText = (left?: DocumentBlock, right?: DocumentBlock) =>
-    Boolean(left && right && comparisonForm(left.text) === comparisonForm(right.text));
-  const outside = (blocks: DocumentBlock[], start: number, end: number) => [blocks[start - 1], blocks[end]];
+  const sameText = (left?: BlockForms, right?: BlockForms) =>
+    Boolean(left && right && left.comparison === right.comparison);
+  const outside = (blocks: BlockForms[], start: number, end: number) => [blocks[start - 1], blocks[end]];
   const baseOutside = outside(base, i - baseCount, i);
   const revisedOutside = outside(revised, j - revisedCount, j);
   return revised.slice(j - revisedCount, j).some((block) => baseOutside.some((neighbour) => sameText(block, neighbour)))
     || base.slice(i - baseCount, i).some((block) => revisedOutside.some((neighbour) => sameText(block, neighbour)));
 }
 
+/**
+ * Kesin çapalar arasındaki bir boşlukta tam DP'nin koştuğu en büyük boyut.
+ * Boşluk İKİ yanda da bunu aşarsa DP bir bantla sınırlanır (bkz.
+ * `alignmentBand`).
+ */
+const FULL_ALIGNMENT_LIMIT = 160;
+/** Bandın kılavuz yolun (ve blok sayısı farkının) iki yanına taşma payı (blok). */
+const ALIGNMENT_BAND_SLACK = 64;
+/** Kılavuzlu bandın en çok hücre sayısı; aşılırsa yalnız temel bant kullanılır. */
+const GUIDED_BAND_CELL_LIMIT = 600_000;
+
+/**
+ * Bandın kılavuz yolu.
+ *
+ * Boşluğun iki yanında da yalnız BİR blokta geçen gövde sözcükleri (özel ad,
+ * tutar, nadir terim) aynı temel–değişik çiftinde en az iki kez buluşuyorsa o
+ * çift bir tohumdur. Tohumların i ve j'de kesin artan en uzun zinciri
+ * (0,0)'dan (N,M)'ye kırık bir yol çizer. Tohum hiçbir eşleşmeyi ZORLAMAZ:
+ * yalnız DP'nin bakacağı alanı genişletir, karar yine DP'nindir. Dar
+ * dağarcıklı ya da her şeyi değişmiş metinde tohum çıkmaz; yol köşegendir.
+ */
+function guidePath(base: BlockForms[], revised: BlockForms[]): Array<[number, number]> {
+  const owners = (forms: BlockForms[]) => {
+    const owner = new Map<number, number>();
+    forms.forEach((form, index) => {
+      for (const token of form.bodySet) owner.set(token, owner.has(token) ? -1 : index);
+    });
+    return owner;
+  };
+  const left = owners(base);
+  const right = owners(revised);
+  const votes = new Map<number, number>();
+  for (const [token, i] of left) {
+    const j = right.get(token);
+    if (i < 0 || j === undefined || j < 0) continue;
+    const key = i * revised.length + j;
+    votes.set(key, (votes.get(key) ?? 0) + 1);
+  }
+  // Aynı satırdan iki tohum zincire girmesin: satır içinde j azalan sıralanır.
+  const seeds = [...votes]
+    .filter(([, count]) => count >= 2)
+    .map(([key]): [number, number] => [Math.floor(key / revised.length), key % revised.length])
+    .sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  const tails: number[] = [];
+  const previous = new Int32Array(seeds.length).fill(-1);
+  seeds.forEach(([, j], index) => {
+    let lower = 0;
+    let upper = tails.length;
+    while (lower < upper) {
+      const middle = (lower + upper) >> 1;
+      if (seeds[tails[middle]][1] < j) lower = middle + 1;
+      else upper = middle;
+    }
+    if (lower > 0) previous[index] = tails[lower - 1];
+    tails[lower] = index;
+  });
+  const chain: Array<[number, number]> = [];
+  for (let index = tails.length ? tails[tails.length - 1] : -1; index >= 0; index = previous[index]) {
+    chain.push([seeds[index][0] + 1, seeds[index][1] + 1]);
+  }
+  return [[0, 0], ...chain.reverse(), [base.length, revised.length]];
+}
+
+/**
+ * Hizalama DP'sinin her satırda hesapladığı sütun aralığı [first[i], last[i]].
+ *
+ * Tam DP O(N·M)'dir: hücre başına iş ne kadar azaltılsa da çapasız 1000 bloklu
+ * bir boşluk milyon hücre demektir. Yanlardan biri `FULL_ALIGNMENT_LIMIT` blok
+ * ya da daha küçükse DP tamdır (en çok `FULL_ALIGNMENT_LIMIT`·max(N, M) hücre).
+ * İki yan da büyükse DP iki bandın birleşimiyle sınırlanır (d = j − i,
+ * PAY = `ALIGNMENT_BAND_SLACK`):
+ *
+ * - Temel bant: min(0, M − N) − PAY ≤ d ≤ max(0, M − N) + PAY. Eklenen ya da
+ *   silinen bloklar yolu köşegenden tek yöne kaydırır; bu kayma ne kadar büyük
+ *   olursa olsun (en çok M − N) temel bandın içindedir, bölümleme farkından
+ *   doğan sürekli kayma da öyle. Hücre sayısı (N + 1)·(|M − N| + 2·PAY + 1).
+ * - Kılavuzlu bant: `guidePath`'in her parçası boyunca, parçanın uç
+ *   köşegenlerinin PAY ötesine kadar. Bir yanda silinip öbür yanda geri
+ *   eklenen, yani PAY bloktan uzun bir TAŞIMA yolu temel bandın dışına
+ *   iter; nadir sözcükleri taşınan dizinin yeni yerini gösterdiği sürece
+ *   kılavuz o yolu bandın içine alır. Kılavuzlu bant
+ *   `GUIDED_BAND_CELL_LIMIT` hücreyi aşarsa bırakılır.
+ *
+ * Satır aralıkları tekdüze artandır ve her hücrenin bant içinde bir öncülü
+ * vardır; (0,0) ile (N,M) her zaman banttadır. Bant dışına düşen bir yol
+ * kaybolmaz, yalnız o kısım silme + ekleme olarak gösterilir: her blok yine
+ * tam bir kez görünür.
+ *
+ * Güvenlik payı ölçüldü: temel bant HER boşluğa PAY = 1 ile zorlandığında
+ * bile modülün bütün testleri geçti; sentetik taban senaryoları (çapasız 200+
+ * bloklu boşluklar, taşınan 12 paragraflık dizi, bölümleme kayması) PAY = 8
+ * ile eski tam DP'nin çıktısını bayt bayt verdi. Seçilen PAY bunun sekiz
+ * katıdır (`alignmentPerformance.test.ts`).
+ */
+function alignmentBand(base: BlockForms[], revised: BlockForms[]): { first: number[]; last: number[] } {
+  const rows = base.length;
+  const columns = revised.length;
+  const clamp = (value: number) => Math.max(0, Math.min(columns, value));
+  if (rows <= FULL_ALIGNMENT_LIMIT || columns <= FULL_ALIGNMENT_LIMIT) {
+    return { first: Array<number>(rows + 1).fill(0), last: Array<number>(rows + 1).fill(columns) };
+  }
+  const drift = columns - rows;
+  const low = Math.min(0, drift) - ALIGNMENT_BAND_SLACK;
+  const high = Math.max(0, drift) + ALIGNMENT_BAND_SLACK;
+  const first: number[] = [];
+  const last: number[] = [];
+  for (let i = 0; i <= rows; i++) {
+    first.push(i + low);
+    last.push(i + high);
+  }
+  const guide = guidePath(base, revised);
+  for (let k = 1; k < guide.length; k++) {
+    const [fromRow, fromColumn] = guide[k - 1];
+    const [toRow, toColumn] = guide[k];
+    const lowest = Math.min(fromColumn - fromRow, toColumn - toRow) - ALIGNMENT_BAND_SLACK;
+    const highest = Math.max(fromColumn - fromRow, toColumn - toRow) + ALIGNMENT_BAND_SLACK;
+    for (let i = fromRow; i <= toRow; i++) {
+      first[i] = Math.min(first[i], i + lowest);
+      last[i] = Math.max(last[i], i + highest);
+    }
+  }
+  for (let i = 0; i <= rows; i++) {
+    first[i] = clamp(first[i]);
+    last[i] = clamp(last[i]);
+  }
+  for (let i = rows - 1; i >= 0; i--) first[i] = Math.min(first[i], first[i + 1]);
+  for (let i = 1; i <= rows; i++) last[i] = Math.max(last[i], last[i - 1]);
+  let cells = 0;
+  for (let i = 0; i <= rows; i++) cells += last[i] - first[i] + 1;
+  if (cells <= GUIDED_BAND_CELL_LIMIT) return { first, last };
+  return {
+    first: first.map((_, i) => clamp(i + low)),
+    last: last.map((_, i) => clamp(i + high)),
+  };
+}
+
+/** [temel blok sayısı, değişik blok sayısı, hamle kodu]; sıra skor eşitliğinde kazananı belirler. */
+const GROUPED_MOVES: ReadonlyArray<readonly [number, number, number]> = [
+  [1, 2, 4], [2, 1, 5], [2, 2, 6], [1, 3, 7], [3, 1, 8],
+];
+
 function align(base: DocumentBlock[], revised: DocumentBlock[], trustedSection = false): Pair[] {
-  const cols = revised.length + 1;
-  const scores = new Float32Array((base.length + 1) * cols);
-  const moves = new Uint8Array((base.length + 1) * cols);
+  const ids = new TokenIds();
+  const baseForms = base.map((block) => blockForms(block, ids));
+  const revisedForms = revised.map((block) => blockForms(block, ids));
+  // groups[boyut − 1][son] = [son − boyut + 1, son] aralığındaki ardışık bloklar.
+  // Tek bloklu grubun birleşik metni bloğun kendisidir.
+  const groupsOf = (blocks: DocumentBlock[], forms: BlockForms[]) => [1, 2, 3].map((size) => blocks.map((_, end) => (
+    end + 1 < size ? undefined
+      : size === 1 ? groupForms([blocks[end]], forms[end].comparison)
+        : groupForms(blocks.slice(end + 1 - size, end + 1))
+  )));
+  const baseGroups = groupsOf(base, baseForms);
+  const revisedGroups = groupsOf(revised, revisedForms);
+
+  // Bant içindeki hücreler satır satır sıkıştırılmış dizide tutulur; tam DP'de
+  // düzen eskisiyle aynıdır (satır başına M + 1 hücre).
+  const band = alignmentBand(baseForms, revisedForms);
+  const firstColumn = (i: number) => band.first[i];
+  const lastColumn = (i: number) => band.last[i];
+  const rowStart = [0];
+  for (let i = 0; i <= base.length; i++) rowStart.push(rowStart[i] + lastColumn(i) - firstColumn(i) + 1);
+  const cell = (i: number, j: number) => (
+    j < firstColumn(i) || j > lastColumn(i) ? -1 : rowStart[i] + j - firstColumn(i)
+  );
+  const scores = new Float32Array(rowStart[base.length + 1]);
+  const moves = new Uint8Array(rowStart[base.length + 1]);
+  // Bant dışındaki hücre hiçbir yola katılamaz.
+  const scoreAt = (i: number, j: number) => {
+    const at = cell(i, j);
+    return at < 0 ? -Infinity : scores[at];
+  };
   const gap = -0.42;
-  for (let i = 1; i <= base.length; i++) {
-    scores[i * cols] = i * gap;
-    moves[i * cols] = 2;
+  for (let i = 1; i <= base.length && firstColumn(i) === 0; i++) {
+    scores[cell(i, 0)] = i * gap;
+    moves[cell(i, 0)] = 2;
   }
-  for (let j = 1; j <= revised.length; j++) {
-    scores[j] = j * gap;
-    moves[j] = 3;
+  for (let j = 1; j <= lastColumn(0); j++) {
+    scores[cell(0, j)] = j * gap;
+    moves[cell(0, j)] = 3;
   }
   for (let i = 1; i <= base.length; i++) {
-    for (let j = 1; j <= revised.length; j++) {
-      const sim = similarity(base[i - 1], revised[j - 1]);
-      const diagonal = scores[(i - 1) * cols + j - 1] + (sim * 1.65 - 0.62);
-      const up = scores[(i - 1) * cols + j] + gap;
-      const left = scores[i * cols + j - 1] + gap;
-      const at = i * cols + j;
+    const a = baseForms[i - 1];
+    for (let j = Math.max(1, firstColumn(i)); j <= lastColumn(i); j++) {
+      const b = revisedForms[j - 1];
+      const decisive = decisivePairScore(a, b);
+      const intersection = decisive === undefined ? sharedBodyTokens(a, b) : 0;
+      const sim = decisive ?? similarity(a, b, intersection);
+      const diagonal = scoreAt(i - 1, j - 1) + (sim * 1.65 - 0.62);
+      const up = scoreAt(i - 1, j) + gap;
+      const left = scoreAt(i, j - 1) + gap;
       let bestScore: number;
       let bestMove: number;
-      if (diagonal >= up && diagonal >= left && highConfidencePair(base[i - 1], revised[j - 1], trustedSection)) {
+      if (
+        diagonal >= up && diagonal >= left
+        && (decisive !== undefined || highConfidencePair(a, b, intersection, trustedSection))
+      ) {
         bestScore = diagonal;
         bestMove = 1;
       } else if (up >= left) {
@@ -310,27 +628,27 @@ function align(base: DocumentBlock[], revised: DocumentBlock[], trustedSection =
         bestScore = left;
         bestMove = 3;
       }
-      const groupedMoves: Array<[number, number, number]> = [
-        [1, 2, 4], [2, 1, 5], [2, 2, 6], [1, 3, 7], [3, 1, 8],
-      ];
-      for (const [baseCount, revisedCount, move] of groupedMoves) {
+      for (const [baseCount, revisedCount, move] of GROUPED_MOVES) {
         if (i < baseCount || j < revisedCount) continue;
+        const before = scoreAt(i - baseCount, j - revisedCount);
+        if (before === -Infinity) continue;
         const groupedSimilarity = compositeSimilarity(
-          base.slice(i - baseCount, i),
-          revised.slice(j - revisedCount, j),
+          baseGroups[baseCount - 1][i - 1]!,
+          revisedGroups[revisedCount - 1][j - 1]!,
           trustedSection,
+          ids,
         );
         if (groupedSimilarity === undefined) continue;
         // Exact segmentation and identical joined text score 1 and are always genuine
         // regroupings of the same content; only inexact groups can borrow a neighbour.
-        if (groupedSimilarity < 1 && borrowsExactNeighbour(base, revised, i, j, baseCount, revisedCount)) continue;
-        const groupedScore = scores[(i - baseCount) * cols + j - revisedCount]
-          + (groupedSimilarity * 1.65 - 0.62) * Math.max(baseCount, revisedCount);
+        if (groupedSimilarity < 1 && borrowsExactNeighbour(baseForms, revisedForms, i, j, baseCount, revisedCount)) continue;
+        const groupedScore = before + (groupedSimilarity * 1.65 - 0.62) * Math.max(baseCount, revisedCount);
         if (groupedScore > bestScore + 0.02) {
           bestScore = groupedScore;
           bestMove = move;
         }
       }
+      const at = cell(i, j);
       scores[at] = bestScore;
       moves[at] = bestMove;
     }
@@ -340,7 +658,7 @@ function align(base: DocumentBlock[], revised: DocumentBlock[], trustedSection =
   let i = base.length;
   let j = revised.length;
   while (i || j) {
-    const move = moves[i * cols + j];
+    const move = moves[cell(i, j)];
     if (move === 1) result.push({ base: base[--i], revised: revised[--j] });
     else if (move === 4) {
       const baseBlocks = base.slice(i - 1, i);

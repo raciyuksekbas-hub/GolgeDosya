@@ -966,8 +966,13 @@ fn local_name_end(e: &quick_xml::events::BytesEnd) -> String {
     String::from_utf8_lossy(e.local_name().as_ref()).to_string()
 }
 
+/// quick-xml 0.36'nın yinelenen ad denetimi her öznitelikte öncekilerin
+/// HEPSİNE bakar (RUSTSEC-2026-0194): tek etikette 32 000 öznitelik 74 KB'lık
+/// bir UDF'yi 4,5 s kilitliyordu, 1 MB'lık dosya dakikalarca. Denetim kapalı
+/// okunur. İlk eşleşmeyi arayan `attr` için anlam aynıdır: denetimli okumada
+/// da tekrarlar ilk geçişten SONRA gelir ve `flatten` onları atardı.
 fn attr(e: &BytesStart, key: &str) -> Option<String> {
-    for a in e.attributes().flatten() {
+    for a in e.attributes().with_checks(false).flatten() {
         if a.key.local_name().as_ref() == key.as_bytes() {
             return Some(String::from_utf8_lossy(&a.value).to_string());
         }
@@ -975,11 +980,23 @@ fn attr(e: &BytesStart, key: &str) -> Option<String> {
     None
 }
 
+/// Bütün öznitelikler, denetimli okumayla AYNI anlamda (aynı tam adın yalnız
+/// ilk geçişi) ama doğrusal sürede.
+fn unique_attributes<'a>(
+    e: &'a BytesStart<'_>,
+) -> impl Iterator<Item = quick_xml::events::attributes::Attribute<'a>> {
+    let mut attrs = e.attributes();
+    attrs.with_checks(false);
+    let mut seen = std::collections::HashSet::new();
+    attrs
+        .flatten()
+        .filter(move |a| seen.insert(a.key.into_inner()))
+}
+
 /// Öğenin bütün öznitelikleri; değerler `attr` ile aynı biçimde (ham) okunur ki
 /// açık bir özniteliğin anlamı değişmesin.
 fn attr_map(e: &BytesStart) -> Attrs {
-    e.attributes()
-        .flatten()
+    unique_attributes(e)
         .map(|a| {
             (
                 String::from_utf8_lossy(a.key.local_name().as_ref()).to_string(),
@@ -1005,7 +1022,7 @@ fn attr_bool(e: &BytesStart, key: &str) -> bool {
 
 fn parse_hf_attrs(e: &BytesStart) -> HeaderFooter {
     let mut page_number_attrs = Vec::new();
-    for a in e.attributes().flatten() {
+    for a in unique_attributes(e) {
         let k = String::from_utf8_lossy(a.key.local_name().as_ref()).to_string();
         if k.starts_with("pageNumber-") {
             page_number_attrs.push((k, String::from_utf8_lossy(&a.value).to_string()));

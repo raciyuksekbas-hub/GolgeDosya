@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { compareDocuments } from "./core/compare";
+import { ComparisonCancelled, startComparison, type ComparisonOutcome } from "./comparisonJob";
 import { extractDocument, ExtractionError } from "./core/extractors";
 import type { LocalDocument } from "./core/types";
-import { buildComparisonViewModel, filterChanges, type ChangeFilter } from "./viewModels/comparisonViewModel";
+import { filterChanges, type ChangeFilter } from "./viewModels/comparisonViewModel";
 import { DocumentPane, PaneHeader } from "./DocumentPane";
 import { ChangeRail } from "./ChangeRail";
 import { ChangeInspector } from "./ChangeInspector";
@@ -25,10 +25,13 @@ import "./compare.css";
  * alıyordu; birleşik kabuk native seçiciyi kullandığı için elde yol var.
  * Motorun imzasını değiştirmemek adına baytlar Rust'tan okunup burada yeniden
  * `File`'a sarılıyor. `extractDocument` bu yüzden birebir aynı kalabiliyor.
+ *
+ * Baytlar ham gelir (`ArrayBuffer`). Eskiden JSON sayı dizisiydi: 20 MiB'lık
+ * belge 71 MiB metin, ~1,1 sn ayrıştırma ve 425 MiB bellek demekti.
  */
-async function fileFromPath(path: string): Promise<File> {
-  const bytes = await invoke<number[]>("degisikis_read_document", { path });
-  return new File([new Uint8Array(bytes)], baseName(path));
+export async function fileFromPath(path: string): Promise<File> {
+  const bytes = await invoke<ArrayBuffer>("degisikis_read_document", { path });
+  return new File([bytes], baseName(path));
 }
 
 type Loaded = { path: string; doc: LocalDocument };
@@ -142,6 +145,9 @@ export function CompareWorkspace({ paths, onPairChange, onReplaceDocuments }: {
 }) {
   const [docs, setDocs] = useState<[Loaded, Loaded] | null>(null);
   const [busy, setBusy] = useState(true);
+  // Sonuç, hesaplandığı belge çiftiyle birlikte tutulur: sürümler
+  // değiştirildiğinde eski sonuç yeni çiftin üstüne bir kare bile çizilmez.
+  const [outcome, setOutcome] = useState<(ComparisonOutcome & { docs: [Loaded, Loaded] }) | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [filter, setFilter] = useState<ChangeFilter>("all");
   const [selected, setSelected] = useState<string | undefined>(undefined);
@@ -182,7 +188,6 @@ export function CompareWorkspace({ paths, onPairChange, onReplaceDocuments }: {
         ]);
         if (cancelled) return;
         setDocs([{ path: a, doc: first }, { path: b, doc: second }]);
-        announce("Belgeler karşılaştırıldı.");
       } catch (e) {
         if (cancelled) return;
         setFailure(
@@ -199,16 +204,40 @@ export function CompareWorkspace({ paths, onPairChange, onReplaceDocuments }: {
     };
   }, [paths]);
 
-  // Karşılaştırma sonucu ve ondan türetilen görünüm modeli birlikte tutulur:
+  // Karşılaştırma sonucu ve ondan türetilen görünüm modeli birlikte gelir:
   // satırlar sonuçta, değişiklik listesi ve özet görünüm modelindedir.
-  const comparison = useMemo(
-    () => (docs ? compareDocuments(docs[0].doc.blocks, docs[1].doc.blocks) : null),
-    [docs],
-  );
-  const model = useMemo(
-    () => (comparison ? buildComparisonViewModel(comparison) : null),
-    [comparison],
-  );
+  //
+  // Hesap arayüz iş parçacığında DEĞİL, worker'da yapılır (comparisonJob.ts).
+  // Eskiden render sırasında `useMemo` içinde koşuyordu: çıkarma biter bitmez
+  // döner simge kalkıyor, ardından pencere hizalama boyunca donuyordu. Şimdi
+  // sonuç gelene kadar "karşılaştırılıyor" durumu kalır. Belge çifti değişirse
+  // (sürüm değiştirme, yeni belge) ya da ekran kapanırsa süren iş iptal edilir
+  // ve geç gelen sonuç yok sayılır.
+  useEffect(() => {
+    if (!docs) return;
+    let cancelled = false;
+    const job = startComparison(docs[0].doc.blocks, docs[1].doc.blocks);
+    job.result.then(
+      (result) => {
+        if (cancelled) return;
+        setOutcome({ ...result, docs });
+        announce("Belgeler karşılaştırıldı.");
+      },
+      (e: unknown) => {
+        if (cancelled || e instanceof ComparisonCancelled) return;
+        logFailure("degisikis compare", e);
+        setFailure("Belgeler karşılaştırılamadı. Lütfen yeniden deneyin.");
+      },
+    );
+    return () => {
+      cancelled = true;
+      job.cancel();
+    };
+  }, [docs]);
+  const current = outcome && outcome.docs === docs ? outcome : null;
+  const comparison = current?.comparison ?? null;
+  const model = current?.model ?? null;
+  const comparing = Boolean(docs) && !current && !failure;
 
   /**
    * Çıkarma uyarıları — okunAMAYAN içerik.
@@ -352,7 +381,7 @@ export function CompareWorkspace({ paths, onPairChange, onReplaceDocuments }: {
     if (revisedPane.current) revisedPane.current.scrollTop = next;
   }, [selected, model]);
 
-  if (busy) {
+  if (busy || comparing) {
     return (
       <div className="surface">
         <Status tone="busy">Belgeler karşılaştırılıyor…</Status>

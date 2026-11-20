@@ -54,6 +54,15 @@ pub fn convert_single_image_to_pdf(img: DynamicImage) -> Result<LopdfDoc> {
     Ok(doc)
 }
 
+/// TIFF sınırları. Kareler aynı sıkıştırılmış şeridi paylaşabildiği için
+/// ~1 MB'lık bir dosya binlerce 16k×16k kare bildirebilir: saatlerce işlemci,
+/// her karede yüzlerce MB bellek. Sınırlar gerçek taramaların çok üstündedir:
+/// kare başına 100 MP 600 dpi A3'ü (≈70 MP) karşılar; toplam 8 Gpx ≈ 600 dpi'da
+/// 230, 300 dpi'da 900 A4 sayfa.
+const MAX_TIFF_FRAMES: usize = 2_000;
+const MAX_TIFF_FRAME_PIXELS: u64 = 100_000_000;
+const MAX_TIFF_TOTAL_PIXELS: u64 = 8_000_000_000;
+
 pub fn convert_tiff_bytes_to_pdf(bytes: &[u8]) -> Result<LopdfDoc> {
     let mut decoder = tiff::decoder::Decoder::new(Cursor::new(bytes))
         .map_err(|e| EklerError::InvalidImage(format!("TIFF çözümlenemedi: {}", e)))?;
@@ -61,11 +70,27 @@ pub fn convert_tiff_bytes_to_pdf(bytes: &[u8]) -> Result<LopdfDoc> {
     let mut doc = LopdfDoc::with_version("1.7");
     let pages_id = doc.new_object_id();
     let mut page_ids = Vec::new();
+    let mut total_pixels = 0u64;
 
     loop {
         let (w, h) = decoder
             .dimensions()
             .map_err(|e| EklerError::InvalidImage(format!("TIFF boyut hatası: {}", e)))?;
+        // Kare çözülmeden ÖNCE: sınırı aşan kare için tampon hiç ayrılmaz.
+        let pixels = u64::from(w) * u64::from(h);
+        if pixels > MAX_TIFF_FRAME_PIXELS {
+            return Err(EklerError::InvalidImage(format!(
+                "TIFF karesi çok büyük ({w}×{h}); kare başına en çok {} megapiksel desteklenir",
+                MAX_TIFF_FRAME_PIXELS / 1_000_000
+            )));
+        }
+        total_pixels += pixels;
+        if total_pixels > MAX_TIFF_TOTAL_PIXELS {
+            return Err(EklerError::InvalidImage(
+                "TIFF dosyasının toplam piksel sayısı güvenli sınırı aşıyor; dosyayı bölerek ekleyin"
+                    .into(),
+            ));
+        }
 
         let img_result = decoder
             .read_image()
@@ -111,6 +136,11 @@ pub fn convert_tiff_bytes_to_pdf(bytes: &[u8]) -> Result<LopdfDoc> {
 
         if !decoder.more_images() {
             break;
+        }
+        if page_ids.len() >= MAX_TIFF_FRAMES {
+            return Err(EklerError::InvalidImage(format!(
+                "TIFF dosyası {MAX_TIFF_FRAMES} sayfadan fazla; dosyayı bölerek ekleyin"
+            )));
         }
         decoder.next_image().map_err(|e| {
             EklerError::InvalidImage(format!("Sonraki TIFF karesi açılamadı: {}", e))
@@ -215,18 +245,28 @@ fn add_image_page(
     let (img_w, img_h) = img.dimensions();
     // Flatten transparency against paper white, not black; preserve tonal data
     // until the explicit 8-bit PDF image encoding boundary.
-    let rgba = img.to_rgba8();
-    let mut rgb = image::RgbImage::new(img_w, img_h);
-    for (x, y, p) in rgba.enumerate_pixels() {
-        let a = u32::from(p[3]);
-        rgb.put_pixel(
-            x,
-            y,
-            image::Rgb(
-                [0, 1, 2].map(|i| ((u32::from(p[i]) * a + 255 * (255 - a) + 127) / 255) as u8),
-            ),
-        );
-    }
+    //
+    // Saydamlığı olmayan görsel doğrudan RGB'ye çevrilir: aşağıdaki formül
+    // a = 255'te kanalı aynen verir ((p·255 + 127) / 255 = p), ama RGBA ara
+    // tamponu (piksel başına 4 bayt) gri bir taramada belleği iki katına
+    // çıkarıyordu.
+    let rgb = if !img.color().has_alpha() {
+        img.to_rgb8()
+    } else {
+        let rgba = img.to_rgba8();
+        let mut rgb = image::RgbImage::new(img_w, img_h);
+        for (x, y, p) in rgba.enumerate_pixels() {
+            let a = u32::from(p[3]);
+            rgb.put_pixel(
+                x,
+                y,
+                image::Rgb(
+                    [0, 1, 2].map(|i| ((u32::from(p[i]) * a + 255 * (255 - a) + 127) / 255) as u8),
+                ),
+            );
+        }
+        rgb
+    };
 
     let mut jpeg_bytes = Vec::new();
     let mut cursor = Cursor::new(&mut jpeg_bytes);

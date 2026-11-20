@@ -60,30 +60,42 @@ pub fn pdf_to_images(
             .map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
         let temp = tempfile::tempdir().map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
         let copy = safe_io::write_render_scratch(&temp, "source.pdf", &bytes)?;
-        let images = native::render(&copy, dpi)?;
-        if images.len() != info.page_count {
+        // Sayfalar tek tek çizilir ve yazılır. Eskiden bütün sayfalar önce
+        // belleğe çiziliyor, toplam 512 MiB'lık bütçe 150 dpi'da 61 A4
+        // sayfadan uzun her PDF'i reddediyordu. Çizim ile kodlama küçük bir
+        // kanalla üst üste biner: bellekte en çok üç sayfa vardır. Hata
+        // olursa hazırlık klasörü yayımlanmadan silinir; yarım paket kalmaz.
+        let staging_path = staging.path();
+        let written = std::thread::scope(|scope| -> Result<usize> {
+            let (tx, rx) = std::sync::mpsc::sync_channel::<(usize, ::image::DynamicImage)>(1);
+            let writer = scope.spawn(move || -> Result<usize> {
+                let mut written = 0usize;
+                for (index, img) in rx {
+                    write_page_image(staging_path, index, format, &img)?;
+                    written += 1;
+                }
+                Ok(written)
+            });
+            let rendered = native::render_each(&copy, dpi, |index, img| {
+                tx.send((index, img))
+                    .map_err(|_| EklerError::InvalidImage("Sayfa görseli yazılamadı".into()))
+            });
+            drop(tx);
+            // Yazıcının hatası (ör. disk dolu) daha açıklayıcıdır; önce o döner.
+            let written = writer.join().map_err(|_| {
+                EklerError::InvalidImage("Sayfa görseli yazılırken iç hata".into())
+            })??;
+            if rendered? != written {
+                return Err(EklerError::InvalidPdf(
+                    "Renderer sayfa sayısı uyuşmuyor".into(),
+                ));
+            }
+            Ok(written)
+        })?;
+        if written != info.page_count {
             return Err(EklerError::InvalidPdf(
                 "Renderer sayfa sayısı uyuşmuyor".into(),
             ));
-        }
-        for (i, img) in images.into_iter().enumerate() {
-            let mut data = std::io::Cursor::new(Vec::new());
-            img.write_to(
-                &mut data,
-                if format == "png" {
-                    ::image::ImageFormat::Png
-                } else {
-                    ::image::ImageFormat::Jpeg
-                },
-            )
-            .map_err(|e| EklerError::InvalidImage(e.to_string()))?;
-            ::image::load_from_memory(data.get_ref())
-                .map_err(|e| EklerError::InvalidImage(e.to_string()))?;
-            safe_io::write_new_bytes(
-                &staging.path().join(format!("sayfa-{:04}.{format}", i + 1)),
-                &[],
-                data.get_ref(),
-            )?;
         }
         if before != calculate_sha256(source).map_err(|e| EklerError::InvalidPdf(e.to_string()))? {
             return Err(EklerError::SourceIntegrityCompromised {
@@ -286,7 +298,11 @@ mod native {
         }))
     }
 
-    pub fn render(path: &Path, dpi: u32) -> Result<Vec<::image::DynamicImage>> {
+    pub fn render_each(
+        path: &Path,
+        dpi: u32,
+        mut visit: impl FnMut(usize, ::image::DynamicImage) -> Result<()>,
+    ) -> Result<usize> {
         let raw = std::fs::read(path).map_err(|source| EklerError::IoError {
             path: path.into(),
             source,
@@ -312,8 +328,7 @@ mod native {
             return Err(fail());
         }
 
-        let mut images = Vec::with_capacity(pages.len());
-        let mut budget = 0usize;
+        let count = pages.len();
         for (index, ((w, h), rotation)) in pages.into_iter().enumerate() {
             let width = (w * f64::from(dpi) / 72.).ceil();
             let height = (h * f64::from(dpi) / 72.).ceil();
@@ -328,12 +343,6 @@ mod native {
                 ));
             }
             let (width, height) = (width as u32, height as u32);
-            budget += width as usize * height as usize * 4;
-            if budget > 512 * 1024 * 1024 {
-                return Err(EklerError::InvalidPdf(
-                    "Görsel paketi bellek sınırını aşıyor; daha az sayfa veya DPI seçin".into(),
-                ));
-            }
             let page = winrt(pdf.GetPage(index as u32))?;
             let options = winrt(PdfPageRenderOptions::new())?;
             winrt(options.SetDestinationWidth(width))?;
@@ -372,14 +381,17 @@ mod native {
                 );
             }
             let img = ::image::DynamicImage::ImageRgb8(rgb);
-            images.push(match rotation {
-                90 => img.rotate90(),
-                180 => img.rotate180(),
-                270 => img.rotate270(),
-                _ => img,
-            });
+            visit(
+                index,
+                match rotation {
+                    90 => img.rotate90(),
+                    180 => img.rotate180(),
+                    270 => img.rotate270(),
+                    _ => img,
+                },
+            )?;
         }
-        Ok(images)
+        Ok(count)
     }
 }
 
@@ -464,7 +476,11 @@ mod native {
             unsafe { (self.1)(self.0) }
         }
     }
-    pub fn render(path: &Path, dpi: u32) -> Result<Vec<::image::DynamicImage>> {
+    pub fn render_each(
+        path: &Path,
+        dpi: u32,
+        mut visit: impl FnMut(usize, ::image::DynamicImage) -> Result<()>,
+    ) -> Result<usize> {
         use std::os::unix::ffi::OsStrExt;
         let fail = || EklerError::InvalidPdf("Yerel PDF renderer başarısız".into());
         unsafe {
@@ -489,9 +505,8 @@ mod native {
                 return Err(fail());
             }
             let space = Owned(space, CGColorSpaceRelease);
-            let mut images = Vec::new();
-            let mut budget = 0usize;
-            for i in 1..=CGPDFDocumentGetNumberOfPages(doc.0) {
+            let count = CGPDFDocumentGetNumberOfPages(doc.0);
+            for i in 1..=count {
                 let page = CGPDFDocumentGetPage(doc.0, i);
                 if page.is_null() {
                     return Err(fail());
@@ -516,12 +531,6 @@ mod native {
                     ));
                 }
                 let (width, height) = (width as usize, height as usize);
-                budget += width * height * 4;
-                if budget > 512 * 1024 * 1024 {
-                    return Err(EklerError::InvalidPdf(
-                        "Görsel paketi bellek sınırını aşıyor; daha az sayfa veya DPI seçin".into(),
-                    ));
-                }
                 let mut data = vec![255u8; width * height * 4];
                 let ctx = CGBitmapContextCreate(
                     data.as_mut_ptr().cast(),
@@ -563,11 +572,63 @@ mod native {
                 drop(ctx);
                 let img = ::image::RgbaImage::from_raw(width as u32, height as u32, data)
                     .ok_or_else(fail)?;
-                images.push(::image::DynamicImage::ImageRgba8(img).to_rgb8().into());
+                visit(
+                    i - 1,
+                    ::image::DynamicImage::ImageRgba8(img).to_rgb8().into(),
+                )?;
             }
-            Ok(images)
+            Ok(count)
         }
     }
+}
+
+/// Bütün sayfalar bellekte; yalnız tek sayfalık önizleme kopyası için.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn render_all(path: &Path, dpi: u32) -> Result<Vec<::image::DynamicImage>> {
+    let mut images = Vec::new();
+    native::render_each(path, dpi, |_, img| {
+        images.push(img);
+        Ok(())
+    })?;
+    Ok(images)
+}
+
+/// Bir sayfa görselini kodlar, başlığından geri okuyup boyutunu doğrular ve
+/// hazırlık klasörüne yazar. Eskiden her görsel baştan sona yeniden
+/// çözülüyordu; kodlayıcının ürettiği dosyanın geçerli bir başlık ve doğru
+/// boyut taşıması aynı hatayı yakalar.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn write_page_image(
+    staging: &Path,
+    index: usize,
+    format: &str,
+    img: &::image::DynamicImage,
+) -> Result<()> {
+    let mut data = std::io::Cursor::new(Vec::new());
+    img.write_to(
+        &mut data,
+        if format == "png" {
+            ::image::ImageFormat::Png
+        } else {
+            ::image::ImageFormat::Jpeg
+        },
+    )
+    .map_err(|e| EklerError::InvalidImage(e.to_string()))?;
+    let written = ::image::ImageReader::new(std::io::Cursor::new(data.get_ref()))
+        .with_guessed_format()
+        .map_err(|e| EklerError::InvalidImage(e.to_string()))?
+        .into_dimensions()
+        .map_err(|e| EklerError::InvalidImage(e.to_string()))?;
+    if written != (img.width(), img.height()) {
+        return Err(EklerError::InvalidImage(
+            "Kodlanan sayfa görselinin boyutu uyuşmuyor".into(),
+        ));
+    }
+    safe_io::write_new_bytes(
+        &staging.join(format!("sayfa-{:04}.{format}", index + 1)),
+        &[],
+        data.get_ref(),
+    )
 }
 
 /// Read-only, bounded preview. A private one-page copy avoids rendering a whole book.
@@ -610,7 +671,7 @@ pub fn preview_page(source: &Path, page: usize, dpi: u32, rotation: i32) -> Resu
             .save_to(&mut working)
             .map_err(|e| EklerError::InvalidPdf(e.to_string()))?;
         let path = safe_io::write_render_scratch(&dir, "preview.pdf", &working)?;
-        let mut images = native::render(&path, dpi)?;
+        let mut images = render_all(&path, dpi)?;
         let img = images
             .pop()
             .ok_or_else(|| EklerError::InvalidPdf("Önizleme üretilemedi".into()))?;

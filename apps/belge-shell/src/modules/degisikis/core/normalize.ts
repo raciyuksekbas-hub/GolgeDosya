@@ -33,7 +33,16 @@ export function comparisonForm(input: string): string {
 }
 
 export function looseMatchForm(input: string): string {
-  return comparisonForm(input)
+  return looseMatchFromComparison(comparisonForm(input));
+}
+
+/**
+ * `looseMatchForm`'un ikinci yarısı: metnin `comparisonForm`'u elde varsa
+ * normalizasyon yeniden koşmaz. Hizalama her bloğun karşılaştırma biçimini
+ * zaten tutuyor; `looseMatchForm(x) === looseMatchFromComparison(comparisonForm(x))`.
+ */
+export function looseMatchFromComparison(comparison: string): string {
+  return comparison
     .toLocaleLowerCase("tr-TR")
     .replace(/[^\p{L}\p{N}%₺€$]+/gu, " ")
     .trim();

@@ -265,21 +265,32 @@ fn verify_output(fx: &Fixture, op: Op, source: &Document, out: &Document) -> Vec
     }
     if matches!(op, Op::Watermark) {
         let mut found = false;
-        for id in &out_ids {
-            let Ok(content) = out.get_page_content(*id) else {
-                continue;
-            };
-            let Ok(ops) = lopdf::content::Content::decode(&content) else {
-                errors.push(format!("{} · Watermark: içerik akışı çözülemedi", fx.name));
-                break;
-            };
-            found |= ops.operations.iter().any(|o| {
-                o.operator == "Tj"
-                    && o.operands
-                        .first()
-                        .and_then(|s| s.as_str().ok())
-                        .is_some_and(|s| s == WATERMARK.as_bytes())
-            });
+        // Akışlar tek tek çözülür: kaynağın kendi (derin, ayrıştırılamayan)
+        // içerik akışı yığını taşırmasın diye ürünle aynı sınırla atlanır;
+        // filigran kendi akışında aranır.
+        'pages: for id in &out_ids {
+            for stream_id in out.get_page_contents(*id) {
+                let Ok(stream) = out.get_object(stream_id).and_then(|o| o.as_stream()) else {
+                    continue;
+                };
+                let content = stream
+                    .decompressed_content()
+                    .unwrap_or_else(|_| stream.content.clone());
+                if ekler_core::pdf::guard::exceeds_nesting(&content) {
+                    continue;
+                }
+                let Ok(ops) = lopdf::content::Content::decode(&content) else {
+                    errors.push(format!("{} · Watermark: içerik akışı çözülemedi", fx.name));
+                    break 'pages;
+                };
+                found |= ops.operations.iter().any(|o| {
+                    o.operator == "Tj"
+                        && o.operands
+                            .first()
+                            .and_then(|s| s.as_str().ok())
+                            .is_some_and(|s| s == WATERMARK.as_bytes())
+                });
+            }
         }
         if !found {
             errors.push(format!(

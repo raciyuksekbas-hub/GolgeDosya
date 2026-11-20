@@ -395,24 +395,60 @@ pub fn validate_document(doc: &Document) -> Result<usize> {
     Ok(count)
 }
 
+/// Bir Flate katmanının açılmış boyut üst sınırı.
+const MAX_INFLATED_LAYER: usize = 128 * 1024 * 1024;
+
 /// lopdf 0.34 logs certain zlib errors and returns partial data. Never accept
 /// those errors as a successful repair. This is a bounded validation pass only.
+///
+/// Süzgeç zincirinin BAŞINDAKİ bütün Flate katmanları sırayla, her biri
+/// [`MAX_INFLATED_LAYER`] ile açılır. Eskiden yalnız tek Flate'li akış
+/// sınanıyordu; `[/FlateDecode /FlateDecode]` zinciri sınırsız kalıyor, birkaç
+/// KB'lık iç içe bir Flate bombası görsel iyileştiricide (lopdf'in sınırsız
+/// `read_to_end`'i) ya da içerik akışı çözülürken gigabaytlarca bellek
+/// istiyordu. Zincirin sonundaki başka bir süzgece (ör. DCTDecode) dokunulmaz.
 fn validate_flate_stream(stream: &lopdf::Stream) -> Result<()> {
-    use std::io::Read;
-    let single_flate = match stream.dict.get(b"Filter") {
-        Ok(Object::Name(n)) => n == b"FlateDecode" || n == b"Fl",
-        Ok(Object::Array(a)) if a.len() == 1 => a[0].as_name().ok() == Some(b"FlateDecode"),
-        _ => false,
+    let is_flate = |n: &[u8]| n == b"FlateDecode" || n == b"Fl";
+    let names: Vec<&[u8]> = match stream.dict.get(b"Filter") {
+        Ok(Object::Name(n)) => vec![n.as_slice()],
+        Ok(Object::Array(a)) => a.iter().map(|v| v.as_name().unwrap_or(b"")).collect(),
+        _ => return Ok(()),
     };
-    if !single_flate {
-        return Ok(());
+    let run = names.iter().take_while(|n| is_flate(n)).count();
+    // Katmanın öngörücüsü varsa açılmış baytı bir sonraki katmanın girdisi
+    // DEĞİLDİR (önce öngörücü geri alınır); zincir o katmanda bırakılır.
+    let has_predictor = |layer: usize| -> bool {
+        let params = match stream.dict.get(b"DecodeParms") {
+            Ok(Object::Dictionary(d)) if names.len() == 1 => Some(d),
+            Ok(Object::Array(a)) => a.get(layer).and_then(|v| v.as_dict().ok()),
+            _ => None,
+        };
+        params
+            .and_then(|d| d.get(b"Predictor").ok())
+            .and_then(|v| v.as_i64().ok())
+            .is_some_and(|p| p > 1)
+    };
+    let mut input = std::borrow::Cow::Borrowed(stream.content.as_slice());
+    for layer in 0..run {
+        let keep = layer + 1 < run && !has_predictor(layer);
+        match inflate_bounded(&input, keep)? {
+            Some(next) => input = std::borrow::Cow::Owned(next),
+            None => break,
+        }
     }
-    if stream.content.len() < 6 {
+    Ok(())
+}
+
+/// Tek bir zlib katmanını sınırla açar; `keep` ise açılmış baytları döndürür.
+fn inflate_bounded(data: &[u8], keep: bool) -> Result<Option<Vec<u8>>> {
+    use std::io::Read;
+    if data.len() < 6 {
         return Err(invalid("Eksik Flate akışı"));
     }
-    let mut decoder = flate2::read::ZlibDecoder::new(stream.content.as_slice());
+    let mut decoder = flate2::read::ZlibDecoder::new(data);
     let mut buffer = [0u8; 65536];
     let mut total = 0usize;
+    let mut kept = Vec::new();
     loop {
         let read = decoder
             .read(&mut buffer)
@@ -421,8 +457,11 @@ fn validate_flate_stream(stream: &lopdf::Stream) -> Result<()> {
             break;
         }
         total += read;
-        if total > 128 * 1024 * 1024 {
+        if total > MAX_INFLATED_LAYER {
             return Err(invalid("PDF akışının açılmış boyutu güvenli sınırı aşıyor"));
+        }
+        if keep {
+            kept.extend_from_slice(&buffer[..read]);
         }
     }
     // Akış temiz çözüldü: döngü hatasız `read == 0` (zlib EOD) ile bitti.
@@ -439,8 +478,8 @@ fn validate_flate_stream(stream: &lopdf::Stream) -> Result<()> {
     // Eşitlik dayatmak, görüntüleyicinin sorunsuz açtığı belgeyi kilitliyordu.
     // Tutarsızlık yalnızca çözücünün var olandan FAZLA girdi tüketmesidir —
     // mantıken imkânsız; yine de savunma amaçlı denetlenir.
-    if decoder.total_in() > stream.content.len() as u64 {
+    if decoder.total_in() > data.len() as u64 {
         return Err(invalid("Sıkıştırılmış PDF akışı uzunluğu tutarsız"));
     }
-    Ok(())
+    Ok(keep.then_some(kept))
 }

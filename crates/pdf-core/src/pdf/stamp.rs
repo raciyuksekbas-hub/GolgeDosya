@@ -1336,6 +1336,12 @@ fn brand_names(
 fn stream_operations(doc: &LopdfDoc, item: &Object) -> Option<Vec<Operation>> {
     let (_, obj) = doc.dereference(item).ok()?;
     let data = stream_data(obj.as_stream().ok()?)?;
+    // İçerik ayrıştırıcısı da özyinelemeli ve içerik akışları yüklemede
+    // taranmaz: derin bir işlenen dizisi yığını taşırır (bkz. guard.rs). Böyle
+    // bir akış, ayrıştırılamayan akış gibi "işlem yok" sayılır.
+    if super::guard::exceeds_nesting(&data) {
+        return None;
+    }
     Content::decode(&data).ok().map(|c| c.operations)
 }
 

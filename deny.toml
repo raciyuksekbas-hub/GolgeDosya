@@ -1,0 +1,31 @@
+# Bağımlılık açığı kapısı (scripts/check-advisories.sh, sürüm kapısı adım 2).
+# Yalnız [advisories] denetlenir; lisanslar check-licensing.py ile ayrıca
+# denetlenir.
+#
+# Her `ignore` girdisinin bir GEREKÇESİ vardır ve gerekçe ya bir koruma
+# (dosyası belirtilir) ya da açık API'nin hiç çağrılmadığıdır. Çağrılmadığı
+# iddiası check-advisories.sh içinde kaynak taramasıyla fail-closed denetlenir;
+# biri o API'yi kullanmaya başlarsa kapı düşer.
+
+[graph]
+# Yalnız dağıttığımız hedefler: Linux'a özgü bağımlılıklar (zbus, zvariant…)
+# ürüne girmez.
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"]
+all-features = true
+
+[advisories]
+# Bakımsızlık uyarısı yalnız doğrudan bağımlılıklarımız için; dolaylı olanlar
+# (chrono ← lopdf, unic-* ← tauri) bizim seçimimiz değildir.
+unmaintained = "workspace"
+yanked = "warn"
+ignore = [
+    { id = "RUSTSEC-2026-0187", reason = "lopdf 0.34 derin yuvalama: pdf-core/src/pdf/guard.rs ham baytları ve her nesne akışını lopdf'in okuyacağı biçimde tarar (load_mem_guarded); içerik akışı çözülmeden önce exceeds_nesting sorulur. lopdf >= 0.42'ye yükseltilince kaldırılacak." },
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml 0.36 yinelenen öznitelik denetimi karesel: bütün öznitelik okumaları with_checks(false) ile doğrusal (document-core/tests/hostile_attributes.rs)." },
+    { id = "RUSTSEC-2026-0195", reason = "NsReader kullanılmıyor; yalnız ad alanı çözmeyen Reader (check-advisories.sh denetler)." },
+    { id = "RUSTSEC-2026-0367", reason = "zip: ZipArchive::extract / ZipStreamReader çağrılmıyor; arşivler yalnız by_index/by_name ile belleğe okunur (check-advisories.sh denetler)." },
+    { id = "RUSTSEC-2026-0368", reason = "zip: ZipArchive::extract çağrılmıyor (check-advisories.sh denetler)." },
+    { id = "RUSTSEC-2026-0369", reason = "zip: ZipStreamReader / extract çağrılmıyor (check-advisories.sh denetler)." },
+    { id = "RUSTSEC-2026-0429", reason = "zip: ZipArchive::extract çağrılmıyor (check-advisories.sh denetler)." },
+    { id = "RUSTSEC-2026-0545", reason = "zip: aes-crypto özelliği kapalı (yalnız deflate), şifreli girdi çözülmüyor." },
+    { id = "RUSTSEC-2026-0548", reason = "zip: ZipStreamReader / read_zipfile_from_stream çağrılmıyor (check-advisories.sh denetler)." },
+]

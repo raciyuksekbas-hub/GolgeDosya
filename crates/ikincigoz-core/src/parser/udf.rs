@@ -409,8 +409,11 @@ fn local_name(qname: &[u8]) -> &[u8] {
     }
 }
 
+/// Yinelenen ad denetimi kapalı: denetim her öznitelikte öncekilerin hepsine
+/// bakar ve tek etikette binlerce öznitelikle karesel süre alır
+/// (RUSTSEC-2026-0194). İlk eşleşme için anlam aynıdır.
 fn attr(e: &BytesStart<'_>, local: &[u8]) -> Option<String> {
-    for a in e.attributes().flatten() {
+    for a in e.attributes().with_checks(false).flatten() {
         if local_name(a.key.as_ref()) == local {
             return Some(String::from_utf8_lossy(&a.value).into_owned());
         }

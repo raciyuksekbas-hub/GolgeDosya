@@ -235,15 +235,24 @@ pub fn decode_image(stream: &lopdf::Stream) -> Result<Option<image::DynamicImage
             .ok_or_else(|| fail("Geçersiz boyut".into()))
     };
     let (w, h) = (dimension(b"Width")?, dimension(b"Height")?);
-    let raw = unwrap_transport()?;
     // Örnek uzunluğu. Tam eşleşme çözülür. Sonda en çok iki bayt fazlalık —
     // bazı üreticilerin /Length'e kattığı satır sonu (LF/CRLF) — kırpılır.
     // Başka her uyuşmazlık "bu örnekleri güvenle yorumlayamıyoruz" demektir:
     // görsel ATLANIR, baytları olduğu gibi kalır. Geri alınmamış satır başlığı
     // ya da öngörücü artığı piksel gibi kodlanamaz; ama görüntüleyicinin
     // sorunsuz gösterdiği bir görsel yüzünden bütün belge de reddedilmez.
-    let expected = (w as usize) * (h as usize) * channels;
-    let mut raw = raw;
+    //
+    // Boyut, akış AÇILMADAN önce sınanır: beyan edilen örnek boyutu tek bir
+    // Flate katmanının sınırını (validate.rs) aşan görsel zaten tam
+    // çözülemez; açmaya hiç girişilmez, görsel olduğu gibi kalır.
+    let expected = match (w as usize)
+        .checked_mul(h as usize)
+        .and_then(|n| n.checked_mul(channels))
+    {
+        Some(n) if n <= 128 * 1024 * 1024 => n,
+        _ => return Ok(None),
+    };
+    let mut raw = unwrap_transport()?;
     match raw.len().checked_sub(expected) {
         Some(0) => {}
         Some(extra) if extra <= 2 => raw.truncate(expected),

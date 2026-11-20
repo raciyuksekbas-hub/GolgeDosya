@@ -802,8 +802,10 @@ fn parse_rels(xml: Option<&[u8]>) -> Result<HashMap<String, (String, String)>> {
     Ok(out)
 }
 
+/// Yinelenen ad denetimi kapalı: denetim karesel süre alır (RUSTSEC-2026-0194,
+/// bkz. udf/reader.rs `attr`); ilk eşleşme için anlam aynıdır.
 fn a(e: &BytesStart, key: &str) -> Option<String> {
-    for at in e.attributes().flatten() {
+    for at in e.attributes().with_checks(false).flatten() {
         if at.key.local_name().as_ref() == key.as_bytes() {
             return Some(String::from_utf8_lossy(&at.value).to_string());
         }

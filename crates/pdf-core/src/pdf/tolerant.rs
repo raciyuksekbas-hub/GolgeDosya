@@ -30,14 +30,13 @@ pub enum RepairStrategy {
 ///
 /// Unknown damage is rejected; object-scanning reconstruction is intentionally disabled.
 pub fn load_pdf_tolerant(bytes: &[u8], file_name: &str) -> Result<TolerantLoadResult> {
-    // Ayrıştırma öncesi yapısal güvenlik: lopdf'in özyinelemeli ayrıştırıcısı
-    // yeterince derin bir girdide yığını taşırır ve süreç `abort` eder. Bu
-    // tarama patolojik yuvalanmayı ve `/Length` başvuru zincirini ayrıştırıcı
-    // çağrılmadan önce reddeder (bkz. guard.rs).
-    super::guard::check_structure(bytes)?;
-
+    // Yapısal güvenlik: lopdf'in özyinelemeli ayrıştırıcısı yeterince derin bir
+    // girdide yığını taşırır ve süreç `abort` eder. Korumalı yükleme patolojik
+    // yuvalanmayı (nesne akışlarının içi dâhil) ve `/Length` başvuru zincirini
+    // reddeder; ret onarım katmanına düşmez, `?` ile hemen döner (bkz. guard.rs).
+    //
     // Tier 1: Doğrudan ve müdahalesiz hızlı yükleme
-    if let Ok(mut doc) = LopdfDoc::load_mem(bytes) {
+    if let Ok(mut doc) = super::guard::load_mem_guarded(bytes)? {
         let detached = canonicalize(&mut doc)?;
         return Ok(TolerantLoadResult {
             strategy: if detached == 0 {
@@ -62,7 +61,7 @@ pub fn load_pdf_tolerant(bytes: &[u8], file_name: &str) -> Result<TolerantLoadRe
     // Tier 2: Toleranslı normalizasyon ve onarım denemeleri
     // Adım 2.1: Xref ve startxref normalizasyonu
     if let Ok(normalized_bytes) = normalize_xref_and_startxref(bytes) {
-        if let Ok(mut doc) = LopdfDoc::load_mem(&normalized_bytes) {
+        if let Ok(mut doc) = super::guard::load_mem_guarded(&normalized_bytes)? {
             let detached = canonicalize(&mut doc)?;
             let mut note =
                 "Standart dışı xref tablosu ve satır sonları normalize edildi.".to_string();

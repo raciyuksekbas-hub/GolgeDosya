@@ -81,6 +81,9 @@ gate "duzenek komut gövdesi eşitliği" python3 scripts/check-command-parity.py
 # sıfırlanmadan tutulamaz; artması sessizce olmamalı.
 gate "depo dışı bağımlılık mandalı" python3 scripts/check-external-dependencies.py
 gate "lisans beyanı tutarlılığı" python3 scripts/check-licensing.py
+# RustSec açıkları. deny.toml'daki her istisnanın gerekçesi kaynakla birlikte
+# denetlenir; gerekçesiz yeni bir açık kapıyı düşürür.
+gate "bağımlılık açıkları (cargo deny)" bash scripts/check-advisories.sh
 echo
 
 b "3. Testler"
