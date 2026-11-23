@@ -163,9 +163,9 @@ Tüm ayrıntılar: [v0.3.3 sürüm notları](https://github.com/raciyuksekbas-hu
 - Apple Silicon / arm64 içindir.
 - Uygulama **Apple Developer ID** ile imzalanmıştır.
 - Hardened Runtime kullanır.
-- Mevcut v0.3.3 paketi **notarize edilmemiştir**.
+- v0.3.3 paketi Apple tarafından **notarize edilmiştir**; noterlik bileti uygulamaya ve DMG'ye zımbalanmıştır.
 
-Bu nedenle başka bir Mac'te ilk açılış sırasında Gatekeeper uyarısı veya engeli görülebilir. Böyle bir durumda Finder'da uygulamaya **sağ tık → Aç** yoluyla izin vermeniz gerekebilir.
+İndirilen uygulama ilk açılışta Gatekeeper tarafından engellenmez.
 
 ---
 
@@ -196,12 +196,12 @@ Windows tarafında gerçek Windows runner üzerinde:
 
 başarıyla tamamlanmıştır ([iş akışı koşusu](https://github.com/raciyuksekbas-hub/GolgeDosya/actions/runs/45169119159)).
 
-macOS paketi aynı commit'ten arm64 olarak üretilmiş ve Developer ID ile imzalanmıştır.
+macOS paketi aynı commit'ten arm64 olarak üretilmiş, Developer ID ile imzalanmış ve Apple tarafından notarize edilmiştir.
 
 ### 🔐 SHA-256
 
 ```text
-3ecbb0a8a809fec707e6a380ff8369b235e614beea63997f174dc9e0bfc19ed5  GolgeDosya_0.3.3_aarch64.dmg
+d848912576702ee3559fb3ab735a27dc36daf6d9dc63de5dea6a0b322d4b41b0  GolgeDosya_0.3.3_aarch64.dmg
 d61dea47e3ef37b3cb20d346e2d5ce3d2845bc5f8e39557cc2ed304ded3cc45c  GolgeDosya_0.3.3_x64-setup.exe
 7ee14452b650023cd68e99b3daf9b9082ea467c2fe660a1bb253a47b0b7392dc  GolgeDosya_0.3.3_x64.exe
 ```
