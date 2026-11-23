@@ -125,30 +125,40 @@ Bağımsız DüzenEk dondurulmuş baseline olarak kalır.
 
 ## 4. Bilinen ve süreli riskler
 
-### Sürüm hattı bu makinede uçtan uca koşamıyor
+### Sürüm hattı — noterleme çözüldü, tam kapı henüz uçtan uca koşulmadı
 
-`scripts/release-gate.sh` (tam hâli, `--fast` değil) **1 kapıda başarısız**:
-"macOS paketleme zinciri". Sebep koddan bağımsızdır:
+*2026-09-07'de yazıldı; 2026-11-23'te güncellendi.*
 
-```
-Kullanılabilir notarytool anahtarlık profili yok.
-  xcrun notarytool store-credentials belge --apple-id <id> --team-id <team>
-```
+`scripts/release-gate.sh` (tam hâli, `--fast` değil) 8. kapıda, "macOS
+paketleme zinciri"nde düşüyordu. İki sebebi vardı, ikisi de koddan bağımsızdı:
 
-İki yarıyı ayırmak gerekir:
+1. Anahtarlıkta saklı bir notarytool profili yoktu (`Kullanılabilir notarytool
+   anahtarlık profili yok.`).
+2. `bundle-macos.sh` `.app` klasörünü `notarytool`'a doğrudan veriyordu;
+   `notarytool` klasör kabul etmez. Profil olsaydı da zincir noterleyemezdi.
+   `77094a1` (2026-10-13) `.app`'i önce `ditto` ile zipler.
+
+2026-11-23 itibarıyla `belge` profili anahtarlıkta saklı ve
+`bundle-macos.sh` onu `notarytool history` ile buluyor. Profil, yayımlanmış
+v0.3.3 paketlerini noterlemek için kullanıldı:
 
 | Yarı | Durum |
 |---|---|
-| İmzalama | **çalışıyor** — anahtarlıkta Developer ID Application sertifikası var, hardened runtime doğrulandı (`flags=0x10000(runtime)`) |
-| Noterleme | **koşamıyor** — saklı notarytool profili yok |
+| İmzalama | **çalışıyor** — Developer ID Application, Hardened Runtime (`flags=0x10000(runtime)`), güvenli zaman damgası |
+| Noterleme | **çalışıyor** — v0.3.3'ün `.app`'i ve DMG'si Apple'dan uyarısız `Accepted` aldı; ikisine de bilet zımbalandı |
+| Karantina provası | **geçti** — yayından indirilen DMG ve içindeki uygulama için `spctl`: "accepted — Notarized Developer ID" |
 
-Bu, migration'ın açtığı bir kusur değildir; ama `--fast` ile koşulduğunda
-paketleme atlandığı için **daha önce görünmüyordu**. Tam kapı bu makinede
-bugüne kadar uçtan uca geçmemiştir ve dağıtım öncesi kapatılması gerekir.
-Profil saklamak Apple kimlik bilgisi ister; betikler parolayı hiç görmez.
+Açık kalan tek şey: **tam kapı bu makinede hâlâ uçtan uca koşulmadı.** v0.3.3
+noterlemesi, zaten imzalı ve yayımlanmış `.app` üzerinde `bundle-macos.sh`'ın
+adımları elle atılarak yapıldı (`ditto` zip → gönder → zımbala; DMG → gönder →
+zımbala → karantina provası). Amaç, yayımlanmış ikiliyi yeniden derlemeden
+noterlemekti. Betiğin kendisi bu adımları yeni bir derlemede henüz baştan sona
+çalıştırmadı. Bu satır, bir sonraki sürümde `release-gate.sh` `--fast` olmadan
+geçtiğinde kapanır.
 
-Kapı bilerek "atlandı" durumuna çevrilmedi: fail-closed bir kapıda gerçek bir
-boşluğu atlamaya çevirmek, boşluğu gizlemek olur.
+Profili sahibi kendi Apple kimlik bilgisiyle sakladı; betikler parolayı hiç
+görmez. Kapı hiçbir zaman "atlandı" durumuna çevrilmedi: fail-closed bir kapıda
+gerçek bir boşluğu atlamaya çevirmek, boşluğu gizlemek olur.
 
 ### `sandbox-exec` kullanımdan kalkmış
 Bkz. §2. Bugün çalışıyor, ölçüldü; yerine geçecek mimari ayrı iştir.
