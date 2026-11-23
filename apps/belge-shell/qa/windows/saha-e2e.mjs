@@ -74,7 +74,7 @@ function native(action, extra = {}) {
 
 /** Önceki adımlardan kalan uygulama ve WebView2 süreçleri. */
 function clearLeftovers() {
-  for (const image of ["belge-shell.exe", "GolgeDosya_0.3.2_x64.exe", "msedgewebview2.exe"]) {
+  for (const image of ["belge-shell.exe", "GolgeDosya_0.3.3_x64.exe", "msedgewebview2.exe"]) {
     try {
       execFileSync("taskkill.exe", ["/F", "/T", "/IM", image], { stdio: "ignore" });
     } catch {
