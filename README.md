@@ -6,7 +6,7 @@
 
 **Düzenleyin, dönüştürün, karşılaştırın, denetleyin ve dilekçe eklerinizi tek uygulamada hazırlayın.**
 
-![Version](https://img.shields.io/badge/version-v0.3.1%20Beta-555?style=flat-square)
+![Version](https://img.shields.io/badge/version-v0.3.3%20Beta-555?style=flat-square)
 ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000?style=flat-square&logo=apple&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-x64-0078D4?style=flat-square&logo=windows&logoColor=white)
 ![Local](https://img.shields.io/badge/çalışma-yerel-success?style=flat-square)
@@ -20,8 +20,8 @@
 | 🪟 Windows | 🍎 macOS |
 |---|---|
 | **Windows 10 / 11 — x64** | **Apple Silicon (arm64)** |
-| [**GölgeDosya v0.3.1 Beta — Windows kurulumunu indir**](https://github.com/raciyuksekbas-hub/GolgeDosya/releases/download/v.0.3.1/GolgeDosya_0.3.1_x64-setup.exe) | [**GölgeDosya v0.3.1 Beta — macOS'u indir**](https://github.com/raciyuksekbas-hub/GolgeDosya/releases/download/v.0.3.1/GolgeDosya_0.3.1_aarch64.dmg) |
-| [Taşınabilir Windows sürümü](https://github.com/raciyuksekbas-hub/GolgeDosya/releases/download/v.0.3.1/GolgeDosya_0.3.1_x64.exe) | — |
+| [**GölgeDosya v0.3.3 Beta — Windows kurulumunu indir**](https://github.com/raciyuksekbas-hub/GolgeDosya/releases/download/v0.3.3/GolgeDosya_0.3.3_x64-setup.exe) | [**GölgeDosya v0.3.3 Beta — macOS'u indir**](https://github.com/raciyuksekbas-hub/GolgeDosya/releases/download/v0.3.3/GolgeDosya_0.3.3_aarch64.dmg) |
+| [Taşınabilir Windows sürümü](https://github.com/raciyuksekbas-hub/GolgeDosya/releases/download/v0.3.3/GolgeDosya_0.3.3_x64.exe) | — |
 
 > **Beta sürümüdür.** Özellikle önemli belgelerde, oluşturulan veya değiştirilen çıktıyı kullanmadan önce son kontrolünüzü yapmanızı öneririm.
 
@@ -140,21 +140,21 @@ GölgeDosya'nın temel tasarım ilkelerinden biri **local-first** çalışmadır
 
 ---
 
-## 🧪 v0.3.1 Beta
+## 🧪 v0.3.3 Beta
 
-Bu sürüm, gerçek kullanıcı geri bildirimleri ve Windows/macOS saha testleri doğrultusunda hazırlanmıştır.
+Bu sürüm bir güvenlik ve performans incelemesinin sonuçlarını ve v0.3.2'den sonra gelen saha düzeltmelerini içerir. **Önceki sürümleri kullanan herkesin güncellemesi önerilir.**
 
 Başlıca geliştirmeler:
 
-- 🪟 Windows için gerçek yerel PDF küçük resim ve sayfa önizleme desteği eklendi.
-- 🧭 Windows'ta klasör gösterme ve Unicode/uzun yol davranışları düzeltildi.
-- 🆚 Karşılaştır'da eş zamanlı kaydırma, kopyalama ve koyu tema davranışları iyileştirildi.
-- 📎 Ekler iş akışına yeni işlem başlatma ve işlem sonrası akış iyileştirmeleri eklendi.
-- 🔄 Dönüştür ekranı ve işlem sonrası **Yeni Dönüştürme** akışı sadeleştirildi.
-- 🛡️ Kaydedilmemiş çalışmanın sessizce kaybolmasına yol açabilecek yenileme/gezinme davranışları koruma altına alındı.
-- 🔎 Denetle'de boşluk vurguları ve terim tutarlılığı önerileri geliştirildi.
-- 🗜️ PDF sıkıştırma ve PDF çıktı işleme zinciri iyileştirildi.
-- 🏷️ GölgeDosya'nın oluşturduğu/değiştirdiği PDF çıktılarında marka davranışı tutarlı hâle getirildi.
+- 🛡️ Özel olarak hazırlanmış bir PDF'in uygulamayı kapatabilmesi giderildi.
+- 📎 Word belgesi PDF'e çevrilirken belgenin bilgisayarınızdaki başka bir dosyayı içeri alabilmesi engellendi; başka dosyaya bağlanan alan kodları içeren belgeler açık bir mesajla reddedilir.
+- ⏳ Özel olarak hazırlanmış UDF/Word dosyalarının dönüştürmeyi kilitleyebilmesi ve aşırı büyüyen (sıkıştırma bombası) dosyalar giderildi.
+- 🗜️ Sıkıştırma ve sayfa önizlemeleri yaklaşık on kat hızlı.
+- 🆚 Karşılaştır uzun ve çok değişmiş belgelerde artık donmuyor; karşılaştırma arka planda çalışıyor.
+- 🖼️ PDF → PNG/JPEG uzun belgelerde artık bellek sınırına takılmıyor.
+- 🔄 Elle yazılmış madde numaraları ve sütununa sığmayan başlık etiketleri UYAP'ta Word'deki gibi hizalanıyor.
+
+Tüm ayrıntılar: [v0.3.3 sürüm notları](https://github.com/raciyuksekbas-hub/GolgeDosya/releases/tag/v0.3.3)
 
 ---
 
@@ -163,7 +163,7 @@ Başlıca geliştirmeler:
 - Apple Silicon / arm64 içindir.
 - Uygulama **Apple Developer ID** ile imzalanmıştır.
 - Hardened Runtime kullanır.
-- Mevcut v0.3.1 paketi **notarize edilmemiştir**.
+- Mevcut v0.3.3 paketi **notarize edilmemiştir**.
 
 Bu nedenle başka bir Mac'te ilk açılış sırasında Gatekeeper uyarısı veya engeli görülebilir. Böyle bir durumda Finder'da uygulamaya **sağ tık → Aç** yoluyla izin vermeniz gerekebilir.
 
@@ -181,30 +181,29 @@ Bu nedenle Microsoft SmartScreen ilk açılışta uyarı gösterebilir. Uyarı d
 
 ## ✅ Doğrulama
 
-v0.3.1 paketleri aynı kaynak sürümünden üretilmiştir:
+v0.3.3 paketleri aynı kaynak sürümünden üretilmiştir:
 
 ```text
-d1fd33011998767628bf43154118ed44b9d71cc4
+f98757d553bd058c58add1ab7e97d99a94a1432d
 ```
 
 Windows tarafında gerçek Windows runner üzerinde:
 
 - ✅ yerel derleme ve test kapıları,
 - ✅ gerçek PDF render testleri,
-- ✅ Unicode ve 260+ karakterlik yol testleri,
 - ✅ kurulum → açılış → kaldırma smoke testi,
-- ✅ gerçek pencere davranışı kontrolleri
+- ✅ gerçek pencere ve klavye/fare davranışı kontrolleri
 
-başarıyla tamamlanmıştır.
+başarıyla tamamlanmıştır ([iş akışı koşusu](https://github.com/raciyuksekbas-hub/GolgeDosya/actions/runs/45169119159)).
 
 macOS paketi aynı commit'ten arm64 olarak üretilmiş ve Developer ID ile imzalanmıştır.
 
 ### 🔐 SHA-256
 
 ```text
-5a9073d38e9a439ac01a719f55cc0e9fb3f1ccb5ea0cf162f6cd1bee5e65cd3a  GolgeDosya_0.3.1_aarch64.dmg
-2438e1b3b96969d5a9314ae407edf954ea0ed58a83cb22ac75fc2964788e5090  GolgeDosya_0.3.1_x64-setup.exe
-47bf39b936b841681e07e982fcbf1a0b6b1a38ace9399834ac514859a00884dd  GolgeDosya_0.3.1_x64.exe
+3ecbb0a8a809fec707e6a380ff8369b235e614beea63997f174dc9e0bfc19ed5  GolgeDosya_0.3.3_aarch64.dmg
+d61dea47e3ef37b3cb20d346e2d5ce3d2845bc5f8e39557cc2ed304ded3cc45c  GolgeDosya_0.3.3_x64-setup.exe
+7ee14452b650023cd68e99b3daf9b9082ea467c2fe660a1bb253a47b0b7392dc  GolgeDosya_0.3.3_x64.exe
 ```
 
 Release içindeki `SHA256SUMS` dosyasıyla da doğrulama yapabilirsiniz.
